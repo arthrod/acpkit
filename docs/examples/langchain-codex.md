@@ -10,6 +10,15 @@ This example demonstrates the helper-to-adapter path for LangChain:
 - `langchain.agents.create_agent(...)` owns the graph
 - `langchain-acp` exposes that graph through ACP
 
+The model factory call must pass `instructions=` explicitly:
+
+```python
+model = create_codex_chat_openai(
+    "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
+)
+```
+
 Run it:
 
 ```bash
@@ -20,6 +29,12 @@ Required local state:
 
 ```text
 ~/.codex/auth.json
+```
+
+Override the default model when needed:
+
+```bash
+CODEX_MODEL=gpt-5.4-mini uv run python -m examples.langchain.codex_graph
 ```
 
 If you have not logged in yet:

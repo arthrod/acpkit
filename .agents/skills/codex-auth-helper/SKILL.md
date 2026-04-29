@@ -155,7 +155,7 @@ This helper is usually upstream of the adapter, not a replacement for it.
 
 ### Build a Codex-backed `pydantic-ai` model
 
-Use `create_codex_responses_model(...)`.
+Use `create_codex_responses_model(...)` and pass explicit `instructions=...`.
 
 ### Build a lower-level client first
 
@@ -164,7 +164,8 @@ Use `create_codex_async_openai(...)` when you need the transport/client object e
 ### Build a LangChain model
 
 Use `create_codex_chat_openai(...)` when the upstream runtime is LangChain or LangGraph and you
-want the Responses API path instead of hand-wiring `langchain-openai`.
+want the Responses API path instead of hand-wiring `langchain-openai`. Pass explicit
+`instructions=...` here too.
 
 ### Debug refresh behavior
 

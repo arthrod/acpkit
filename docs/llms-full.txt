@@ -672,7 +672,10 @@ from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="Answer directly and keep responses short.",
+    ),
     tools=[],
     name="codex-graph",
 )
@@ -680,6 +683,9 @@ graph = create_agent(
 
 That path keeps the model on the OpenAI Responses API while reusing
 `~/.codex/auth.json` and the helper's refresh flow.
+
+`create_codex_chat_openai(...)` requires `instructions=`. Pass them at model
+construction time, including inside `graph_factory=` flows.
 
 ## 2. Expose The Graph Through ACP
 
@@ -1331,9 +1337,6 @@ What this means in practice:
 - the adapter is less exposed to private upstream type-module churn
 - upgrades are still compatibility work, but the history-processor integration
   is no longer a direct private-import dependency
-- extension code should use `HistoryProcessorCallable`,
-  `HistoryProcessorPlain`, or `HistoryProcessorContextual` from `pydantic_acp`
-  rather than importing from `pydantic_ai._history_processor`
 
 ### LangChain ACP Overview
 URL: https://vcoderun.github.io/acpkit/langchain-acp/
@@ -1376,7 +1379,10 @@ from langchain.agents import create_agent
 from langchain_acp import run_acp
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="You are a helpful coding assistant.",
+    ),
     tools=[],
     name="codex-graph",
 )
@@ -1408,6 +1414,8 @@ Use `graph_factory=` when ACP session state should rebuild the upstream graph. T
 If model construction depends on a local Codex login, pair this adapter with
 `codex-auth-helper`. The helper owns auth parsing, refresh, and Responses-backed
 `ChatOpenAI` construction; `langchain-acp` only owns ACP adaptation.
+`create_codex_chat_openai(...)` requires `instructions=`, including when it is
+called inside `graph_factory=...`.
 
 ## What The Adapter Owns
 
@@ -3134,8 +3142,6 @@ ACP Kit models those callable shapes locally and passes them through the public
 
 That means:
 
-- bridge extension code should import history-processor aliases from
-  `pydantic_acp`, not from `pydantic_ai._history_processor`
 - the adapter is no longer directly coupled to upstream private
   history-processor imports
 
@@ -5028,9 +5034,16 @@ Pydantic AI:
 from codex_auth_helper import create_codex_responses_model
 from pydantic_ai import Agent
 
-model = create_codex_responses_model("gpt-5.4")
-agent = Agent(model, instructions="You are a helpful coding assistant.")
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
+)
+agent = Agent(model)
 ```
+
+Pass `instructions=` explicitly to `create_codex_responses_model(...)`. On the
+Pydantic path you can also add `Agent(instructions=...)` when you want
+agent-owned instructions on top of the factory default.
 
 LangChain:
 
@@ -5039,11 +5052,17 @@ from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="You are a helpful coding assistant.",
+    ),
     tools=[],
     name="codex-graph",
 )
 ```
+
+`create_codex_chat_openai(...)` requires `instructions=`. There is no implicit
+default on the LangChain path.
 
 ACP-side usage looks the same:
 
@@ -5053,7 +5072,10 @@ from pydantic_ai import Agent
 from pydantic_acp import run_acp
 
 agent = Agent(
-    create_codex_responses_model("gpt-5.4"),
+    create_codex_responses_model(
+        "gpt-5.4",
+        instructions="You are a helpful ACP coding assistant.",
+    ),
     name="codex-agent",
 )
 

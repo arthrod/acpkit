@@ -45,6 +45,45 @@ graph = create_agent(model="openai:gpt-5", tools=[])
 run_acp(graph=graph)
 ```
 
+If you are using Codex-backed LangChain models through `codex-auth-helper`, you must pass the
+LangChain system behavior through the helper's `instructions=` argument. The same repo policy now
+applies on the Pydantic path too: Codex-backed model factories take explicit instructions instead of
+inventing an implicit default.
+
+```python
+from codex_auth_helper import create_codex_chat_openai
+from langchain.agents import create_agent
+
+model = create_codex_chat_openai(
+    "gpt-5.4",
+    instructions="You are a careful assistant that explains concrete workspace observations.",
+)
+graph = create_agent(model=model, tools=[], name="codex-graph")
+```
+
+That `instructions` string is required and is forwarded to the OpenAI Responses request behind
+`ChatOpenAI`. See the maintained example at
+<https://github.com/vcoderun/acpkit/blob/main/examples/langchain/codex_graph.py>.
+
+Use the same pattern inside `graph_factory=` paths too. If the graph is rebuilt per session, keep
+the Codex system behavior explicit in the factory instead of relying on an implicit default:
+
+```python
+from codex_auth_helper import create_codex_chat_openai
+from langchain.agents import create_agent
+from langchain_acp import AcpSessionContext
+
+
+def graph_from_session(session: AcpSessionContext):
+    mode_name = session.session_mode_id or "ask"
+    model_name = session.session_model_id or "gpt-5.4-mini"
+    model = create_codex_chat_openai(
+        model_name,
+        instructions=f"Operate in {mode_name} mode and explain concrete workspace observations.",
+    )
+    return create_agent(model=model, tools=[], name=f"codex-{mode_name}")
+```
+
 If ACP session state should affect graph construction, use `graph_factory=`:
 
 ```python
@@ -108,6 +147,10 @@ run_acp(
 ```
 
 Use this when workspace path, mode, model, or session metadata should rebuild the graph dynamically.
+
+The maintained examples under `examples/langchain/` also expose ACP-visible model and mode choices
+through `available_models`, `available_modes`, `default_model_id`, and `default_mode_id`, then
+consume `session.session_model_id` and `session.session_mode_id` inside `graph_factory=...`.
 
 ## DeepAgents Compatibility
 

@@ -60,6 +60,42 @@ acp_agent = create_acp_agent(
 run_agent(acp_agent)
 ```
 
+If you are using Codex-backed Pydantic models through `codex-auth-helper`, pass explicit
+instructions when building the model. That is the preferred seam for Codex-specific system behavior:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a careful coding assistant.",
+)
+agent = Agent(model, name="codex-agent")
+```
+
+On the Pydantic path, `Agent(instructions=...)` is also valid and may still be useful for
+agent-specific behavior layered on top of the model:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a careful coding assistant.",
+)
+agent = Agent(
+    model,
+    name="codex-agent",
+    instructions="Ask for clarification when the task is underspecified.",
+)
+```
+
+In short: Codex-backed Pydantic models should not rely on an implicit default instruction string.
+Set instructions explicitly at the factory level, and add `Agent(instructions=...)` when you want
+extra agent-owned behavior.
+
 ## Native Plan Mode
 
 `TaskPlan` is the structured native plan output surface.

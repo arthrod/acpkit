@@ -183,5 +183,11 @@ class _SessionModelRuntime(Generic[AgentDepsT, OutputDataT]):
                 from codex_auth_helper import create_codex_responses_model
             except ImportError as exc:
                 raise RequestError.invalid_params({"modelId": normalized_model_id}) from exc
-            return create_codex_responses_model(codex_model_id)
+            return create_codex_responses_model(
+                codex_model_id,
+                instructions=(
+                    "Follow the agent instructions already present in the request context "
+                    "and answer consistently with the selected Codex model."
+                ),
+            )
         return normalized_model_id

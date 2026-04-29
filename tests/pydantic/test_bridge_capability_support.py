@@ -1,6 +1,7 @@
 from __future__ import annotations as _annotations
 
 import asyncio
+import os
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -410,12 +411,31 @@ def test_mcp_toolset_include_instructions_reaches_model_request(tmp_path: Path) 
         del messages
         return ModelResponse(parts=[TextPart(info.instructions or "")])
 
+    executable_path = Path(sys.executable)
+    python_executable = (
+        str(executable_path)
+        if executable_path.exists()
+        else getattr(sys, "_base_executable", sys.executable) or sys.executable
+    )
+    python_path_entries = [entry for entry in sys.path if entry]
+    mcp_env = dict(os.environ)
+    if python_path_entries:
+        existing_pythonpath = mcp_env.get("PYTHONPATH")
+        combined_pythonpath = os.pathsep.join(
+            (
+                *python_path_entries,
+                *([existing_pythonpath] if existing_pythonpath else []),
+            )
+        )
+        mcp_env["PYTHONPATH"] = combined_pythonpath
+
     agent = Agent(
         FunctionModel(return_instructions),
         toolsets=[
             MCPServerStdio(
-                sys.executable,
+                python_executable,
                 [str(server_script)],
+                env=mcp_env,
                 cwd=tmp_path,
                 include_instructions=True,
                 id="mcp",

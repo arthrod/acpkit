@@ -35,7 +35,10 @@ from langchain.agents import create_agent
 from langchain_acp import run_acp
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="You are a helpful coding assistant.",
+    ),
     tools=[],
     name="codex-graph",
 )
@@ -69,6 +72,8 @@ Use `graph_factory=` when ACP session state should rebuild the upstream graph. T
 If model construction depends on a local Codex login, pair this adapter with
 `codex-auth-helper`. The helper owns auth parsing, refresh, and Responses-backed
 `ChatOpenAI` construction; `langchain-acp` only owns ACP adaptation.
+`create_codex_chat_openai(...)` requires `instructions=`, including when it is
+called inside `graph_factory=...`.
 
 ## What The Adapter Owns
 

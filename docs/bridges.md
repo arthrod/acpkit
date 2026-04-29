@@ -106,8 +106,6 @@ ACP Kit models those callable shapes locally and passes them through the public
 
 That means:
 
-- bridge extension code should import history-processor aliases from
-  `pydantic_acp`, not from `pydantic_ai._history_processor`
 - the adapter is no longer directly coupled to upstream private
   history-processor imports
 

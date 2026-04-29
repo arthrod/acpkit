@@ -8,6 +8,7 @@ This example is the maintained DeepAgents-facing showcase for `langchain-acp`.
 
 It demonstrates:
 
+- a Codex-backed `ChatOpenAI` model created through `codex-auth-helper`
 - wiring a DeepAgents graph through `langchain-acp`
 - `DeepAgentsCompatibilityBridge`
 - `DeepAgentsProjectionMap`
@@ -28,6 +29,12 @@ Run it:
 
 ```bash
 uv run python -m examples.langchain.deepagents_graph
+```
+
+Required local state:
+
+```text
+~/.codex/auth.json
 ```
 
 If you want the module-level compiled graph directly, the example exports `graph` when `deepagents` is installed:

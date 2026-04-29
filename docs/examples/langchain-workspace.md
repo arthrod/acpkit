@@ -8,6 +8,7 @@ This example is the maintained plain-LangChain showcase.
 
 It demonstrates:
 
+- a Codex-backed `ChatOpenAI` model created through `codex-auth-helper`
 - a module-level `graph`, `config`, and `main()`
 - a session-aware `graph_from_session(...)` factory
 - `acpkit run examples.langchain.workspace_graph:graph`
@@ -19,6 +20,18 @@ Run it:
 
 ```bash
 uv run python -m examples.langchain.workspace_graph
+```
+
+Required local state:
+
+```text
+~/.codex/auth.json
+```
+
+Override the default model when needed:
+
+```bash
+CODEX_MODEL=gpt-5.4-mini uv run python -m examples.langchain.workspace_graph
 ```
 
 Or expose the graph directly through the root CLI:

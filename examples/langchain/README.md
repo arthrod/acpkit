@@ -2,14 +2,53 @@
 
 All maintained LangChain examples live under `examples/langchain/`.
 
-- `workspace_graph.py`
-  module-level `graph`, session-aware `graph_from_session(...)`, and file read/write projection for
-  `acpkit run ...` or remote ACP hosting
-- `deepagents_graph.py`
-  DeepAgents compatibility example with `DeepAgentsCompatibilityBridge` and `DeepAgentsProjectionMap`
 - `codex_graph.py`
-  Codex-backed LangChain graph that uses `codex-auth-helper` to build a Responses-backed
-  `ChatOpenAI` model
+  Smallest Codex-backed LangChain example. It uses `codex_auth_helper.create_codex_chat_openai(...)`
+  directly and passes `instructions=` to the Responses request so you can see the exact LangChain
+  integration surface without extra wrappers.
+- `workspace_graph.py`
+  Codex-backed workspace graph with real file read/write tools, session-aware
+  `graph_from_session(...)`, and file projection for `langchain-acp`. The demo workspace is created
+  under the current working directory as `.workspace-graph/` so the graph interacts with the
+  workspace you launched it from instead of writing next to the example source file.
+- `deepagents_graph.py`
+  Codex-backed DeepAgents compatibility example with real workspace tools,
+  `DeepAgentsCompatibilityBridge`, and `DeepAgentsProjectionMap`. Its workspace is created under the
+  current working directory as `.deepagents-graph/`.
+
+All three examples use the local Codex auth flow through `codex-auth-helper`. By default they use
+`CODEX_MODEL=gpt-5.4`; set `CODEX_MODEL` before running them when you want a different Codex model.
+
+The LangChain-specific Codex hook is the `instructions=` argument:
+
+```python
+from codex_auth_helper import create_codex_chat_openai
+
+model = create_codex_chat_openai(
+    "gpt-5.4",
+    instructions=(
+        "You are a careful workspace assistant. "
+        "Read files before editing them and explain concrete observations."
+    ),
+)
+```
+
+That string is passed through to the OpenAI Responses request that backs `ChatOpenAI`. Use it when
+you want repo- or task-specific system behavior without introducing another wrapper layer.
+`create_codex_chat_openai(...)` requires `instructions`; there is no implicit default.
+
+## Model And Mode Controls
+
+The maintained examples also expose ACP session controls for model and mode selection.
+
+- `available_models` advertises the model ids the client can switch to.
+- `available_modes` advertises the runtime modes the client can switch to.
+- `default_model_id` and `default_mode_id` seed new sessions.
+- `graph_from_session(...)` reads `session.session_model_id` and `session.session_mode_id` and
+  rebuilds the graph with the selected Codex model and mode-specific instructions.
+
+In practice that means a client can switch model or mode through ACP session controls and the next
+prompt turn will run against a newly built LangChain graph that reflects those choices.
 
 ## Runnable Demo
 
@@ -25,6 +64,10 @@ Or expose the module-level graph directly through the root CLI:
 acpkit run examples.langchain.workspace_graph:graph
 acpkit run examples.langchain.deepagents_graph:graph
 ```
+
+If you want the session-aware graph factory path instead of the module-level `graph`, run the module
+directly with `python -m ...`. That path creates the demo workspace under your launch directory and
+avoids the fixed import-time graph root.
 
 The workspace graph example also works as a remote ACP host:
 

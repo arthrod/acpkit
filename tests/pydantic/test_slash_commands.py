@@ -437,8 +437,9 @@ def test_model_slash_command_accepts_codex_models(tmp_path: Path, monkeypatch) -
     fake_module = types.ModuleType("codex_auth_helper")
     fake_model = TestModel(model_name="gpt-5", custom_output_text="codex")
 
-    def create_codex_responses_model(model_id: str) -> TestModel:
+    def create_codex_responses_model(model_id: str, *, instructions: str) -> TestModel:
         assert model_id == "gpt-5"
+        assert instructions
         return fake_model
 
     fake_module.__dict__["create_codex_responses_model"] = create_codex_responses_model

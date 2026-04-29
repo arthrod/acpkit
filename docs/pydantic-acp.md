@@ -34,6 +34,25 @@ run_acp(agent=agent)
 
 This is the fastest path from a normal `pydantic_ai.Agent` to a working ACP server.
 
+If the agent should reuse an existing local Codex login, build the model through
+`codex-auth-helper` and pass explicit instructions at factory construction time:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
+)
+
+agent = Agent(model, name="codex-agent")
+```
+
+On the Pydantic path, `Agent(instructions=...)` can still be layered on top for
+agent-owned instructions, but the Codex factory should always receive explicit
+`instructions=...`.
+
 ### `create_acp_agent(...)`
 
 Use `create_acp_agent(...)` when another runtime should own transport lifecycle but you still want the adapter assembly:
@@ -264,6 +283,3 @@ What this means in practice:
 - the adapter is less exposed to private upstream type-module churn
 - upgrades are still compatibility work, but the history-processor integration
   is no longer a direct private-import dependency
-- extension code should use `HistoryProcessorCallable`,
-  `HistoryProcessorPlain`, or `HistoryProcessorContextual` from `pydantic_acp`
-  rather than importing from `pydantic_ai._history_processor`

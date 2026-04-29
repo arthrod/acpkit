@@ -68,9 +68,16 @@ Pydantic AI:
 from codex_auth_helper import create_codex_responses_model
 from pydantic_ai import Agent
 
-model = create_codex_responses_model("gpt-5.4")
-agent = Agent(model, instructions="You are a helpful coding assistant.")
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
+)
+agent = Agent(model)
 ```
+
+Pass `instructions=` explicitly to `create_codex_responses_model(...)`. On the
+Pydantic path you can also add `Agent(instructions=...)` when you want
+agent-owned instructions on top of the factory default.
 
 LangChain:
 
@@ -79,11 +86,17 @@ from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="You are a helpful coding assistant.",
+    ),
     tools=[],
     name="codex-graph",
 )
 ```
+
+`create_codex_chat_openai(...)` requires `instructions=`. There is no implicit
+default on the LangChain path.
 
 ACP-side usage looks the same:
 
@@ -93,7 +106,10 @@ from pydantic_ai import Agent
 from pydantic_acp import run_acp
 
 agent = Agent(
-    create_codex_responses_model("gpt-5.4"),
+    create_codex_responses_model(
+        "gpt-5.4",
+        instructions="You are a helpful ACP coding assistant.",
+    ),
     name="codex-agent",
 )
 
