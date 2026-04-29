@@ -2,7 +2,7 @@ name: Docs
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main", "acpkit_v1"]
   workflow_dispatch:
 
 permissions:
