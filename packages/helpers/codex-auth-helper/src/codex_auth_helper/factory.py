@@ -90,18 +90,21 @@ def create_codex_chat_openai(
             "`model_kwargs['instructions']`, not both."
         )
     chat_model_kwargs["instructions"] = instructions
+    chat_openai_kwargs: dict[str, Any] = {
+        "model": model_name,
+        "async_client": async_root_client.chat.completions,
+        "client": sync_root_client.chat.completions,
+        "include_response_headers": include_response_headers,
+        "model_kwargs": chat_model_kwargs,
+        "output_version": output_version,
+        "reasoning": reasoning,
+        "root_async_client": async_root_client,
+        "root_client": sync_root_client,
+        "store": False,
+        "temperature": temperature,
+        "use_previous_response_id": use_previous_response_id,
+        "use_responses_api": True,
+    }
     return ChatOpenAI(
-        model_name=model_name,
-        async_client=async_root_client.chat.completions,
-        client=sync_root_client.chat.completions,
-        include_response_headers=include_response_headers,
-        model_kwargs=chat_model_kwargs,
-        output_version=output_version,
-        reasoning=reasoning,
-        root_async_client=async_root_client,
-        root_client=sync_root_client,
-        store=False,
-        temperature=temperature,
-        use_previous_response_id=use_previous_response_id,
-        use_responses_api=True,
+        **chat_openai_kwargs,
     )

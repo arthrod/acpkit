@@ -1,7 +1,7 @@
 from __future__ import annotations as _annotations
 
 import asyncio
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import pytest
 from acp.exceptions import RequestError
@@ -40,6 +40,10 @@ from .support import (
     create_acp_agent,
     text_block,
 )
+
+
+class _AdapterWithConfig(Protocol):
+    _config: Any
 
 
 def _passthrough_tools(
@@ -460,7 +464,8 @@ def test_agent_mode_with_plan_tools_can_update_and_complete_entries_incrementall
     adapter.on_connect(client)
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    stored_session = cast(Any, adapter)._config.session_store.get(session.session_id)
+    adapter_config = cast(_AdapterWithConfig, adapter)._config
+    stored_session = adapter_config.session_store.get(session.session_id)
     assert stored_session is not None
     stored_session.plan_markdown = "# Plan\n\n1. Implement the first item\n2. Verify it\n"
     stored_session.plan_entries = [
@@ -475,7 +480,7 @@ def test_agent_mode_with_plan_tools_can_update_and_complete_entries_incrementall
             status="pending",
         ).model_dump(mode="json"),
     ]
-    cast(Any, adapter)._config.session_store.save(stored_session)
+    adapter_config.session_store.save(stored_session)
     client.updates.clear()
 
     asyncio.run(

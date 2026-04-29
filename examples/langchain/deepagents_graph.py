@@ -1,9 +1,10 @@
 from __future__ import annotations as _annotations
 
 import os
+from collections.abc import Callable, Sequence
 from importlib.util import find_spec
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
 from acp.schema import ModelInfo, SessionMode
 from codex_auth_helper import create_codex_chat_openai
@@ -19,6 +20,9 @@ from langchain_acp.session import utc_now
 
 if TYPE_CHECKING:
     from langchain_acp import CompiledAgentGraph
+    from langchain_core.tools import BaseTool
+
+DeepAgentTool: TypeAlias = "BaseTool | Callable[..., Any] | dict[str, Any]"
 
 __all__ = (
     "AVAILABLE_MODELS",
@@ -167,7 +171,9 @@ def _session_workspace_root(session: AcpSessionContext) -> Path:
     return session.cwd.resolve() / _SESSION_ROOT_NAME
 
 
-def _bind_workspace_tools(root: Path) -> tuple[object, object, object]:
+def _bind_workspace_tools(
+    root: Path,
+) -> tuple[Callable[[], str], Callable[[str], str], Callable[[str, str], str]]:
     del root
 
     def _list_workspace_files() -> str:
@@ -206,15 +212,16 @@ def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     mode_id = session.session_mode_id or DEFAULT_MODE_ID or "ask"
     from deepagents import create_deep_agent
 
+    tools: Sequence[DeepAgentTool] = [
+        *_bind_workspace_tools(workspace_root),
+        *cast(Sequence[DeepAgentTool], native_plan_tools()),
+    ]
     return create_deep_agent(
         model=create_codex_chat_openai(
             model_name,
             instructions=codex_instructions(mode_id=mode_id),
         ),
-        tools=[
-            *_bind_workspace_tools(workspace_root),
-            *native_plan_tools(),
-        ],  # type: ignore[arg-type]
+        tools=tools,
         interrupt_on={"write_file": True},
         name=f"deepagents-{mode_id}-{session.cwd.name}",
     )
