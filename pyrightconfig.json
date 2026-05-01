@@ -8,4 +8,5 @@
   "reportMissingImports": "none",
   "reportPrivateUsage": "none",
   "reportCallIssue": "none",
+  "reportPrivateImportUsage": "none",
 }
