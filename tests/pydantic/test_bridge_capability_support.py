@@ -49,6 +49,54 @@ from .support import (
 )
 
 
+def _write_mcp_stdio_server_script(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            (
+                "from __future__ import annotations as _annotations",
+                "",
+                "from mcp.server.fastmcp import FastMCP",
+                "",
+                'mcp = FastMCP("test-mcp", instructions="Be a helpful assistant.")',
+                "",
+                "@mcp.tool()",
+                "def ping() -> str:",
+                '    return "pong"',
+                "",
+                'if __name__ == "__main__":',
+                '    mcp.run("stdio")',
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+
+
+def _build_mcp_stdio_test_env(
+    *,
+    executable: str,
+    base_executable: str | None,
+    sys_path: list[str],
+    environ: dict[str, str],
+) -> tuple[str, dict[str, str]]:
+    executable_path = Path(executable)
+    python_executable = (
+        str(executable_path) if executable_path.exists() else base_executable or executable
+    )
+    python_path_entries = [entry for entry in sys_path if entry]
+    mcp_env = dict(environ)
+    if python_path_entries:
+        existing_pythonpath = mcp_env.get("PYTHONPATH")
+        combined_pythonpath = os.pathsep.join(
+            (
+                *python_path_entries,
+                *([existing_pythonpath] if existing_pythonpath else []),
+            )
+        )
+        mcp_env["PYTHONPATH"] = combined_pythonpath
+    return python_executable, mcp_env
+
+
 def test_thread_executor_bridge_runs_sync_tools_on_configured_executor(
     tmp_path: Path,
 ) -> None:
@@ -386,48 +434,18 @@ def test_mcp_toolset_include_instructions_reaches_model_request(tmp_path: Path) 
     from pydantic_ai.mcp import MCPServerStdio
 
     server_script = tmp_path / "mcp_stdio_server.py"
-    server_script.write_text(
-        "\n".join(
-            (
-                "from __future__ import annotations as _annotations",
-                "",
-                "from mcp.server.fastmcp import FastMCP",
-                "",
-                'mcp = FastMCP("test-mcp", instructions="Be a helpful assistant.")',
-                "",
-                "@mcp.tool()",
-                "def ping() -> str:",
-                '    return "pong"',
-                "",
-                'if __name__ == "__main__":',
-                '    mcp.run("stdio")',
-                "",
-            )
-        ),
-        encoding="utf-8",
-    )
+    _write_mcp_stdio_server_script(server_script)
 
     def return_instructions(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         del messages
         return ModelResponse(parts=[TextPart(info.instructions or "")])
 
-    executable_path = Path(sys.executable)
-    python_executable = (
-        str(executable_path)
-        if executable_path.exists()
-        else getattr(sys, "_base_executable", sys.executable) or sys.executable
+    python_executable, mcp_env = _build_mcp_stdio_test_env(
+        executable=sys.executable,
+        base_executable=getattr(sys, "_base_executable", sys.executable) or sys.executable,
+        sys_path=list(sys.path),
+        environ=dict(os.environ),
     )
-    python_path_entries = [entry for entry in sys.path if entry]
-    mcp_env = dict(os.environ)
-    if python_path_entries:
-        existing_pythonpath = mcp_env.get("PYTHONPATH")
-        combined_pythonpath = os.pathsep.join(
-            (
-                *python_path_entries,
-                *([existing_pythonpath] if existing_pythonpath else []),
-            )
-        )
-        mcp_env["PYTHONPATH"] = combined_pythonpath
 
     agent = Agent(
         FunctionModel(return_instructions),
@@ -462,6 +480,34 @@ def test_mcp_toolset_include_instructions_reaches_model_request(tmp_path: Path) 
         for _, update in client.updates
         if getattr(update, "sessionUpdate", None) == "agent_message_chunk"
     )
+
+
+def test_mcp_stdio_test_helpers_cover_script_and_env_fallbacks(tmp_path: Path) -> None:
+    server_script = tmp_path / "mcp_stdio_server.py"
+    _write_mcp_stdio_server_script(server_script)
+    assert 'instructions="Be a helpful assistant."' in server_script.read_text(encoding="utf-8")
+
+    existing_executable = tmp_path / "python"
+    existing_executable.write_text("", encoding="utf-8")
+    existing_python, existing_env = _build_mcp_stdio_test_env(
+        executable=str(existing_executable),
+        base_executable="/fallback-python",
+        sys_path=["/repo/src", "", "/repo/tests"],
+        environ={"PYTHONPATH": "/already/set"},
+    )
+    assert existing_python == str(existing_executable)
+    assert existing_env["PYTHONPATH"] == os.pathsep.join(
+        ("/repo/src", "/repo/tests", "/already/set")
+    )
+
+    missing_python, missing_env = _build_mcp_stdio_test_env(
+        executable=str(tmp_path / "missing-python"),
+        base_executable="/fallback-python",
+        sys_path=[""],
+        environ={},
+    )
+    assert missing_python == "/fallback-python"
+    assert "PYTHONPATH" not in missing_env
 
 
 def test_capability_bridge_helper_and_metadata_edge_paths(
