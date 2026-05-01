@@ -6,6 +6,7 @@ import pytest
 from acp import PROTOCOL_VERSION
 from pydantic_acp import AdapterConfig, BlackBoxHarness, ClientHostContext, FileSessionStore
 from pydantic_ai import Agent
+from pydantic_ai.exceptions import ApprovalRequired
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import RunContext
 
@@ -106,6 +107,35 @@ def test_black_box_harness_covers_initialize_mode_model_and_default_filters(
     assert harness.updates()
     assert harness.tool_updates() == []
     assert harness.agent_messages() == ["provider:model-b"]
+
+
+def test_black_box_harness_exposes_available_commands_and_permission_requests(
+    tmp_path: Path,
+) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]))
+
+    @agent.tool
+    def dangerous(ctx: RunContext[None], path: str) -> str:
+        if not ctx.tool_call_approved:
+            raise ApprovalRequired()
+        return f"approved:{path}"  # pragma: no cover
+
+    harness = BlackBoxHarness.create(
+        agent=agent,
+        config=AdapterConfig(session_store=FileSessionStore(tmp_path / "sessions")),
+    )
+    session = asyncio.run(harness.new_session(cwd=str(tmp_path)))
+    harness.queue_permission_cancelled()
+
+    response = asyncio.run(harness.prompt_text("Use the dangerous tool."))
+
+    assert response.stop_reason == "cancelled"
+    assert "tools" in harness.available_command_names(session_id=session.session_id)
+    harness.clear_updates()
+    assert harness.available_command_names(session_id=session.session_id) == []
+    assert harness.permission_requests()
+    assert harness.permission_requests(session_id=session.session_id)
+    assert harness.last_permission_request(session_id=session.session_id) is not None
 
 
 def test_black_box_harness_load_session_returns_none_for_missing_state(

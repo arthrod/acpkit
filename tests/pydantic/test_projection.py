@@ -2,11 +2,13 @@ from __future__ import annotations as _annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
-from acp.schema import ToolCallLocation
+from acp.schema import ToolCallLocation, ToolKind
 from pydantic_acp.projection import (
     BuiltinToolProjectionMap,
+    CompositeProjectionMap,
     DefaultToolClassifier,
     ToolProjection,
     WebToolProjectionMap,
@@ -27,8 +29,10 @@ from pydantic_acp.projection import (
     _format_web_search_start,
     _is_binary_like_content,
     _json_preview,
+    _looks_like_status_or_error_output,
     _preserve_file_diff_content,
     _read_existing_text,
+    _render_path_tree,
     _web_fetch_url,
     _web_search_query,
     build_compaction_updates,
@@ -54,6 +58,7 @@ from .support import (
     FileSystemProjectionMap,
     MemorySessionStore,
     Path,
+    ProjectionAwareToolClassifier,
     RecordingClient,
     TerminalToolCallContent,
     TestModel,
@@ -1077,3 +1082,209 @@ def test_build_tool_updates_skips_final_result_and_projects_retry_prompts() -> N
     assert retry_update.kind == "search"
     assert isinstance(retry_update.raw_output, str)
     assert "retry search" in retry_update.raw_output
+
+
+def test_filesystem_search_projection_renders_tree_output() -> None:
+    projection = FileSystemProjectionMap(
+        default_search_tool="list_files",
+        search_path_arg="root",
+        search_pattern_arg="pattern",
+        render_search_results_as_tree=True,
+    )
+
+    start = projection.project_start(
+        "list_files",
+        raw_input={"root": ".", "pattern": "*.py"},
+    )
+    progress = projection.project_progress(
+        "list_files",
+        raw_input={"root": ".", "pattern": "*.py"},
+        raw_output="src/app.py\nsrc/utils.py\nREADME.md\n.git/config\n.env\n...",
+        serialized_output="unused",
+        status="completed",
+    )
+
+    assert start is not None
+    assert start.title == "Search . for *.py"
+    assert start.locations is not None
+    assert start.locations[0].path == "."
+    assert progress is not None
+    assert progress.content is not None
+    text = progress.content[0].content.text
+    assert "Tree: ." in text
+    assert "src/" in text
+    assert "app.py" in text
+    assert ".env" in text
+    assert ".git" not in text
+    assert text.endswith("...")
+
+
+def test_filesystem_search_projection_keeps_plain_output_for_errors_and_disabled_tree() -> None:
+    projection = FileSystemProjectionMap(default_search_tool="search_files")
+
+    progress = projection.project_progress(
+        "search_files",
+        raw_input={"path": "."},
+        raw_output="src/app.py",
+        serialized_output="src/app.py",
+        status="completed",
+    )
+    failed = projection.project_progress(
+        "search_files",
+        raw_input={"path": "."},
+        raw_output="error: denied",
+        serialized_output="error: denied",
+        status="failed",
+    )
+
+    assert progress is not None
+    assert progress.content is not None
+    assert progress.content[0].content.text == "src/app.py"
+    assert failed is not None
+    assert failed.content is not None
+    assert failed.content[0].content.text == "error: denied"
+
+
+def test_filesystem_search_projection_covers_edge_paths() -> None:
+    projection = FileSystemProjectionMap(
+        default_search_tool="search_files",
+        search_path_arg="root",
+        search_pattern_arg="query",
+        render_search_results_as_tree=True,
+        hide_dot_directories_in_tree=False,
+        tree_root_label="workspace",
+    )
+
+    assert projection.project_start("search_files", raw_input="invalid") is None
+    assert (
+        projection.project_progress(
+            "search_files",
+            raw_input="invalid",
+            raw_output="src/app.py",
+            serialized_output="src/app.py",
+            status="completed",
+        )
+        is None
+    )
+
+    pattern_only = projection.project_start("search_files", raw_input={"query": "*.py"})
+    path_only = projection.project_start("search_files", raw_input={"root": "src"})
+    default_title = projection.project_start("search_files", raw_input={})
+    custom_tree = projection.project_progress(
+        "search_files",
+        raw_input={"root": "src", "query": "*.py"},
+        raw_output=".git/config\nsrc/\n./README.md",
+        serialized_output="ignored",
+        status="completed",
+    )
+
+    assert pattern_only is not None
+    assert pattern_only.title == "Search for *.py"
+    assert path_only is not None
+    assert path_only.title == "List src"
+    assert default_title is not None
+    assert default_title.title == "Search files"
+    assert custom_tree is not None
+    assert custom_tree.content is not None
+    custom_tree_text = custom_tree.content[0].content.text
+    assert "Tree: workspace" in custom_tree_text
+    assert ".git/" in custom_tree_text
+    assert "src/" in custom_tree_text
+
+
+def test_path_tree_helpers_cover_empty_hidden_and_root_paths() -> None:
+    assert _looks_like_status_or_error_output("")
+    assert _render_path_tree("\n./\n", root_label=".", hide_dot_directories=True).strip() == "./"
+    assert (
+        _render_path_tree(
+            ".git/config",
+            root_label=".",
+            hide_dot_directories=True,
+        )
+        == ".git/config"
+    )
+
+    visible_hidden_dir = _render_path_tree(
+        ".git/config",
+        root_label=".",
+        hide_dot_directories=False,
+    )
+    assert ".git/" in visible_hidden_dir
+    assert "config" in visible_hidden_dir
+
+    directory_leaf = _render_path_tree(
+        "src/",
+        root_label=".",
+        hide_dot_directories=True,
+    )
+    assert "src/" in directory_leaf
+    assert _render_path_tree("/", root_label=".", hide_dot_directories=True).startswith("Tree: .")
+
+
+def test_projection_aware_tool_classifier_uses_filesystem_projection_names() -> None:
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=DefaultToolClassifier(),
+        projection_maps=[
+            FileSystemProjectionMap(
+                default_read_tool="load_document",
+                default_write_tool="save_document",
+                default_bash_tool="run_command",
+                default_search_tool="list_files",
+            )
+        ],
+    )
+
+    assert classifier.classify("load_document") == "read"
+    assert classifier.classify("save_document") == "edit"
+    assert classifier.classify("run_command") == "execute"
+    assert classifier.classify("list_files") == "search"
+    assert classifier.classify("custom_unknown") == "execute"
+    assert classifier.approval_policy_key("list_files") == "list_files"
+
+
+def test_projection_aware_tool_classifier_preserves_raw_input_for_fallback() -> None:
+    class ArgSensitiveClassifier:
+        def classify(self, tool_name: str, raw_input: Any = None) -> ToolKind:
+            del tool_name
+            if isinstance(raw_input, dict) and raw_input.get("read_only") is True:
+                return "read"
+            return "execute"
+
+        def approval_policy_key(self, tool_name: str, raw_input: Any = None) -> str:
+            del raw_input
+            return tool_name
+
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=ArgSensitiveClassifier(),
+        projection_maps=[FileSystemProjectionMap(default_read_tool="known_read")],
+    )
+
+    assert classifier.classify("unknown_tool", {"read_only": True}) == "read"
+    assert classifier.classify("unknown_tool", {"read_only": False}) == "execute"
+    assert classifier.approval_policy_key("unknown_tool", {"read_only": True}) == "unknown_tool"
+
+
+def test_projection_aware_tool_classifier_recurses_into_composite_maps() -> None:
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=DefaultToolClassifier(),
+        projection_maps=[
+            CompositeProjectionMap(
+                maps=(
+                    FileSystemProjectionMap(default_search_tool="nested_search"),
+                    CompositeProjectionMap(
+                        maps=(
+                            FileSystemProjectionMap(default_read_tool="nested_read"),
+                            FileSystemProjectionMap(default_write_tool="nested_write"),
+                            FileSystemProjectionMap(default_bash_tool="nested_command"),
+                        )
+                    ),
+                )
+            )
+        ],
+    )
+
+    assert classifier.classify("nested_search") == "search"
+    assert classifier.classify("nested_read") == "read"
+    assert classifier.classify("nested_write") == "edit"
+    assert classifier.classify("nested_command") == "execute"
+    assert classifier.classify("nested_unknown") == "execute"

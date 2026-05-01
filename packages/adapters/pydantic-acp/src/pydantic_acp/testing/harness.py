@@ -6,7 +6,15 @@ from typing import TYPE_CHECKING, TypeVar
 from acp import PROTOCOL_VERSION
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
-from acp.schema import HttpMcpServer, McpServerStdio, SseMcpServer, ToolCallProgress, ToolCallStart
+from acp.schema import (
+    AvailableCommandsUpdate,
+    HttpMcpServer,
+    McpServerStdio,
+    SseMcpServer,
+    ToolCallProgress,
+    ToolCallStart,
+    ToolCallUpdate,
+)
 from pydantic_ai import Agent as PydanticAgent
 
 from ..agent_source import AgentFactory, AgentSource
@@ -149,6 +157,23 @@ class BlackBoxHarness:
             return agent_message_texts(self.client)
         scoped_client = RecordingACPClient(updates=self.updates(session_id=session_id))
         return agent_message_texts(scoped_client)
+
+    def available_command_names(self, *, session_id: str | None = None) -> list[str]:
+        command_updates = self.updates_of_type(AvailableCommandsUpdate, session_id=session_id)
+        if not command_updates:
+            return []
+        return [command.name for command in command_updates[-1].available_commands]
+
+    def permission_requests(self, *, session_id: str | None = None) -> list[ToolCallUpdate]:
+        if session_id is None:
+            return [request[2] for request in self.client.permission_option_ids]
+        return [
+            request[2] for request in self.client.permission_option_ids if request[0] == session_id
+        ]
+
+    def last_permission_request(self, *, session_id: str | None = None) -> ToolCallUpdate | None:
+        requests = self.permission_requests(session_id=session_id)
+        return requests[-1] if requests else None
 
     def tool_updates(
         self,

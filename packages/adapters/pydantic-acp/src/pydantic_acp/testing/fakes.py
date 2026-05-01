@@ -56,6 +56,9 @@ class UpdateRecord:
 class RecordingACPClient:
     updates: list[UpdateRecord] = field(default_factory=list)
     permission_option_ids: list[tuple[str, list[str], ToolCallUpdate]] = field(default_factory=list)
+    permission_option_names: list[tuple[str, list[str], ToolCallUpdate]] = field(
+        default_factory=list
+    )
     permission_responses: list[RequestPermissionResponse] = field(default_factory=list)
     read_calls: list[tuple[str, str, int | None, int | None]] = field(default_factory=list)
     write_calls: list[tuple[str, str, str]] = field(default_factory=list)
@@ -107,6 +110,9 @@ class RecordingACPClient:
         del kwargs
         self.permission_option_ids.append(
             (session_id, [option.option_id for option in options], tool_call)
+        )
+        self.permission_option_names.append(
+            (session_id, [option.name for option in options], tool_call)
         )
         if not self.permission_responses:
             raise AssertionError("unexpected permission request")

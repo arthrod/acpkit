@@ -134,7 +134,9 @@ By default, the adapter can own:
 - native ACP plan state
 - thinking effort config
 - approval flow through an approval bridge
+- projection-aware permission prompt rendering and remembered approval policies
 - generic or rich projected tool rendering
+- host-defined slash commands and prompt capability advertisement
 
 The built-in ownership path is usually enough for:
 

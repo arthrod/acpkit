@@ -465,6 +465,25 @@ def describe_project() -> str:
 
 Nothing here is ACP-specific yet.
 
+If the agent should reuse an existing local Codex login, build the model through
+`codex-auth-helper` and set instructions explicitly at the factory layer:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="Answer directly and keep responses short.",
+)
+
+agent = Agent(model, name="codex-agent")
+```
+
+On the Pydantic path, `Agent(instructions=...)` is also valid when you want
+agent-specific instructions in addition to the factory default. Do not rely on
+an implicit Codex instruction value.
+
 ## 2. Expose It Through ACP
 
 Wrap the agent with `run_acp(...)`:
@@ -1110,6 +1129,25 @@ run_acp(agent=agent)
 
 This is the fastest path from a normal `pydantic_ai.Agent` to a working ACP server.
 
+If the agent should reuse an existing local Codex login, build the model through
+`codex-auth-helper` and pass explicit instructions at factory construction time:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
+)
+
+agent = Agent(model, name="codex-agent")
+```
+
+On the Pydantic path, `Agent(instructions=...)` can still be layered on top for
+agent-owned instructions, but the Codex factory should always receive explicit
+`instructions=...`.
+
 ### `create_acp_agent(...)`
 
 Use `create_acp_agent(...)` when another runtime should own transport lifecycle but you still want the adapter assembly:
@@ -1188,7 +1226,9 @@ By default, the adapter can own:
 - native ACP plan state
 - thinking effort config
 - approval flow through an approval bridge
+- projection-aware permission prompt rendering and remembered approval policies
 - generic or rich projected tool rendering
+- host-defined slash commands and prompt capability advertisement
 
 The built-in ownership path is usually enough for:
 
@@ -1742,6 +1782,8 @@ Use it to decide:
 | `approval_bridge` | `ApprovalBridge \| None` | Live ACP approval workflow |
 | `approval_state_provider` | `ApprovalStateProvider \| None` | Extra approval metadata exposed into session metadata |
 | `capability_bridges` | `Sequence[CapabilityBridge]` | ACP-visible runtime extensions |
+| `prompt_capabilities` | `AdapterPromptCapabilities` | ACP prompt capability advertisement for audio, image, and embedded context input |
+| `slash_command_provider` | `SlashCommandProvider \| None` | Extra host-defined slash commands exposed and handled by the adapter |
 | `session_store` | `SessionStore` | Backing store for ACP sessions |
 | `host_access_policy` | `HostAccessPolicy \| None` | Shared host file and terminal access policy for integrations that want one typed guardrail surface |
 | `projection_maps` | `Sequence[ProjectionMap]` | Richer tool rendering |
@@ -1751,6 +1793,30 @@ Use it to decide:
 | `enable_generic_tool_projection` | `bool` | Enables fallback tool projection |
 | `enable_model_config_option` | `bool` | Controls whether the model picker is mirrored as an ACP config option |
 | `replay_history_on_load` | `bool` | Replays transcript/message history when a session is loaded |
+
+## Prompt Capability Advertisement
+
+Use `AdapterPromptCapabilities` when the ACP client should see a narrower prompt input surface than the adapter can parse by default:
+
+```python
+from pydantic_acp import AdapterConfig, AdapterPromptCapabilities
+
+config = AdapterConfig(
+    prompt_capabilities=AdapterPromptCapabilities(
+        audio=False,
+        image=False,
+        embedded_context=False,
+    ),
+)
+```
+
+This changes ACP initialization metadata only. It does not rewrite prompt parsing rules.
+
+## Custom Slash Commands
+
+Use `slash_command_provider` when the host wants to advertise and handle application-specific slash commands without replacing the built-in `/model`, `/tools`, `/hooks`, `/mcp-servers`, or mode command behavior.
+
+Command names must be lowercase slash-compatible ids such as `diagnose` or `refresh-index`; they cannot collide with built-ins or active mode ids.
 
 ## A Practical Configuration
 
@@ -2109,7 +2175,7 @@ These controls exist to keep session state explicit and inspectable from the cli
 
 ## Slash Commands
 
-The adapter exposes a small fixed command set plus dynamic mode commands.
+The adapter exposes a small fixed command set, dynamic mode commands, and optional host-defined commands.
 
 ### Fixed commands
 
@@ -2143,6 +2209,28 @@ Mode ids must remain compatible with slash-command addressing:
 - they cannot contain whitespace
 - they cannot collide with reserved commands such as `model`, `thinking`, `tools`, `hooks`, or `mcp-servers`
 - they should stay specific enough that the command still reads clearly in the UI
+
+### Custom Commands
+
+Configure `AdapterConfig(slash_command_provider=...)` to add host-owned commands:
+
+```python
+from acp.schema import AvailableCommand
+from pydantic_acp import SlashCommandResult, StaticSlashCommand, StaticSlashCommandProvider
+
+provider = StaticSlashCommandProvider(
+    commands=[
+        StaticSlashCommand(
+            command=AvailableCommand(name="diagnose", description="Run host diagnostics."),
+            handler=lambda request: SlashCommandResult(text="Diagnostics queued."),
+        )
+    ]
+)
+```
+
+Custom handlers receive `SlashCommandRequest` with the parsed command name, optional raw argument string, session, and active agent. Returning `None` or `SlashCommandResult(handled=False)` falls through to normal model execution.
+
+`SlashCommandResult.refresh_session_surface` defaults to `True` so commands that mutate visible state refresh commands, config, mode, plan, and session metadata after they run.
 
 ## Mode Changes Update ACP State
 
@@ -2326,6 +2414,39 @@ These are available when the current mode also supports plan progress:
 - `acp_mark_plan_done`
 
 `acp_get_plan` returns numbered entries, and those numbers are intentionally **1-based**.
+
+## Projection-aware Approval Prompts
+
+`NativeApprovalBridge` can render permission requests through a `PermissionToolCallBuilder`.
+
+The default builder uses configured projection maps for permission cards, so a projected file-write tool can show the same structured diff before approval that the transcript later shows after execution.
+
+Customize permission rendering by passing a builder directly to `NativeApprovalBridge`:
+
+```python
+from pydantic_acp import NativeApprovalBridge
+
+approval_bridge = NativeApprovalBridge(tool_call_builder=my_builder)
+```
+
+The builder is intentionally owned by `NativeApprovalBridge`; it is not an `AdapterConfig` field. Custom approval bridges can keep their own permission presentation strategy.
+
+## Persistent Approval Policies
+
+`NativeApprovalBridge(enable_persistent_choices=True)` adds always-allow and always-deny options. By default, remembered policies are stored in session metadata under `approval_policies`.
+
+Use `ApprovalPolicyStore` to keep remembered approval policy in host storage instead:
+
+```python
+from pydantic_acp import NativeApprovalBridge
+
+approval_bridge = NativeApprovalBridge(
+    enable_persistent_choices=True,
+    policy_store=my_policy_store,
+)
+```
+
+Use `PermissionOptionSet` to change display names without changing option ids or ACP permission kinds.
 
 ## How Native Plan State Is Enabled
 
@@ -2787,6 +2908,8 @@ This is the right tool when state already belongs to the application or product 
 | `NativePlanPersistenceProvider` | persistence callback for adapter-owned native plan state |
 | `ApprovalStateProvider` | extra approval metadata surfaced in session metadata |
 
+`ApprovalStateProvider` is metadata-only. Live remembered approval decisions are owned by `ApprovalPolicyStore` on `NativeApprovalBridge`.
+
 ## When Providers Are The Right Choice
 
 Use a provider when:
@@ -2797,6 +2920,21 @@ Use a provider when:
 - you want the adapter to remain a thin translation layer
 
 Do **not** reach for providers by default. If the adapter can own the state cleanly, built-in `AdapterConfig` fields are usually simpler.
+
+## Approval Policy Storage
+
+Use `ApprovalPolicyStore` when persistent allow/reject decisions must live in host storage:
+
+```python
+from pydantic_acp import NativeApprovalBridge
+
+approval_bridge = NativeApprovalBridge(
+    enable_persistent_choices=True,
+    policy_store=my_policy_store,
+)
+```
+
+This is separate from `ApprovalStateProvider`, which only contributes session metadata for display or diagnostics.
 
 ## Example: Host-owned Models, Modes, Config, Plan, And Approval Metadata
 
@@ -3072,6 +3210,29 @@ Use plain `CapabilityBridge` when you only need to:
 - derive model settings from session state
 
 Use `BufferedCapabilityBridge` when the bridge also needs to emit ACP transcript updates over time.
+
+## External Hook Events
+
+Use `ExternalHookEventBridge` when an integration already knows about lifecycle events and wants to project them into ACP without installing Pydantic AI hooks or writing directly to the ACP client.
+
+```python
+from pydantic_acp import ExternalHookEventBridge, HookEvent
+
+bridge = ExternalHookEventBridge()
+bridge.record_event(
+    session,
+    HookEvent(
+        event_id="before_run",
+        hook_name="before_run",
+        tool_name=None,
+        tool_filters=(),
+        raw_output="completed",
+        status="completed",
+    ),
+)
+```
+
+The bridge buffers updates and the adapter drains them through the normal bridge manager. Its session metadata appears under `external_hooks` by default and includes emission mode, pending event count, hidden event ids, and projection title prefix.
 
 ### Override Matrix
 
@@ -5461,6 +5622,7 @@ This example is the maintained plain-LangChain showcase.
 
 It demonstrates:
 
+- a Codex-backed `ChatOpenAI` model created through `codex-auth-helper`
 - a module-level `graph`, `config`, and `main()`
 - a session-aware `graph_from_session(...)` factory
 - `acpkit run examples.langchain.workspace_graph:graph`
@@ -5472,6 +5634,18 @@ Run it:
 
 ```bash
 uv run python -m examples.langchain.workspace_graph
+```
+
+Required local state:
+
+```text
+~/.codex/auth.json
+```
+
+Override the default model when needed:
+
+```bash
+CODEX_MODEL=gpt-5.4-mini uv run python -m examples.langchain.workspace_graph
 ```
 
 Or expose the graph directly through the root CLI:
@@ -5501,6 +5675,7 @@ This example is the maintained DeepAgents-facing showcase for `langchain-acp`.
 
 It demonstrates:
 
+- a Codex-backed `ChatOpenAI` model created through `codex-auth-helper`
 - wiring a DeepAgents graph through `langchain-acp`
 - `DeepAgentsCompatibilityBridge`
 - `DeepAgentsProjectionMap`
@@ -5521,6 +5696,12 @@ Run it:
 
 ```bash
 uv run python -m examples.langchain.deepagents_graph
+```
+
+Required local state:
+
+```text
+~/.codex/auth.json
 ```
 
 If you want the module-level compiled graph directly, the example exports `graph` when `deepagents` is installed:
@@ -5926,6 +6107,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.AdapterModel
 
+::: pydantic_acp.AdapterPromptCapabilities
+
 ::: pydantic_acp.AcpSessionContext
 
 ::: pydantic_acp.JsonValue
@@ -5968,6 +6151,14 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.ApprovalStateProvider
 
+::: pydantic_acp.ApprovalPolicy
+
+::: pydantic_acp.ApprovalPolicyStore
+
+::: pydantic_acp.SessionMetadataApprovalPolicyStore
+
+::: pydantic_acp.PermissionOptionSet
+
 ## Bridge Classes
 
 ::: pydantic_acp.CapabilityBridge
@@ -5981,6 +6172,10 @@ This page documents the public surface re-exported by `pydantic_acp`.
 ::: pydantic_acp.ThinkingBridge
 
 ::: pydantic_acp.HookBridge
+
+::: pydantic_acp.ExternalHookEventBridge
+
+::: pydantic_acp.EventEmissionMode
 
 ::: pydantic_acp.HistoryProcessorBridge
 
@@ -6027,6 +6222,36 @@ This page documents the public surface re-exported by `pydantic_acp`.
 ::: pydantic_acp.BuiltinToolProjectionMap
 
 ::: pydantic_acp.CompositeProjectionMap
+
+::: pydantic_acp.ProjectionAwareToolClassifier
+
+## Approval Presentation
+
+::: pydantic_acp.PermissionRequestContext
+
+::: pydantic_acp.PermissionToolCallBuilder
+
+::: pydantic_acp.DefaultPermissionToolCallBuilder
+
+::: pydantic_acp.NativeApprovalBridge
+
+::: pydantic_acp.ProjectionAwareApprovalBridge
+
+::: pydantic_acp.supports_projection_aware_approval_bridge
+
+## Slash Commands
+
+::: pydantic_acp.SlashCommandRequest
+
+::: pydantic_acp.SlashCommandResult
+
+::: pydantic_acp.SlashCommandProvider
+
+::: pydantic_acp.StaticSlashCommand
+
+::: pydantic_acp.StaticSlashCommandProvider
+
+::: pydantic_acp.SlashCommandHandler
 
 ## Projection Helpers
 

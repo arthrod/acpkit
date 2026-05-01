@@ -31,6 +31,39 @@ These are available when the current mode also supports plan progress:
 
 `acp_get_plan` returns numbered entries, and those numbers are intentionally **1-based**.
 
+## Projection-aware Approval Prompts
+
+`NativeApprovalBridge` can render permission requests through a `PermissionToolCallBuilder`.
+
+The default builder uses configured projection maps for permission cards, so a projected file-write tool can show the same structured diff before approval that the transcript later shows after execution.
+
+Customize permission rendering by passing a builder directly to `NativeApprovalBridge`:
+
+```python
+from pydantic_acp import NativeApprovalBridge
+
+approval_bridge = NativeApprovalBridge(tool_call_builder=my_builder)
+```
+
+The builder is intentionally owned by `NativeApprovalBridge`; it is not an `AdapterConfig` field. Custom approval bridges can keep their own permission presentation strategy.
+
+## Persistent Approval Policies
+
+`NativeApprovalBridge(enable_persistent_choices=True)` adds always-allow and always-deny options. By default, remembered policies are stored in session metadata under `approval_policies`.
+
+Use `ApprovalPolicyStore` to keep remembered approval policy in host storage instead:
+
+```python
+from pydantic_acp import NativeApprovalBridge
+
+approval_bridge = NativeApprovalBridge(
+    enable_persistent_choices=True,
+    policy_store=my_policy_store,
+)
+```
+
+Use `PermissionOptionSet` to change display names without changing option ids or ACP permission kinds.
+
 ## How Native Plan State Is Enabled
 
 Mark one `PrepareToolsMode` as `plan_mode=True`:

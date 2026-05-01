@@ -37,6 +37,29 @@ Use plain `CapabilityBridge` when you only need to:
 
 Use `BufferedCapabilityBridge` when the bridge also needs to emit ACP transcript updates over time.
 
+## External Hook Events
+
+Use `ExternalHookEventBridge` when an integration already knows about lifecycle events and wants to project them into ACP without installing Pydantic AI hooks or writing directly to the ACP client.
+
+```python
+from pydantic_acp import ExternalHookEventBridge, HookEvent
+
+bridge = ExternalHookEventBridge()
+bridge.record_event(
+    session,
+    HookEvent(
+        event_id="before_run",
+        hook_name="before_run",
+        tool_name=None,
+        tool_filters=(),
+        raw_output="completed",
+        status="completed",
+    ),
+)
+```
+
+The bridge buffers updates and the adapter drains them through the normal bridge manager. Its session metadata appears under `external_hooks` by default and includes emission mode, pending event count, hidden event ids, and projection title prefix.
+
 ### Override Matrix
 
 | Method | Override it when | Return value |

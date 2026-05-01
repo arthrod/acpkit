@@ -14,6 +14,7 @@ from .capability_support import (
     WebFetchBridge,
     WebSearchBridge,
 )
+from .external_hooks import EventEmissionMode, ExternalHookEventBridge
 from .history_processor import (
     HistoryProcessorBridge,
     HistoryProcessorCallable,
@@ -31,6 +32,8 @@ __all__ = (
     "BufferedCapabilityBridge",
     "CapabilityBridge",
     "AnthropicCompactionBridge",
+    "EventEmissionMode",
+    "ExternalHookEventBridge",
     "HistoryProcessorCallable",
     "HistoryProcessorBridge",
     "HistoryProcessorContextual",

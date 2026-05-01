@@ -44,22 +44,28 @@ from acp.schema import (
 from pydantic_acp import (
     AcpSessionContext,
     AdapterConfig,
+    AdapterPromptCapabilities,
     AgentBridgeBuilder,
     AgentFactory,
     AgentSource,
     AnthropicCompactionBridge,
+    ApprovalPolicy,
+    ApprovalPolicyStore,
     BuiltinToolProjectionMap,
     ClientFilesystemBackend,
     ClientHostContext,
     ClientTerminalBackend,
     CompositeProjectionMap,
     ConfigOption,
+    DefaultPermissionToolCallBuilder,
+    ExternalHookEventBridge,
     FactoryAgentSource,
     FileSessionStore,
     FilesystemBackend,
     FileSystemProjectionMap,
     HistoryProcessorBridge,
     HookBridge,
+    HookEvent,
     HookProjectionMap,
     ImageGenerationBridge,
     IncludeToolReturnSchemasBridge,
@@ -72,11 +78,21 @@ from pydantic_acp import (
     ModeState,
     NativeApprovalBridge,
     OpenAICompactionBridge,
+    PermissionOptionSet,
+    PermissionRequestContext,
+    PermissionToolCallBuilder,
     PrefixToolsBridge,
     PrepareToolsBridge,
     PrepareToolsMode,
+    ProjectionAwareToolClassifier,
+    SessionMetadataApprovalPolicyStore,
     SetToolMetadataBridge,
+    SlashCommandProvider,
+    SlashCommandRequest,
+    SlashCommandResult,
     StaticAgentSource,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
     TerminalBackend,
     ThinkingBridge,
     ThreadExecutorBridge,
@@ -98,6 +114,7 @@ __all__ = (
     "AcpSessionContext",
     "AdapterConfig",
     "AdapterModel",
+    "AdapterPromptCapabilities",
     "Agent",
     "AgentBridgeBuilder",
     "AgentFactory",
@@ -105,6 +122,8 @@ __all__ = (
     "AgentPlanUpdate",
     "AgentSource",
     "AllowedOutcome",
+    "ApprovalPolicy",
+    "ApprovalPolicyStore",
     "ApprovalRequired",
     "AsyncDemoConfigOptionsProvider",
     "AsyncDemoModesProvider",
@@ -121,6 +140,7 @@ __all__ = (
     "ConfigOptionUpdate",
     "CreateTerminalResponse",
     "CurrentModeUpdate",
+    "DefaultPermissionToolCallBuilder",
     "DemoApprovalStateProvider",
     "DemoConfigOptionsProvider",
     "DemoModelsProvider",
@@ -128,6 +148,7 @@ __all__ = (
     "DemoPlanProvider",
     "DeniedOutcome",
     "EnvVariable",
+    "ExternalHookEventBridge",
     "FactoryAgentSource",
     "FileSessionStore",
     "FileEditToolCallContent",
@@ -137,6 +158,7 @@ __all__ = (
     "FreeformModelsProvider",
     "HistoryProcessorBridge",
     "HookBridge",
+    "HookEvent",
     "HookProjectionMap",
     "ImageGenerationBridge",
     "IncludeToolReturnSchemasBridge",
@@ -154,9 +176,13 @@ __all__ = (
     "NativeApprovalBridge",
     "OpenAICompactionBridge",
     "Path",
+    "PermissionOptionSet",
     "PermissionOption",
+    "PermissionRequestContext",
+    "PermissionToolCallBuilder",
     "PlanEntry",
     "PrefixToolsBridge",
+    "ProjectionAwareToolClassifier",
     "PrepareToolsBridge",
     "PrepareToolsMode",
     "ReadTextFileResponse",
@@ -170,9 +196,15 @@ __all__ = (
     "SessionConfigSelectGroup",
     "SessionConfigSelectOption",
     "SessionInfoUpdate",
+    "SessionMetadataApprovalPolicyStore",
     "SessionMode",
     "SetToolMetadataBridge",
+    "SlashCommandProvider",
+    "SlashCommandRequest",
+    "SlashCommandResult",
     "StaticAgentSource",
+    "StaticSlashCommand",
+    "StaticSlashCommandProvider",
     "TerminalToolCallContent",
     "TerminalBackend",
     "TerminalOutputResponse",
@@ -204,6 +236,7 @@ class RecordingClient:
     def __init__(self) -> None:
         self.updates: list[tuple[str, Any]] = []
         self.permission_option_ids: list[tuple[str, list[str], ToolCallUpdate]] = []
+        self.permission_option_names: list[tuple[str, list[str], ToolCallUpdate]] = []
         self.permission_responses: list[RequestPermissionResponse] = []
 
     def queue_permission_selected(self, option_id: str) -> None:
@@ -228,6 +261,9 @@ class RecordingClient:
         del kwargs
         self.permission_option_ids.append(
             (session_id, [option.option_id for option in options], tool_call)
+        )
+        self.permission_option_names.append(
+            (session_id, [option.name for option in options], tool_call)
         )
         if not self.permission_responses:
             raise AssertionError("unexpected permission request")

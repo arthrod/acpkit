@@ -12,10 +12,14 @@ from .support import (
     UTC,
     AcpSessionContext,
     Agent,
+    ExternalHookEventBridge,
     HookBridge,
+    HookEvent,
+    HookProjectionMap,
     Path,
     TestModel,
     ToolCallProgress,
+    ToolCallStart,
     ToolDefinition,
     datetime,
 )
@@ -587,3 +591,133 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
         )
 
     assert bridge.drain_updates(session, Agent(TestModel(custom_output_text="unused"))) is None
+
+
+def test_external_hook_event_bridge_records_modes_and_metadata() -> None:
+    session = AcpSessionContext(
+        session_id="external-hooks",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    bridge = ExternalHookEventBridge()
+    event = HookEvent(
+        event_id="before_run",
+        hook_name="before_run",
+        tool_name=None,
+        tool_filters=(),
+        raw_output="done",
+        status="completed",
+    )
+
+    bridge.record_event(session, event)
+    metadata = bridge.get_session_metadata(session, Agent(TestModel()))
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+
+    assert metadata["pending_event_count"] == 2
+    assert updates is not None
+    assert [update.tool_call_id for update in updates] == [
+        "external-hooks:external-hook:1",
+        "external-hooks:external-hook:1",
+    ]
+    assert isinstance(updates[0], ToolCallStart)
+    assert isinstance(updates[1], ToolCallProgress)
+    assert updates[1].status == "completed"
+    assert bridge.drain_updates(session, Agent(TestModel())) is None
+
+
+def test_external_hook_event_bridge_start_only_and_hidden_events() -> None:
+    session = AcpSessionContext(
+        session_id="external-hooks-hidden",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    bridge = ExternalHookEventBridge(
+        projection_map=HookProjectionMap(hidden_event_ids=frozenset({"secret"})),
+        emission_mode="start_only",
+    )
+
+    bridge.record_event(
+        session,
+        HookEvent(
+            event_id="secret",
+            hook_name="secret",
+            tool_name=None,
+            tool_filters=(),
+            status="completed",
+        ),
+    )
+    bridge.record_event(
+        session,
+        HookEvent(
+            event_id="before_run",
+            hook_name="before_run",
+            tool_name=None,
+            tool_filters=(),
+            status="failed",
+        ),
+    )
+
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+
+    assert updates is not None
+    assert len(updates) == 1
+    assert isinstance(updates[0], ToolCallStart)
+    assert updates[0].status == "failed"
+
+
+def test_external_hook_event_bridge_start_only_preserves_in_progress_without_status() -> None:
+    session = AcpSessionContext(
+        session_id="external-hooks-start-only-default-status",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    bridge = ExternalHookEventBridge(emission_mode="start_only")
+
+    bridge.record_event(
+        session,
+        HookEvent(
+            event_id="before_run",
+            hook_name="before_run",
+            tool_name=None,
+            tool_filters=(),
+            status=None,
+        ),
+    )
+
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+
+    assert updates is not None
+    assert len(updates) == 1
+    assert isinstance(updates[0], ToolCallStart)
+    assert updates[0].status == "in_progress"
+
+
+def test_external_hook_event_bridge_keeps_start_when_progress_is_hidden() -> None:
+    session = AcpSessionContext(
+        session_id="external-hooks-start-only-progress-hidden",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    bridge = ExternalHookEventBridge()
+
+    bridge.record_event(
+        session,
+        HookEvent(
+            event_id="before_run",
+            hook_name="before_run",
+            tool_name=None,
+            tool_filters=(),
+            status=None,
+        ),
+    )
+
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+
+    assert updates is not None
+    assert len(updates) == 1
+    assert isinstance(updates[0], ToolCallStart)
+    assert updates[0].status == "in_progress"

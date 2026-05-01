@@ -19,6 +19,8 @@ This is the right tool when state already belongs to the application or product 
 | `NativePlanPersistenceProvider` | persistence callback for adapter-owned native plan state |
 | `ApprovalStateProvider` | extra approval metadata surfaced in session metadata |
 
+`ApprovalStateProvider` is metadata-only. Live remembered approval decisions are owned by `ApprovalPolicyStore` on `NativeApprovalBridge`.
+
 ## When Providers Are The Right Choice
 
 Use a provider when:
@@ -29,6 +31,21 @@ Use a provider when:
 - you want the adapter to remain a thin translation layer
 
 Do **not** reach for providers by default. If the adapter can own the state cleanly, built-in `AdapterConfig` fields are usually simpler.
+
+## Approval Policy Storage
+
+Use `ApprovalPolicyStore` when persistent allow/reject decisions must live in host storage:
+
+```python
+from pydantic_acp import NativeApprovalBridge
+
+approval_bridge = NativeApprovalBridge(
+    enable_persistent_choices=True,
+    policy_store=my_policy_store,
+)
+```
+
+This is separate from `ApprovalStateProvider`, which only contributes session metadata for display or diagnostics.
 
 ## Example: Host-owned Models, Modes, Config, Plan, And Approval Metadata
 

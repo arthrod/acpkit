@@ -1,27 +1,41 @@
 from __future__ import annotations as _annotations
 
-from dataclasses import dataclass
-from typing import Final, Literal, Protocol, TypeAlias
+from dataclasses import dataclass, field
+from inspect import Parameter, signature
+from typing import Protocol
 
 from acp.exceptions import RequestError
 from acp.interfaces import Client as AcpClient
-from acp.schema import PermissionOption, ToolCallUpdate
+from acp.schema import PermissionOption
 from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults, ToolApproved, ToolDenied
 from typing_extensions import TypeIs
 
-from .projection import ToolClassifier, extract_tool_call_locations
+from .approval_store import (
+    ApprovalPolicy,
+    ApprovalPolicyStore,
+    PermissionOptionSet,
+    SessionMetadataApprovalPolicyStore,
+)
+from .permission_presentation import (
+    DefaultPermissionToolCallBuilder,
+    PermissionRequestContext,
+    PermissionToolCallBuilder,
+)
+from .projection import ProjectionMap, ToolClassifier
 from .session.state import AcpSessionContext, JsonValue
 
-ApprovalPolicy: TypeAlias = Literal["allow", "reject"]
-
-__all__ = ("ApprovalBridge", "ApprovalResolution", "NativeApprovalBridge")
-
-_APPROVAL_POLICIES_KEY: Final = "approval_policies"
-
-
-def _is_approval_policy(value: JsonValue) -> TypeIs[ApprovalPolicy]:
-    return value in {"allow", "reject"}
+__all__ = (
+    "ApprovalBridge",
+    "ApprovalPolicy",
+    "ApprovalPolicyStore",
+    "ApprovalResolution",
+    "NativeApprovalBridge",
+    "PermissionOptionSet",
+    "ProjectionAwareApprovalBridge",
+    "SessionMetadataApprovalPolicyStore",
+    "supports_projection_aware_approval_bridge",
+)
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -42,9 +56,42 @@ class ApprovalBridge(Protocol):
     ) -> ApprovalResolution: ...
 
 
+class ProjectionAwareApprovalBridge(Protocol):
+    async def resolve_deferred_approvals(
+        self,
+        *,
+        client: AcpClient,
+        session: AcpSessionContext,
+        requests: DeferredToolRequests,
+        classifier: ToolClassifier,
+        projection_map: ProjectionMap | None = None,
+    ) -> ApprovalResolution: ...
+
+
+def supports_projection_aware_approval_bridge(
+    value: object,
+) -> TypeIs[ProjectionAwareApprovalBridge]:
+    resolver = getattr(value, "resolve_deferred_approvals", None)
+    if not callable(resolver):
+        return False
+    try:
+        resolver_signature = signature(resolver)
+    except (TypeError, ValueError):
+        return False
+    parameters = resolver_signature.parameters
+    if "projection_map" in parameters:
+        return True
+    return any(parameter.kind is Parameter.VAR_KEYWORD for parameter in parameters.values())
+
+
 @dataclass(slots=True, kw_only=True)
 class NativeApprovalBridge:
     enable_persistent_choices: bool = False
+    tool_call_builder: PermissionToolCallBuilder = field(
+        default_factory=DefaultPermissionToolCallBuilder
+    )
+    policy_store: ApprovalPolicyStore = field(default_factory=SessionMetadataApprovalPolicyStore)
+    option_set: PermissionOptionSet = field(default_factory=PermissionOptionSet)
 
     async def resolve_deferred_approvals(
         self,
@@ -53,6 +100,7 @@ class NativeApprovalBridge:
         session: AcpSessionContext,
         requests: DeferredToolRequests,
         classifier: ToolClassifier,
+        projection_map: ProjectionMap | None = None,
     ) -> ApprovalResolution:
         deferred_results = DeferredToolResults(metadata=dict(requests.metadata))
         for tool_call in requests.approvals:
@@ -68,7 +116,16 @@ class NativeApprovalBridge:
             permission_response = await client.request_permission(
                 options=self._build_permission_options(),
                 session_id=session.session_id,
-                tool_call=self._build_tool_call_update(tool_call, classifier),
+                tool_call=self.tool_call_builder.build_tool_call_update(
+                    PermissionRequestContext(
+                        session=session,
+                        tool_call=tool_call,
+                        raw_input=dict(raw_input),
+                        cwd=session.cwd,
+                        classifier=classifier,
+                        projection_map=projection_map,
+                    )
+                ),
             )
             outcome = permission_response.outcome
             if outcome.outcome == "cancelled":
@@ -92,30 +149,33 @@ class NativeApprovalBridge:
 
     def _build_permission_options(self) -> list[PermissionOption]:
         options = [
-            PermissionOption(option_id="allow_once", name="Allow", kind="allow_once"),
-            PermissionOption(option_id="reject_once", name="Deny", kind="reject_once"),
+            PermissionOption(
+                option_id="allow_once",
+                name=self.option_set.allow_once_name,
+                kind="allow_once",
+            ),
+            PermissionOption(
+                option_id="reject_once",
+                name=self.option_set.reject_once_name,
+                kind="reject_once",
+            ),
         ]
         if not self.enable_persistent_choices:
             return options
         return [
-            PermissionOption(option_id="allow_once", name="Allow Once", kind="allow_once"),
-            PermissionOption(option_id="allow_always", name="Always Allow", kind="allow_always"),
-            PermissionOption(option_id="reject_once", name="Deny Once", kind="reject_once"),
-            PermissionOption(option_id="reject_always", name="Always Deny", kind="reject_always"),
+            options[0],
+            PermissionOption(
+                option_id="allow_always",
+                name=self.option_set.allow_always_name,
+                kind="allow_always",
+            ),
+            options[1],
+            PermissionOption(
+                option_id="reject_always",
+                name=self.option_set.reject_always_name,
+                kind="reject_always",
+            ),
         ]
-
-    def _build_tool_call_update(
-        self, tool_call: ToolCallPart, classifier: ToolClassifier
-    ) -> ToolCallUpdate:
-        raw_input = tool_call.args_as_dict()
-        return ToolCallUpdate(
-            tool_call_id=tool_call.tool_call_id,
-            title=tool_call.tool_name,
-            kind=classifier.classify(tool_call.tool_name, raw_input),
-            locations=extract_tool_call_locations(raw_input),
-            raw_input=raw_input,
-            status="in_progress",
-        )
 
     def _selected_option_to_result(
         self,
@@ -154,11 +214,9 @@ class NativeApprovalBridge:
         session: AcpSessionContext,
         approval_policy_key: str,
     ) -> ApprovalPolicy | None:
-        policies = self._approval_policies(session)
-        remembered = policies.get(approval_policy_key)
-        if _is_approval_policy(remembered):
-            return remembered
-        return None
+        if not self.enable_persistent_choices:
+            return None
+        return self.policy_store.get_policy(session, approval_policy_key)
 
     def _set_remembered_policy(
         self,
@@ -167,17 +225,11 @@ class NativeApprovalBridge:
         approval_policy_key: str,
         policy: ApprovalPolicy,
     ) -> None:
-        raw_policies = session.metadata.get(_APPROVAL_POLICIES_KEY)
-        if not isinstance(raw_policies, dict):
-            raw_policies = {}
-            session.metadata[_APPROVAL_POLICIES_KEY] = raw_policies
-        raw_policies[approval_policy_key] = policy
+        self.policy_store.set_policy(session, approval_policy_key, policy)
 
     def _approval_policies(self, session: AcpSessionContext) -> dict[str, JsonValue]:
-        raw_policies = session.metadata.get(_APPROVAL_POLICIES_KEY)
-        if isinstance(raw_policies, dict):
-            return raw_policies
-        return {}
+        exported = self.policy_store.export_state(session)
+        return exported if exported is not None else {}
 
     def _policy_to_result(self, policy: ApprovalPolicy) -> ToolApproved | ToolDenied:
         if policy == "allow":

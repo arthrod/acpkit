@@ -18,7 +18,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
 
-from ..approvals import ApprovalResolution
+from ..approvals import ApprovalResolution, supports_projection_aware_approval_bridge
 from ..projection import (
     _is_output_tool,
     build_compaction_updates,
@@ -286,6 +286,15 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         approval_bridge = self._runtime._owner._config.approval_bridge
         if approval_bridge is None or self._runtime._owner._client is None:
             raise RequestError.internal_error({"reason": "deferred_approval_requires_client"})
+        projection_map = compose_projection_maps(self._runtime._owner._config.projection_maps)
+        if supports_projection_aware_approval_bridge(approval_bridge):
+            return await approval_bridge.resolve_deferred_approvals(
+                client=self._runtime._owner._client,
+                session=session,
+                requests=requests,
+                classifier=self._runtime._owner._tool_classifier,
+                projection_map=projection_map,
+            )
         return await approval_bridge.resolve_deferred_approvals(
             client=self._runtime._owner._client,
             session=session,

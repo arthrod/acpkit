@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from acp.schema import SessionConfigOptionBoolean, SessionMode, SessionModeState
+from acp.schema import AvailableCommand, SessionConfigOptionBoolean, SessionMode, SessionModeState
 from pydantic_acp.runtime.slash_commands import (
     _iter_mcp_server_infos,
     _mcp_server_info_from_bridge_metadata,
@@ -26,6 +26,7 @@ from pydantic_acp.runtime.slash_commands import (
     render_model_message,
     render_thinking_message,
     render_tool_listing,
+    validate_custom_commands,
     validate_mode_command_ids,
 )
 from pydantic_ai import ModelRequest, ModelResponse, TextPart
@@ -52,9 +53,14 @@ from .support import (
     PrepareToolsBridge,
     PrepareToolsMode,
     RecordingClient,
+    SlashCommandRequest,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
     TestModel,
     ThinkingBridge,
     ToolCallProgress,
+    ToolCallStart,
     agent_message_texts,
     create_acp_agent,
     datetime,
@@ -876,3 +882,180 @@ def test_invalid_selected_model_does_not_leave_failed_tool_updates(
         if isinstance(update, ToolCallProgress) and update.status == "failed"
     ]
     assert tool_failures == []
+
+
+def test_static_custom_slash_command_is_advertised_and_handled(tmp_path: Path) -> None:
+    provider = StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="hello", description="Say hello."),
+                handler=lambda request: SlashCommandResult(
+                    text=f"hello {request.argument}",
+                    updates=[
+                        ToolCallStart(
+                            session_update="tool_call",
+                            tool_call_id="custom-command",
+                            title="Custom command",
+                            kind="execute",
+                            status="completed",
+                        )
+                    ],
+                ),
+            )
+        ]
+    )
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="model-output")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=provider,
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    asyncio.run(adapter.prompt(prompt=[text_block("/hello world")], session_id=session.session_id))
+    asyncio.run(adapter.prompt(prompt=[text_block("/missing")], session_id=session.session_id))
+
+    command_update = next(
+        update for _, update in client.updates if isinstance(update, AvailableCommandsUpdate)
+    )
+    assert "hello" in [command.name for command in command_update.available_commands]
+    assert any(
+        isinstance(update, ToolCallStart) and update.tool_call_id == "custom-command"
+        for _, update in client.updates
+    )
+    assert agent_message_texts(client) == ["hello world", "model-output"]
+
+
+def test_custom_slash_command_can_skip_text_and_surface_refresh(tmp_path: Path) -> None:
+    provider = StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="silent", description="Emit update only."),
+                handler=lambda request: SlashCommandResult(
+                    text=None,
+                    updates=[
+                        ToolCallStart(
+                            session_update="tool_call",
+                            tool_call_id="silent-command",
+                            title="Silent command",
+                            kind="execute",
+                            status="completed",
+                        )
+                    ],
+                    refresh_session_surface=False,
+                ),
+            )
+        ]
+    )
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="model-output")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=provider,
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    client.updates.clear()
+    asyncio.run(adapter.prompt(prompt=[text_block("/silent")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == []
+    assert [
+        update for _, update in client.updates if isinstance(update, AvailableCommandsUpdate)
+    ] == []
+    assert any(
+        isinstance(update, ToolCallStart) and update.tool_call_id == "silent-command"
+        for _, update in client.updates
+    )
+
+
+def test_custom_slash_command_can_decline_and_fall_through(tmp_path: Path) -> None:
+    class Provider:
+        def available_commands(self, session, agent):
+            del session, agent
+            return [AvailableCommand(name="maybe", description="Maybe handle.")]
+
+        def handle_command(self, request: SlashCommandRequest) -> SlashCommandResult | None:
+            del request
+            return SlashCommandResult(handled=False)
+
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="model-output")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=Provider(),
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    asyncio.run(adapter.prompt(prompt=[text_block("/maybe")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == ["model-output"]
+
+
+def test_custom_slash_command_collisions_are_rejected(tmp_path: Path) -> None:
+    provider = StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="tools", description="Collides."),
+                handler=lambda request: SlashCommandResult(text=request.name),
+            )
+        ]
+    )
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="unused")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=provider,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="reserved slash command"):
+        asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+
+
+def test_validate_custom_commands_rejects_invalid_duplicates_and_mode_collisions() -> None:
+    with pytest.raises(ValueError, match="must match"):
+        validate_custom_commands(
+            [AvailableCommand(name="bad name", description="Invalid.")],
+            mode_state=None,
+        )
+
+    with pytest.raises(ValueError, match="normalized"):
+        validate_custom_commands(
+            [AvailableCommand(name=" Demo ", description="Not canonical.")],
+            mode_state=None,
+        )
+
+    with pytest.raises(ValueError, match="unique"):
+        validate_custom_commands(
+            [
+                AvailableCommand(name="demo", description="First."),
+                AvailableCommand(name="demo", description="Second."),
+            ],
+            mode_state=None,
+        )
+
+    with pytest.raises(ValueError, match="active mode ids"):
+        validate_custom_commands(
+            [AvailableCommand(name="plan", description="Collides with mode.")],
+            mode_state=SessionModeState(
+                current_mode_id="plan",
+                available_modes=[SessionMode(id=" plan ", name="Plan")],
+            ),
+        )
+
+    validate_custom_commands(
+        [AvailableCommand(name="review", description="Does not collide.")],
+        mode_state=SessionModeState(
+            current_mode_id="plan",
+            available_modes=[SessionMode(id=" plan ", name="Plan")],
+        ),
+    )

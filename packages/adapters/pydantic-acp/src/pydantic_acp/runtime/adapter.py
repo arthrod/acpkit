@@ -97,9 +97,9 @@ class PydanticAcpAgent(
                 load_session=True,
                 mcp_capabilities=self._bridge_manager.get_mcp_capabilities(),
                 prompt_capabilities=PromptCapabilities(
-                    audio=True,
-                    embedded_context=True,
-                    image=True,
+                    audio=self._config.prompt_capabilities.audio,
+                    embedded_context=self._config.prompt_capabilities.embedded_context,
+                    image=self._config.prompt_capabilities.image,
                 ),
                 session_capabilities=SessionCapabilities(
                     close=SessionCloseCapabilities(),
