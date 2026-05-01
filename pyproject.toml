@@ -16,8 +16,6 @@ classifiers = [
 keywords = ["acp", "agents", "protocol", "pydantic-ai"]
 dependencies = [
     "click>=8.1.8",
-    "fast-agent-mcp>=0.2.25",
-    "mcp>=1.27.0",
     "typing-extensions>=4.12.0",
 ]
 
@@ -55,7 +53,8 @@ docs = [
     "mkdocstrings[python]"
 ]
 
-all = ["acpkit[codex,deepagents,dev,docs,langchain,launch,pydantic,remote]"]
+all = ["acpkit[codex,deepagents,langchain,launch,pydantic,remote]"]
+dev-all = ["acpkit[all,dev,docs]"]
 
 [project.scripts]
 acpkit = "acpkit.__main__:main"
@@ -77,7 +76,6 @@ members = [
     "packages/adapters/*",
     "packages/helpers/*",
     "packages/transports/*",
-    "tmp/acprouter",
 ]
 
 [tool.uv.sources]
@@ -135,6 +133,3 @@ addopts = [
     "--color=yes",
 ]
 markers = []
-
-[tool.coverage.run]
-omit = ["connect_codex.py"]
