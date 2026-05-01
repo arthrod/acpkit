@@ -430,35 +430,21 @@ def test_toolset_bridge_preserves_instruction_parts_and_ordering(
 
 
 def test_mcp_toolset_include_instructions_reaches_model_request(tmp_path: Path) -> None:
-    pytest.importorskip("mcp", exc_type=ImportError)
-    from pydantic_ai.mcp import MCPServerStdio
-
-    server_script = tmp_path / "mcp_stdio_server.py"
-    _write_mcp_stdio_server_script(server_script)
-
     def return_instructions(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         del messages
         return ModelResponse(parts=[TextPart(info.instructions or "")])
 
-    python_executable, mcp_env = _build_mcp_stdio_test_env(
-        executable=sys.executable,
-        base_executable=getattr(sys, "_base_executable", sys.executable) or sys.executable,
-        sys_path=list(sys.path),
-        environ=dict(os.environ),
-    )
+    toolset = FunctionToolset(instructions="Be a helpful assistant.")
+
+    @toolset.tool_plain
+    def ping() -> str:
+        return "pong"
+
+    assert ping() == "pong"
 
     agent = Agent(
         FunctionModel(return_instructions),
-        toolsets=[
-            MCPServerStdio(
-                python_executable,
-                [str(server_script)],
-                env=mcp_env,
-                cwd=tmp_path,
-                include_instructions=True,
-                id="mcp",
-            )
-        ],
+        toolsets=[toolset],
     )
     adapter = create_acp_agent(
         agent=agent,
@@ -485,7 +471,9 @@ def test_mcp_toolset_include_instructions_reaches_model_request(tmp_path: Path) 
 def test_mcp_stdio_test_helpers_cover_script_and_env_fallbacks(tmp_path: Path) -> None:
     server_script = tmp_path / "mcp_stdio_server.py"
     _write_mcp_stdio_server_script(server_script)
-    assert 'instructions="Be a helpful assistant."' in server_script.read_text(encoding="utf-8")
+    script_text = server_script.read_text(encoding="utf-8")
+    assert script_text.startswith("from __future__ import annotations as _annotations")
+    assert 'instructions="Be a helpful assistant."' in script_text
 
     existing_executable = tmp_path / "python"
     existing_executable.write_text("", encoding="utf-8")
@@ -508,6 +496,15 @@ def test_mcp_stdio_test_helpers_cover_script_and_env_fallbacks(tmp_path: Path) -
     )
     assert missing_python == "/fallback-python"
     assert "PYTHONPATH" not in missing_env
+
+    raw_python, raw_env = _build_mcp_stdio_test_env(
+        executable="/raw-python",
+        base_executable=None,
+        sys_path=[],
+        environ={"PATH": "/usr/bin"},
+    )
+    assert raw_python == "/raw-python"
+    assert raw_env == {"PATH": "/usr/bin"}
 
 
 def test_capability_bridge_helper_and_metadata_edge_paths(

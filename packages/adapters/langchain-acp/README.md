@@ -105,10 +105,14 @@ acp_agent = create_acp_agent(graph_factory=graph_from_session)
 
 - session stores and transcript replay
 - model, mode, and config-option providers
+- prompt capability advertisement through `prompt_capabilities`
 - native plan state through `TaskPlan`
 - approval bridging from `HumanInTheLoopMiddleware`
+- remembered approval policies and permission card rendering on `NativeApprovalBridge`
 - capability bridges and graph-build contributions
+- built-in and host-defined slash commands
 - tool projection maps and event projection maps
+- external hook/event projection through `ExternalHookEventBridge`
 - `graph`, `graph_factory`, and `graph_source`
 - DeepAgents compatibility helpers where they add truthful ACP behavior
 
@@ -119,6 +123,64 @@ That means the adapter can expose:
 - DeepAgents graphs
 
 without collapsing everything into a bespoke ACP runtime.
+
+## Runtime Controls
+
+The adapter now owns a small ACP-native slash-command layer instead of leaving that surface entirely to the graph:
+
+- mode commands such as `/ask` or `/review` when the session publishes modes
+- `/model` for ACP-owned model selection
+- `/tools` for the active graph tool node
+- `/mcp-servers` for attached session MCP servers
+- custom host commands through `slash_command_provider`
+
+Example:
+
+```python
+from acp.schema import AvailableCommand
+from langchain_acp import (
+    AdapterConfig,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
+)
+
+config = AdapterConfig(
+    slash_command_provider=StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="ping", description="Return pong."),
+                handler=lambda _request: SlashCommandResult(text="pong"),
+            )
+        ]
+    )
+)
+```
+
+Prompt capability advertisement is also explicit now:
+
+```python
+from langchain_acp import AdapterConfig, AdapterPromptCapabilities
+
+config = AdapterConfig(
+    prompt_capabilities=AdapterPromptCapabilities(
+        audio=False,
+        image=False,
+        embedded_context=True,
+    )
+)
+```
+
+If the graph uses approval middleware, remembered choices and ACP permission presentation stay on
+`NativeApprovalBridge`, not on `AdapterConfig`:
+
+```python
+from langchain_acp import NativeApprovalBridge
+
+config = AdapterConfig(
+    approval_bridge=NativeApprovalBridge(enable_persistent_choices=True),
+)
+```
 
 ## Session-owned Graph Rebuilds
 

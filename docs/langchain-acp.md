@@ -82,10 +82,13 @@ called inside `graph_factory=...`.
 - `AdapterConfig`
 - explicit session stores and transcript replay
 - provider-owned models, modes, and config options
+- prompt capability advertisement
 - native ACP plan state with `TaskPlan`
-- approval bridging
+- approval bridging with projection-aware permission cards
 - capability bridges
+- built-in and host-defined slash commands
 - projection maps and event projection maps
+- external hook event projection
 - ACP-facing type exports in `langchain_acp.types`
 
 The important difference is upstream shape, not ACP Kit architecture. On the LangChain side the adapter deals in graphs and middleware instead of model profiles and tool preparers.
@@ -132,6 +135,51 @@ run_acp(graph_factory=graph_from_session, config=config)
 The point is not to make the adapter magical. The point is to keep the host,
 the graph, and the ACP surface aligned without inventing runtime state the graph
 cannot really honor.
+
+## Prompt Capabilities And Slash Commands
+
+Prompt capability advertisement is configurable instead of hardcoded:
+
+```python
+from langchain_acp import AdapterConfig, AdapterPromptCapabilities
+
+config = AdapterConfig(
+    prompt_capabilities=AdapterPromptCapabilities(
+        audio=False,
+        image=False,
+        embedded_context=True,
+    )
+)
+```
+
+The adapter also owns an ACP-native slash-command layer:
+
+- mode commands such as `/ask`
+- `/model`
+- `/tools`
+- `/mcp-servers`
+- custom host commands through `slash_command_provider`
+
+```python
+from acp.schema import AvailableCommand
+from langchain_acp import (
+    AdapterConfig,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
+)
+
+config = AdapterConfig(
+    slash_command_provider=StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="ping", description="Return pong."),
+                handler=lambda _request: SlashCommandResult(text="pong"),
+            )
+        ]
+    )
+)
+```
 
 ## Session Lifecycle And Replay
 
@@ -209,9 +257,22 @@ The adapter surface is:
 
 - `ApprovalBridge`
 - `NativeApprovalBridge`
+- `ProjectionAwareApprovalBridge`
+- `PermissionToolCallBuilder`
+- `ApprovalPolicyStore`
 - ACP permission requests and resume flow
 
 When the runtime really pauses for approval, the ACP session pauses for approval too.
+
+Remembered approval choices and permission card rendering live on `NativeApprovalBridge`:
+
+```python
+from langchain_acp import NativeApprovalBridge
+
+config = AdapterConfig(
+    approval_bridge=NativeApprovalBridge(enable_persistent_choices=True),
+)
+```
 
 ## Capability Bridges And Graph Build Contributions
 
@@ -224,6 +285,7 @@ Built-in bridges:
 - `ConfigOptionsBridge`
 - `ToolSurfaceBridge`
 - `DeepAgentsCompatibilityBridge`
+- `ExternalHookEventBridge`
 
 Graph-build contributions are aggregated through:
 

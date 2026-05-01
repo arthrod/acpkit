@@ -9,6 +9,7 @@ from typing import Any, cast
 import pytest
 from acp.schema import AvailableCommand, SessionConfigOptionBoolean, SessionMode, SessionModeState
 from pydantic_acp.runtime.slash_commands import (
+    McpServerInfo,
     _iter_mcp_server_infos,
     _mcp_server_info_from_bridge_metadata,
     _mcp_server_info_from_http_toolset,
@@ -142,6 +143,19 @@ def test_slash_command_render_helpers_cover_empty_states() -> None:
         == "No Hooks capability callbacks are currently registered."
     )
     assert render_mcp_server_listing([]) == "No MCP servers are currently attached."
+    assert (
+        render_mcp_server_listing(
+            [
+                McpServerInfo(
+                    name="repo",
+                    transport="http",
+                    source="session",
+                    target="https://repo.example/mcp",
+                )
+            ]
+        )
+        == "MCP servers:\n- repo (http, session): https://repo.example/mcp"
+    )
 
 
 def test_build_available_commands_skips_optional_commands_when_state_is_missing() -> None:
@@ -566,17 +580,29 @@ def test_hooks_slash_command_lists_registered_hooks(tmp_path: Path) -> None:
 def test_mcp_servers_slash_command_extracts_servers_from_agent_toolsets(
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("mcp", exc_type=ImportError)
-    from pydantic_ai.capabilities import MCP
-    from pydantic_ai.mcp import MCPServerSSE, MCPServerStdio
+    expected_agent_infos = [
+        McpServerInfo(
+            name="remote-sse",
+            transport="sse",
+            target="https://example.com/sse | prefix=docs",
+            source="agent",
+        ),
+        McpServerInfo(
+            name="local-stdio",
+            transport="stdio",
+            target="python server.py | prefix=fs",
+            source="agent",
+        ),
+        McpServerInfo(
+            name="https://example.com/mcp",
+            transport="http",
+            target="https://example.com/mcp",
+            source="agent",
+        ),
+    ]
 
     agent = Agent(
         TestModel(custom_output_text="unused"),
-        capabilities=[MCP("https://example.com/mcp", id="cap-http")],
-        toolsets=[
-            MCPServerSSE("https://example.com/sse", id="remote-sse", tool_prefix="docs"),
-            MCPServerStdio("python", args=["server.py"], id="local-stdio", tool_prefix="fs"),
-        ],
     )
     adapter = create_acp_agent(
         agent=agent,
@@ -584,14 +610,22 @@ def test_mcp_servers_slash_command_extracts_servers_from_agent_toolsets(
     )
     client = RecordingClient()
     adapter.on_connect(client)
-
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("/mcp-servers")],
-            session_id=session.session_id,
-        )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "pydantic_acp.runtime.slash_commands.list_agent_mcp_servers",
+        lambda candidate_agent: expected_agent_infos if candidate_agent is agent else [],
     )
+
+    try:
+        session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+        asyncio.run(
+            adapter.prompt(
+                prompt=[text_block("/mcp-servers")],
+                session_id=session.session_id,
+            )
+        )
+    finally:
+        monkeypatch.undo()
 
     assert agent_message_texts(client) == [
         "MCP servers:\n"
@@ -804,10 +838,49 @@ def test_list_agent_mcp_servers_handles_fake_toolsets_and_nested_wrappers() -> N
     assert _iter_mcp_server_infos(CombinedToolset([])) == []
     assert _iter_mcp_server_infos(WrapperToolset(CombinedToolset([]))) == []
     assert _iter_mcp_server_infos(DynamicToolset(lambda _ctx: None)) == []
+    combined_infos = _iter_mcp_server_infos(
+        CombinedToolset(cast(Any, [http_toolset, stdio_toolset]))
+    )
+    assert [(info.name, info.transport) for info in combined_infos] == [
+        ("remote-http", "http"),
+        ("local-stdio", "stdio"),
+    ]
     dynamic_toolset = DynamicToolset(lambda _ctx: None)
     dynamic_toolset._toolset = cast(Any, http_toolset)
     dynamic_infos = _iter_mcp_server_infos(dynamic_toolset)
     assert [(info.name, info.transport) for info in dynamic_infos] == [("remote-http", "http")]
+    assert _iter_mcp_server_infos(object()) == []
+
+
+def test_mcp_servers_slash_command_renders_attached_servers(tmp_path: Path) -> None:
+    session_store = MemorySessionStore()
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(model_name="openai:gpt-5-mini", custom_output_text="unused")),
+        config=AdapterConfig(session_store=session_store),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    stored_session = session_store.get(session.session_id)
+    assert stored_session is not None
+    stored_session.mcp_servers = [
+        {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
+        {
+            "name": "repo-stdio",
+            "transport": "stdio",
+            "command": "python",
+            "args": ["server.py"],
+        },
+    ]
+    session_store.save(stored_session)
+    asyncio.run(adapter.prompt(prompt=[text_block("/mcp-servers")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == [
+        "MCP servers:\n"
+        "- repo-http (http, session): https://repo.example/mcp\n"
+        "- repo-stdio (stdio, session): python server.py"
+    ]
 
 
 def test_extract_session_mcp_servers_dedupes_agent_and_session_duplicates(

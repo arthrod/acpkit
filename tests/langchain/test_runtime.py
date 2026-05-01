@@ -10,8 +10,12 @@ from acp.interfaces import Client as AcpClient
 from acp.schema import (
     AgentPlanUpdate,
     AudioContentBlock,
+    AvailableCommand,
+    AvailableCommandsUpdate,
     BlobResourceContents,
+    ConfigOptionUpdate,
     ContentToolCallContent,
+    CurrentModeUpdate,
     EmbeddedResourceContentBlock,
     ModelInfo,
     PlanEntry,
@@ -26,6 +30,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain_acp import (
     AdapterConfig,
+    AdapterPromptCapabilities,
     BrowserProjectionMap,
     CapabilityBridge,
     CommandProjectionMap,
@@ -34,12 +39,15 @@ from langchain_acp import (
     FileSystemProjectionMap,
     FinanceProjectionMap,
     HttpRequestProjectionMap,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
     StructuredEventProjectionMap,
     WebSearchProjectionMap,
     create_acp_agent,
     native_plan_tools,
 )
 from langchain_acp.providers import ModelSelectionState, ModeState
+from langchain_acp.slash import SlashCommandResult
 from langchain_core.messages import AIMessage
 from langgraph.graph import START, StateGraph
 
@@ -107,6 +115,110 @@ def test_langchain_acp_streams_tool_projection_and_text(tmp_path) -> None:
     assert diff.path == "notes.txt"
     assert diff.new_text == "contents:notes.txt"
     assert agent_message_texts(client) == ["Done reading."]
+
+
+def test_langchain_acp_initialize_uses_configured_prompt_capabilities() -> None:
+    graph = create_agent(
+        model=GenericFakeChatModel(messages=iter([])),
+        tools=[],
+        name="caps",
+    )
+    adapter = create_acp_agent(
+        graph=graph,
+        config=AdapterConfig(
+            prompt_capabilities=AdapterPromptCapabilities(
+                audio=False,
+                image=False,
+                embedded_context=True,
+            )
+        ),
+    )
+
+    response = asyncio.run(adapter.initialize(protocol_version=1))
+    assert response.agent_capabilities is not None
+    assert response.agent_capabilities.prompt_capabilities is not None
+
+    assert response.agent_capabilities.prompt_capabilities.audio is False
+    assert response.agent_capabilities.prompt_capabilities.image is False
+    assert response.agent_capabilities.prompt_capabilities.embedded_context is True
+
+
+def test_langchain_acp_slash_commands_emit_surface_updates_and_skip_graph(tmp_path) -> None:
+    def read_file(path: str) -> str:
+        """Read a file from the workspace."""
+        return path
+
+    assert read_file("repo.txt") == "repo.txt"
+
+    graph = create_agent(
+        model=GenericFakeChatModel(messages=iter([])),
+        tools=[read_file],
+        name="slash-reader",
+    )
+    adapter = create_acp_agent(
+        graph=graph,
+        config=AdapterConfig(
+            available_models=[
+                ModelInfo(model_id="openai:gpt-5-mini", name="GPT-5 Mini"),
+                ModelInfo(model_id="openai:gpt-5", name="GPT-5"),
+            ],
+            available_modes=[
+                SessionMode(id="ask", name="Ask"),
+                SessionMode(id="review", name="Review"),
+            ],
+            default_model_id="openai:gpt-5-mini",
+            default_mode_id="ask",
+            slash_command_provider=StaticSlashCommandProvider(
+                commands=[
+                    StaticSlashCommand(
+                        command=AvailableCommand(name="ping", description="Return pong."),
+                        handler=lambda _request: SlashCommandResult(text="pong"),
+                    )
+                ]
+            ),
+        ),
+    )
+    client = RecordingACPClient()
+    adapter.on_connect(cast(AcpClient, client))
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    stored_session = cast(Any, adapter)._store.get(session.session_id)
+    assert stored_session is not None
+    stored_session.mcp_servers = [
+        {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"}
+    ]
+    cast(Any, adapter)._store.save(stored_session)
+    client.updates.clear()
+
+    asyncio.run(adapter.prompt(prompt=[text_block("/tools")], session_id=session.session_id))
+    asyncio.run(adapter.prompt(prompt=[text_block("/review")], session_id=session.session_id))
+    asyncio.run(
+        adapter.prompt(prompt=[text_block("/model openai:gpt-5")], session_id=session.session_id)
+    )
+    asyncio.run(adapter.prompt(prompt=[text_block("/mcp-servers")], session_id=session.session_id))
+    asyncio.run(adapter.prompt(prompt=[text_block("/ping")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == [
+        "Available tools:\n- read_file: Read a file from the workspace.",
+        "Current mode: review",
+        "Current model: openai:gpt-5",
+        "MCP servers:\n- repo-http (http, session): https://repo.example/mcp",
+        "pong",
+    ]
+    assert any(isinstance(update, CurrentModeUpdate) for _, update in client.updates)
+    assert any(isinstance(update, ConfigOptionUpdate) for _, update in client.updates)
+    available_command_updates = [
+        update for _, update in client.updates if isinstance(update, AvailableCommandsUpdate)
+    ]
+    assert available_command_updates
+    assert [command.name for command in available_command_updates[0].available_commands] == [
+        "ask",
+        "review",
+        "model",
+        "tools",
+        "mcp-servers",
+        "ping",
+    ]
 
 
 def test_langchain_acp_projects_web_search_results_at_runtime(tmp_path) -> None:
@@ -678,7 +790,7 @@ def test_langchain_acp_graph_factory_receives_session_context(tmp_path) -> None:
 
     asyncio.run(adapter.prompt(prompt=[text_block("hello")], session_id=session.session_id))
 
-    assert captured_session_ids == [session.session_id]
+    assert captured_session_ids == [session.session_id, session.session_id]
     assert agent_message_texts(client) == ["Factory graph ready."]
 
 
@@ -768,7 +880,7 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
     )
     assert second.stop_reason == "end_turn"
     assert agent_message_texts(client)[-1] == "gpt-5:plan"
-    assert captured_builds == [("base", "ask"), ("gpt-5", "plan")]
+    assert captured_builds == [("base", "ask"), ("base", "ask"), ("gpt-5", "plan")]
 
 
 @dataclass(slots=True, kw_only=True)
