@@ -159,7 +159,7 @@ from langchain_acp.session.state import (
     _coerce_json_value,
     utc_now,
 )
-from langchain_acp.session.store import _store_lock
+from langchain_acp.session.store import _store_child_path, _store_lock
 from langchain_acp.slash import (
     SlashCommandRequest,
     SlashCommandResult,
@@ -2826,8 +2826,24 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
     stale_path.write_text("stale", encoding="utf-8")
     file_store = FileSessionStore(tmp_path)
     assert not stale_path.exists()
+    assert file_store._session_path("safe_1-2").parent == file_store.root
+    assert file_store._temp_session_path("safe_1-2").parent == file_store.root
+    with pytest.raises(ValueError, match="session path"):
+        _store_child_path(file_store.root, "../escape.json")
+
+    unsafe_session_ids = ["", "../escape", "nested/session", ".hidden", "two words", "x" * 129]
+    for unsafe_session_id in unsafe_session_ids:
+        with pytest.raises(ValueError, match="session_id"):
+            file_store._session_path(unsafe_session_id)
+
+    with pytest.raises(ValueError, match="session_id"):
+        file_store.save(_make_session(session_id="../escape", cwd=tmp_path))
+    with pytest.raises(ValueError, match="session_id"):
+        file_store.get("../escape")
 
     file_store.save(session)
+    with pytest.raises(ValueError, match="session_id"):
+        file_store.fork("session-1", new_session_id="../escape", cwd=tmp_path)
     file_loaded = file_store.get(session.session_id)
     assert file_loaded is not None
     assert file_loaded.transcript[0].to_update().message_id == "u1"
@@ -2879,6 +2895,8 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
 
     invalid_session_path = tmp_path / "invalid.json"
     invalid_session_path.write_text("[]", encoding="utf-8")
+    invalid_name_path = tmp_path / "bad name.json"
+    invalid_name_path.write_text("{}", encoding="utf-8")
     assert all(item.session_id != "invalid" for item in file_store.list_sessions())
 
 

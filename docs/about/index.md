@@ -25,9 +25,9 @@ Today it ships:
 The repository currently contains two adapter packages, a root CLI package, and two helper packages:
 
 - `pydantic-acp`
-  production-grade ACP adapter for `pydantic_ai.Agent`
+  maintained ACP adapter for `pydantic_ai.Agent`
 - `langchain-acp`
-  production-grade ACP adapter for LangChain, LangGraph, and DeepAgents graphs
+  maintained ACP adapter for LangChain, LangGraph, and DeepAgents graphs
 - `acpkit`
   root CLI, target resolver, and launch helpers
 - `codex-auth-helper`

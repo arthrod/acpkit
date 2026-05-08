@@ -70,6 +70,7 @@ This is the recommended default for local tools and editor integrations.
 Current behavior:
 
 - writes use a temp file, `fsync`, and atomic replace
+- session ids are restricted to ASCII letters, digits, `_`, and `-`, with a 128-character limit
 - the store takes a process-local lock and a filesystem advisory lock when available
 - malformed or partially-written session files are skipped by public load/list flows instead of crashing the whole operation
 - stale temp files from interrupted writes are cleaned up on startup

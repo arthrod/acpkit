@@ -118,6 +118,7 @@ nav:
       - Compatibility Matrix Template: compatibility-matrix-template.md
       - Projection Cookbook: projection-cookbook.md
       - Integration Readiness: integration-readiness.md
+      - Security Guidance: security.md
   - Examples:
       - Overview: examples/index.md
       - Finance Agent: examples/finance.md

@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: publish-${{ github.workflow }}-${{ github.ref }}
@@ -17,8 +18,6 @@ jobs:
   publish:
     name: Build And Publish Workspace
     runs-on: ubuntu-latest
-    env:
-      UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
     steps:
       - name: Check Out Repository
         uses: actions/checkout@v6
@@ -35,7 +34,7 @@ jobs:
 
       - name: Validate Release
         run: |
-          uv sync --all-extras
+          uv sync --frozen --all-extras
           make prod
 
       - name: Build And Publish Root, Adapter, Helper, And Transport Projects
@@ -59,9 +58,9 @@ jobs:
             local pyproject_path="$project_dir/pyproject.toml"
 
             if grep -Eq '^\[project\.optional-dependencies\]' "$pyproject_path"; then
-              uv sync --project "$project_dir" --all-extras
+              uv sync --project "$project_dir" --frozen --all-extras
             else
-              uv sync --project "$project_dir"
+              uv sync --project "$project_dir" --frozen
             fi
           }
 
@@ -70,5 +69,5 @@ jobs:
             sync_project "$project_dir"
             rm -rf "$project_dir/dist"
             uv build --project "$project_dir" --out-dir "$project_dir/dist"
-            uv publish "$project_dir"/dist/*
+            uv publish --trusted-publishing always "$project_dir"/dist/*
           done < <(project_dirs)

@@ -2,6 +2,8 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import json
+import os
+import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -177,6 +179,27 @@ def test_auth_store_covers_invalid_json_non_object_and_write_round_trip(
     store.write_state(updated_state)
     persisted = json.loads(auth_path.read_text(encoding="utf-8"))
     assert persisted["tokens"]["account_id"] == "acct_written"
+    if os.name == "posix":
+        assert stat.S_IMODE(auth_path.stat().st_mode) == 0o600
+
+    failed_state = CodexAuthState(
+        access_token=state.access_token,
+        refresh_token=state.refresh_token,
+        account_id="acct_failed",
+        auth_mode="oauth",
+        last_refresh=datetime.now(tz=UTC),
+    )
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "codex_auth_helper.auth.store.os.replace",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("replace failed")),
+        )
+        with pytest.raises(OSError, match="replace failed"):
+            store.write_state(failed_state)
+
+    persisted_after_failure = json.loads(auth_path.read_text(encoding="utf-8"))
+    assert persisted_after_failure["tokens"]["account_id"] == "acct_written"
+    assert not list(auth_path.parent.glob(f".{auth_path.name}.*.tmp"))
 
 
 @pytest.mark.asyncio

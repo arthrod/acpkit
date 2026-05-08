@@ -4,7 +4,7 @@
 
 ACP Kit is the adapter toolkit and monorepo for exposing existing agent runtimes through ACP without inventing runtime features that are not really there.
 
-Today the repo ships two production-grade adapter families:
+Today the repo ships two maintained adapter families:
 
 - `pydantic-acp`
 - `langchain-acp`
@@ -444,6 +444,7 @@ Top-level docs:
 - [LangChain ACP Overview](https://vcoderun.github.io/acpkit/langchain-acp/)
 - [Helpers](https://vcoderun.github.io/acpkit/helpers/)
 - [acpremote Overview](https://vcoderun.github.io/acpkit/acpremote/)
+- [Security Guidance](https://vcoderun.github.io/acpkit/security/)
 - [AdapterConfig](https://vcoderun.github.io/acpkit/pydantic-acp/adapter-config/)
 - [Plans, Thinking, and Approvals](https://vcoderun.github.io/acpkit/pydantic-acp/plans-thinking-approvals/)
 - [Prompt Resources and Context](https://vcoderun.github.io/acpkit/pydantic-acp/prompt-resources/)

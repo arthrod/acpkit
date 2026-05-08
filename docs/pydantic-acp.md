@@ -1,6 +1,6 @@
 # Pydantic ACP Overview
 
-`pydantic-acp` is the production ACP adapter in ACP Kit.
+`pydantic-acp` is the primary Pydantic AI adapter in ACP Kit.
 
 Its job is simple: keep your existing `pydantic_ai.Agent` surface intact, then expose it as an ACP server without inventing runtime state the underlying agent cannot actually honor.
 

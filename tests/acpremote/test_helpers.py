@@ -521,11 +521,16 @@ async def test_command_connection_covers_first_completed_branches(
         stdout: Any = field(default_factory=object)
         returncode: int | None = None
         terminate_calls: int = 0
+        kill_calls: int = 0
         wait_delay: float = 0.0
         wait_error: Exception | None = None
 
         def terminate(self) -> None:
             self.terminate_calls += 1
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+            self.returncode = -9
 
         async def wait(self) -> int:
             await asyncio.sleep(self.wait_delay)
@@ -579,6 +584,29 @@ async def test_command_connection_covers_first_completed_branches(
 
     close_calls.clear()
     stdin_close_calls.clear()
+    timeout_exit = _FakeProcess(wait_delay=0.02)
+
+    async def create_timeout_process(**kwargs: Any) -> _FakeProcess:
+        del kwargs
+        return timeout_exit
+
+    monkeypatch.setattr(command_module, "_create_command_process", create_timeout_process)
+    monkeypatch.setattr(command_module, "_relay_websocket_to_stdin", done_immediately)
+    monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", done_later)
+    await command_module.run_remote_command_connection(
+        cast(Any, object()),
+        command_options=command_module.CommandOptions(
+            command=("echo", "hi"),
+            terminate_timeout=0.001,
+        ),
+    )
+    assert timeout_exit.terminate_calls >= 1
+    assert timeout_exit.kill_calls >= 1
+    assert close_calls
+    assert stdin_close_calls
+
+    close_calls.clear()
+    stdin_close_calls.clear()
 
     async def all_done(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
@@ -618,8 +646,15 @@ async def test_command_connection_covers_first_completed_branches(
     with pytest.raises(ValueError, match="boom"):
         await command_module.run_remote_command_connection(
             cast(Any, object()),
-            command_options=command_module.CommandOptions(command=("echo", "hi")),
+            command_options=command_module.CommandOptions(
+                command=("echo", "hi"),
+                terminate_timeout=0.001,
+            ),
         )
+    assert hanging_exit.kill_calls >= 1
+
+    with pytest.raises(ValueError, match="terminate_timeout"):
+        command_module.CommandOptions(command=("echo",), terminate_timeout=0)
 
 
 @pytest.mark.asyncio

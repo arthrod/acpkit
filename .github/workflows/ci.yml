@@ -33,7 +33,7 @@ jobs:
           enable-cache: true
 
       - name: Install Dependencies
-        run: uv sync --all-extras
+        run: uv sync --frozen --all-extras
 
       - name: Check Formatting
         run: uv run ruff format --check
@@ -65,9 +65,9 @@ jobs:
             local pyproject_path="$project_dir/pyproject.toml"
 
             if grep -Eq '^\[project\.optional-dependencies\]' "$pyproject_path"; then
-              uv sync --project "$project_dir" --all-extras
+              uv sync --project "$project_dir" --frozen --all-extras
             else
-              uv sync --project "$project_dir"
+              uv sync --project "$project_dir" --frozen
             fi
           }
 
