@@ -96,6 +96,6 @@ scripts/check_releases.py
 connect*.py
 expose*.py
 CHANGELOG
-/.acprouter-state
-/.deepagents-graph
-/.workspace-graph
+.acprouter-state
+.deepagents-graph
+.workspace-graph
