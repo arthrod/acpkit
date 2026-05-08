@@ -61,7 +61,6 @@ tmp/
 # Cache & Config
 .pytest_cache/
 .ruff_cache
-uv.lock
 .logfire
 
 # Specs

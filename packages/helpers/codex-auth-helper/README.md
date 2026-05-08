@@ -14,7 +14,7 @@ ready-to-use `CodexResponsesModel` or a LangChain chat model.
 - Reads tokens from `~/.codex/auth.json`
 - Derives `ChatGPT-Account-Id` from the auth file or token claims
 - Refreshes expired access tokens with `https://auth.openai.com/oauth/token`
-- Writes refreshed tokens back to the auth file
+- Writes refreshed tokens back to the auth file with private, atomic file replacement
 - Builds an OpenAI-compatible client pointed at `https://chatgpt.com/backend-api/codex`
 - Returns a `pydantic-ai` responses model that already applies the Codex backend requirements
 - Returns a LangChain `ChatOpenAI` model configured for the Responses API
@@ -127,6 +127,17 @@ model = create_codex_responses_model(
 )
 ```
 
+## Auth State Safety
+
+The auth state file contains credentials and should be treated as private host state.
+
+When refreshed tokens are written back, `CodexAuthStore` uses a private temp file, `fsync`, atomic
+replace, and POSIX `0600` permissions for the final file. If replace fails, the previous auth file is
+left intact and the temp file is cleaned up.
+
+Keep the parent directory private and do not copy auth state into logs, examples, test fixtures, or
+container images.
+
 ## Passing Extra OpenAI Responses Settings
 
 Additional `OpenAIResponsesModelSettings` can still be passed through. The helper
@@ -196,6 +207,7 @@ This package is intentionally small and focused:
 
 - auth file parsing
 - token refresh
+- private, atomic auth state writes
 - Codex-specific OpenAI client wiring
 - `pydantic-ai` responses model factory
 - LangChain Responses-model factory
@@ -204,3 +216,4 @@ This package is intentionally small and focused:
 
 - [Helpers Overview](https://vcoderun.github.io/acpkit/helpers/)
 - [API Reference](https://vcoderun.github.io/acpkit/api/codex_auth_helper/)
+- [Security Guidance](https://vcoderun.github.io/acpkit/security/)

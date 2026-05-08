@@ -52,6 +52,25 @@ await server.serve_forever()
 keeps command lookup through `PATH` intact while still letting the caller inject tokens or runtime
 flags.
 
+If you need command cleanup tuning, pass `CommandOptions` to `serve_stdio_command(...)`:
+
+```python
+from acpremote import CommandOptions, serve_stdio_command
+
+server = await serve_stdio_command(
+    CommandOptions(
+        command=('npx', '@zed-industries/codex-acp'),
+        terminate_timeout=2.0,
+    ),
+    host='127.0.0.1',
+    port=8080,
+)
+await server.serve_forever()
+```
+
+When a command-backed WebSocket flow ends, `acpremote` terminates the child process and falls back
+to `kill` after `terminate_timeout`. The timeout must be a positive finite number.
+
 Typical remote-host flow:
 
 ```bash
@@ -134,7 +153,15 @@ Current transport behavior:
 - binary frames are rejected
 - bearer-token auth is supported
 - stdio ACP commands can be mirrored with `serve_command(...)`
+- custom command cleanup timeouts are available through `CommandOptions`
 - transport limits are configurable through `TransportOptions`
 
 This package is transport-focused. It doesn't assume ACP Kit adapters or ACP Kit-owned runtime
 semantics.
+
+Security guidance:
+
+- bind to loopback unless a reverse proxy owns TLS and authentication
+- allowlist command-backed servers instead of accepting arbitrary command strings
+- keep environment overrides minimal and avoid forwarding unnecessary secrets
+- see <https://vcoderun.github.io/acpkit/security/>

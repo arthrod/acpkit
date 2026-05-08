@@ -214,6 +214,21 @@ The maintained examples under `examples/langchain/` also expose ACP-visible mode
 through `available_models`, `available_modes`, `default_model_id`, and `default_mode_id`, then
 consume `session.session_model_id` and `session.session_mode_id` inside `graph_factory=...`.
 
+## Session Store Notes
+
+Use `MemorySessionStore` for ephemeral graph sessions and `FileSessionStore` when ACP session state
+should survive process restarts. The file store persists the ACP transcript, selected model, selected
+mode, config values, and plan state as local JSON.
+
+File-backed session ids are constrained before they become filenames:
+
+- allowed characters are ASCII letters, digits, `_`, and `-`
+- maximum length is 128 characters
+- path separators, dot-prefixed ids, whitespace, and shell metacharacters are rejected
+
+`FileSessionStore` is a local durable store, not a distributed database. Do not share the same store
+root between unrelated users or untrusted processes.
+
 ## DeepAgents Compatibility
 
 DeepAgents graphs are supported as compiled LangGraph targets.
@@ -234,3 +249,4 @@ Docs:
 - <https://vcoderun.github.io/acpkit/getting-started/langchain-quickstart/>
 - <https://vcoderun.github.io/acpkit/examples/langchain-workspace/>
 - <https://vcoderun.github.io/acpkit/examples/deepagents/>
+- <https://vcoderun.github.io/acpkit/security/>

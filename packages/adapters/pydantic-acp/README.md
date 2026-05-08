@@ -237,6 +237,21 @@ run_acp(
 
 Use `AgentSource` when the agent and its dependencies should be built separately. Use providers when models, modes, config values, plans, or approvals belong to the host layer instead of the adapter.
 
+## Session Store Notes
+
+Use `MemorySessionStore` for ephemeral local runs and `FileSessionStore` when ACP sessions should
+survive process restarts. `FileSessionStore` is a local durable store, not a distributed coordination
+layer.
+
+File-backed session ids are constrained before they become filenames:
+
+- allowed characters are ASCII letters, digits, `_`, and `-`
+- maximum length is 128 characters
+- path separators, dot-prefixed ids, whitespace, and shell metacharacters are rejected
+
+The file store writes through a temp file, `fsync`, and atomic replace. Malformed or partially
+written session files are skipped by public load/list flows.
+
 ## Maintained Examples
 
 Maintained runnable examples:
@@ -258,6 +273,7 @@ Focused docs recipes:
 - [Session State and Lifecycle](https://vcoderun.github.io/acpkit/pydantic-acp/session-state/)
 - [Bridges](https://vcoderun.github.io/acpkit/bridges/)
 - [Providers](https://vcoderun.github.io/acpkit/providers/)
+- [Security Guidance](https://vcoderun.github.io/acpkit/security/)
 - [Host Backends and Projections](https://vcoderun.github.io/acpkit/host-backends/)
 - [API Reference](https://vcoderun.github.io/acpkit/api/pydantic_acp/)
 
