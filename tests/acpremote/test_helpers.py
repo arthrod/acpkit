@@ -626,6 +626,80 @@ async def test_command_process_terminate_timeout_kills() -> None:
 
 
 @pytest.mark.asyncio
+async def test_command_process_terminate_returns_when_already_exited() -> None:
+    process = _FakeCommandProcess(returncode=0)
+
+    await command_module._terminate_process(cast(Any, process), timeout=0.001)
+
+    assert process.terminate_calls == 0
+    assert process.kill_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_command_process_terminate_returns_when_timeout_sets_returncode() -> None:
+    @dataclass(slots=True)
+    class _ExitingOnCancelledProcess(_FakeCommandProcess):
+        async def wait(self) -> int:
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                self.returncode = 143
+                raise
+            return self.returncode or 0  # pragma: no cover
+
+    process = _ExitingOnCancelledProcess()
+
+    await command_module._terminate_process(cast(Any, process), timeout=0.001)
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    assert process.returncode == 143
+
+
+@pytest.mark.asyncio
+async def test_command_process_terminate_kills_when_cancelled() -> None:
+    process = _FakeCommandProcess(wait_delay=0.01)
+    task = asyncio.create_task(
+        command_module._terminate_process(cast(Any, process), timeout=1),
+    )
+
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_command_process_terminate_cancelled_after_process_exit() -> None:
+    @dataclass(slots=True)
+    class _ExitedOnCancelledProcess(_FakeCommandProcess):
+        async def wait(self) -> int:
+            try:
+                await asyncio.sleep(1)
+            except asyncio.CancelledError:
+                self.returncode = 0
+                raise
+            return self.returncode or 0  # pragma: no cover
+
+    process = _ExitedOnCancelledProcess()
+    task = asyncio.create_task(
+        command_module._terminate_process(cast(Any, process), timeout=1),
+    )
+
+    await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 0
+    assert process.returncode == 0
+
+
+@pytest.mark.asyncio
 async def test_command_connection_covers_all_done_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

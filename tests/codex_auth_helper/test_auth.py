@@ -2,7 +2,6 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import json
-import os
 import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -24,7 +23,7 @@ from codex_auth_helper.auth.state import (
     _parse_timestamp,
     _require_str,
 )
-from codex_auth_helper.auth.store import CodexAuthStore
+from codex_auth_helper.auth.store import CodexAuthStore, _fsync_directory
 
 from .support import write_auth_file
 
@@ -179,8 +178,7 @@ def test_auth_store_covers_invalid_json_non_object_and_write_round_trip(
     store.write_state(updated_state)
     persisted = json.loads(auth_path.read_text(encoding="utf-8"))
     assert persisted["tokens"]["account_id"] == "acct_written"
-    if os.name == "posix":
-        assert stat.S_IMODE(auth_path.stat().st_mode) == 0o600
+    assert stat.S_IMODE(auth_path.stat().st_mode) == 0o600
 
     failed_state = CodexAuthState(
         access_token=state.access_token,
@@ -200,6 +198,13 @@ def test_auth_store_covers_invalid_json_non_object_and_write_round_trip(
     persisted_after_failure = json.loads(auth_path.read_text(encoding="utf-8"))
     assert persisted_after_failure["tokens"]["account_id"] == "acct_written"
     assert not list(auth_path.parent.glob(f".{auth_path.name}.*.tmp"))
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "codex_auth_helper.auth.store.os.open",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("open failed")),
+        )
+        _fsync_directory(auth_path.parent)
 
 
 @pytest.mark.asyncio
