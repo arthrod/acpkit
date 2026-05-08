@@ -1362,21 +1362,25 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.83.0`.
+`pydantic-acp` currently pins `pydantic-ai-slim==1.92.0`.
 
 That is not accidental. The adapter relies on a specific, tested Pydantic AI
 surface and should still be upgraded deliberately.
 
-However, ACP Kit no longer imports Pydantic AI private history-processor
-modules directly. History processor support is expressed through ACP Kit's own
-callable aliases and passed into the public
-`Agent(..., history_processors=...)` interface.
+The current compatibility surface includes function-tool preparation,
+output-tool preparation, output validation/processing hooks,
+deferred-tool-call hooks, run metadata, and conversation IDs.
+
+ACP Kit also no longer imports Pydantic AI private history-processor modules
+directly. History processor support is expressed through ACP Kit's own callable
+aliases and passed into the public `Agent(..., history_processors=...)`
+interface.
 
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- upgrades are still compatibility work, but the history-processor integration
-  is no longer a direct private-import dependency
+- upgrades are still compatibility work, but Pydantic AI integration points stay
+  isolated behind ACP Kit bridge and runtime seams
 
 ### LangChain ACP Overview
 URL: https://vcoderun.github.io/acpkit/langchain-acp/
@@ -1464,10 +1468,13 @@ called inside `graph_factory=...`.
 - `AdapterConfig`
 - explicit session stores and transcript replay
 - provider-owned models, modes, and config options
+- prompt capability advertisement
 - native ACP plan state with `TaskPlan`
-- approval bridging
+- approval bridging with projection-aware permission cards
 - capability bridges
+- built-in and host-defined slash commands
 - projection maps and event projection maps
+- external hook event projection
 - ACP-facing type exports in `langchain_acp.types`
 
 The important difference is upstream shape, not ACP Kit architecture. On the LangChain side the adapter deals in graphs and middleware instead of model profiles and tool preparers.
@@ -1512,6 +1519,51 @@ run_acp(graph_factory=graph_from_session, config=config)
 The point is not to make the adapter magical. The point is to keep the host,
 the graph, and the ACP surface aligned without inventing runtime state the graph
 cannot really honor.
+
+## Prompt Capabilities And Slash Commands
+
+Prompt capability advertisement is configurable instead of hardcoded:
+
+```python
+from langchain_acp import AdapterConfig, AdapterPromptCapabilities
+
+config = AdapterConfig(
+    prompt_capabilities=AdapterPromptCapabilities(
+        audio=False,
+        image=False,
+        embedded_context=True,
+    )
+)
+```
+
+The adapter also owns an ACP-native slash-command layer:
+
+- mode commands such as `/ask`
+- `/model`
+- `/tools`
+- `/mcp-servers`
+- custom host commands through `slash_command_provider`
+
+```python
+from acp.schema import AvailableCommand
+from langchain_acp import (
+    AdapterConfig,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
+)
+
+config = AdapterConfig(
+    slash_command_provider=StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="ping", description="Return pong."),
+                handler=lambda _request: SlashCommandResult(text="pong"),
+            )
+        ]
+    )
+)
+```
 
 ## Session Lifecycle And Replay
 
@@ -1589,9 +1641,22 @@ The adapter surface is:
 
 - `ApprovalBridge`
 - `NativeApprovalBridge`
+- `ProjectionAwareApprovalBridge`
+- `PermissionToolCallBuilder`
+- `ApprovalPolicyStore`
 - ACP permission requests and resume flow
 
 When the runtime really pauses for approval, the ACP session pauses for approval too.
+
+Remembered approval choices and permission card rendering live on `NativeApprovalBridge`:
+
+```python
+from langchain_acp import NativeApprovalBridge
+
+config = AdapterConfig(
+    approval_bridge=NativeApprovalBridge(enable_persistent_choices=True),
+)
+```
 
 ## Capability Bridges And Graph Build Contributions
 
@@ -1604,6 +1669,7 @@ Built-in bridges:
 - `ConfigOptionsBridge`
 - `ToolSurfaceBridge`
 - `DeepAgentsCompatibilityBridge`
+- `ExternalHookEventBridge`
 
 Graph-build contributions are aggregated through:
 
@@ -3432,6 +3498,19 @@ Use it for:
 
 It is the bridge most real coding-agent setups start with.
 
+### `PrepareOutputToolsBridge`
+
+Shapes output-tool availability per mode.
+
+Use it when:
+
+- structured-output tools should be filtered separately from normal function tools
+- ACP session metadata should expose the active output-tool mode
+- output-tool preparation should emit ACP-visible progress and failure updates
+
+This mirrors `PrepareToolsBridge`, but targets Pydantic AI's
+`PrepareOutputTools` capability.
+
 ### `ThinkingBridge`
 
 Exposes Pydantic AI’s `Thinking` capability through ACP session config.
@@ -3446,6 +3525,10 @@ Use it when:
 Adds a `Hooks` capability into the active agent.
 
 Useful when you want ACP-visible hook updates that come from bridge-owned hooks rather than only from hooks already attached to the source agent.
+
+The bridge covers the current Pydantic AI hook surface, including tool
+preparation, output-tool preparation, output validation, output processing, and
+deferred tool-call observation.
 
 You can also suppress noisy default hook rendering with:
 
@@ -6168,6 +6251,10 @@ This page documents the public surface re-exported by `pydantic_acp`.
 ::: pydantic_acp.PrepareToolsBridge
 
 ::: pydantic_acp.PrepareToolsMode
+
+::: pydantic_acp.PrepareOutputToolsBridge
+
+::: pydantic_acp.PrepareOutputToolsMode
 
 ::: pydantic_acp.ThinkingBridge
 

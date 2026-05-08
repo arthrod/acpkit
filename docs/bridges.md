@@ -260,6 +260,19 @@ Use it for:
 
 It is the bridge most real coding-agent setups start with.
 
+### `PrepareOutputToolsBridge`
+
+Shapes output-tool availability per mode.
+
+Use it when:
+
+- structured-output tools should be filtered separately from normal function tools
+- ACP session metadata should expose the active output-tool mode
+- output-tool preparation should emit ACP-visible progress and failure updates
+
+This mirrors `PrepareToolsBridge`, but targets Pydantic AI's
+`PrepareOutputTools` capability.
+
 ### `ThinkingBridge`
 
 Exposes Pydantic AI’s `Thinking` capability through ACP session config.
@@ -274,6 +287,10 @@ Use it when:
 Adds a `Hooks` capability into the active agent.
 
 Useful when you want ACP-visible hook updates that come from bridge-owned hooks rather than only from hooks already attached to the source agent.
+
+The bridge covers the current Pydantic AI hook surface, including tool
+preparation, output-tool preparation, output validation, output processing, and
+deferred tool-call observation.
 
 You can also suppress noisy default hook rendering with:
 

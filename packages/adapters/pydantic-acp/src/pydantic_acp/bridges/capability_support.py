@@ -408,7 +408,6 @@ class OpenAICompactionBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
                 super().__init__(
                     message_count_threshold=bridge.message_count_threshold,
                     trigger=bridge.trigger,
-                    instructions=bridge.instructions,
                 )
 
             async def before_model_request(
@@ -428,7 +427,7 @@ class OpenAICompactionBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
                     title="Context Compaction",
                     raw_input={
                         "provider": "openai",
-                        "instructions": _json_string(self.instructions),
+                        "instructions": _json_string(bridge.instructions),
                         "message_count": len(request_context.messages),
                     },
                 )

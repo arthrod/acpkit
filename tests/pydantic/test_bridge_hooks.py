@@ -160,6 +160,13 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
     async def ok_execute(args: Any) -> Any:
         return {"ok": args["text"]}
 
+    async def ok_output(output: Any) -> Any:
+        return output
+
+    async def fail_output(output: Any) -> Any:
+        del output
+        raise RuntimeError("output failed")
+
     async def event_stream():
         yield cast(Any, SimpleNamespace(event_kind="demo_event"))
 
@@ -293,6 +300,10 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
         record_event_stream=False,
         record_model_requests=False,
         record_node_lifecycle=False,
+        record_deferred_tool_calls=False,
+        record_output_processing=False,
+        record_output_validation=False,
+        record_prepare_output_tools=False,
         record_prepare_tools=False,
         record_run_lifecycle=False,
         record_tool_execution=False,
@@ -309,6 +320,10 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
     partially_disabled.record_node_lifecycle = False
     partially_disabled.record_event_stream = False
     partially_disabled.record_model_requests = False
+    partially_disabled.record_deferred_tool_calls = False
+    partially_disabled.record_output_processing = False
+    partially_disabled.record_output_validation = False
+    partially_disabled.record_prepare_output_tools = False
     partially_disabled.record_prepare_tools = False
     partially_disabled.record_tool_validation = False
     partially_disabled.record_tool_execution = False
@@ -335,6 +350,116 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
     assert asyncio.run(
         partially_registry["prepare_tools"][0].func(cast(Any, None), [tool_def])
     ) == [tool_def]
+    assert asyncio.run(
+        partially_registry["prepare_output_tools"][0].func(cast(Any, None), [tool_def])
+    ) == [tool_def]
+    assert (
+        asyncio.run(
+            partially_registry["before_output_validate"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+            )
+        )
+        == "raw"
+    )
+    assert (
+        asyncio.run(
+            partially_registry["wrap_output_validate"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                handler=ok_output,
+            )
+        )
+        == "raw"
+    )
+    with pytest.raises(RuntimeError, match="output failed"):
+        asyncio.run(
+            partially_registry["wrap_output_validate"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                handler=fail_output,
+            )
+        )
+    assert (
+        asyncio.run(
+            partially_registry["after_output_validate"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="checked",
+            )
+        )
+        == "checked"
+    )
+    with pytest.raises(RuntimeError, match="validate failed"):
+        asyncio.run(
+            partially_registry["on_output_validate_error"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                error=RuntimeError("validate failed"),
+            )
+        )
+    assert (
+        asyncio.run(
+            partially_registry["before_output_process"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+            )
+        )
+        == "raw"
+    )
+    assert (
+        asyncio.run(
+            partially_registry["wrap_output_process"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                handler=ok_output,
+            )
+        )
+        == "raw"
+    )
+    with pytest.raises(RuntimeError, match="output failed"):
+        asyncio.run(
+            partially_registry["wrap_output_process"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                handler=fail_output,
+            )
+        )
+    assert (
+        asyncio.run(
+            partially_registry["after_output_process"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="processed",
+            )
+        )
+        == "processed"
+    )
+    with pytest.raises(RuntimeError, match="process failed"):
+        asyncio.run(
+            partially_registry["on_output_process_error"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                error=RuntimeError("process failed"),
+            )
+        )
+    assert (
+        asyncio.run(
+            partially_registry["handle_deferred_tool_calls"][0].func(
+                cast(Any, None),
+                requests=cast(Any, None),
+            )
+        )
+        is None
+    )
     assert asyncio.run(
         partially_registry["before_tool_validate"][0].func(
             cast(Any, None),
@@ -368,6 +493,161 @@ def test_hook_bridge_hide_all_disables_registry_and_metadata() -> None:
     assert capability._registry == {}
     assert bridge.get_session_metadata(session, Agent(TestModel())) == {"events": []}
     assert bridge.drain_updates(session, Agent(TestModel())) is None
+
+
+def test_hook_bridge_records_output_and_deferred_hooks() -> None:
+    bridge = HookBridge()
+    session = AcpSessionContext(
+        session_id="hook-output",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    registry = bridge.build_capability(session)._registry
+    tool_def = ToolDefinition(name="result")
+
+    async def ok_output(output: Any) -> Any:
+        return output
+
+    assert asyncio.run(registry["prepare_output_tools"][0].func(cast(Any, None), [tool_def])) == [
+        tool_def
+    ]
+    assert (
+        asyncio.run(
+            registry["before_output_validate"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+            )
+        )
+        == "raw"
+    )
+    assert (
+        asyncio.run(
+            registry["wrap_output_validate"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                handler=ok_output,
+            )
+        )
+        == "raw"
+    )
+    assert asyncio.run(
+        registry["after_output_validate"][0].func(
+            cast(Any, None),
+            output_context=_HOOK_CONTEXT,
+            output={"ok": True},
+        )
+    ) == {"ok": True}
+    assert asyncio.run(
+        registry["before_output_process"][0].func(
+            cast(Any, None),
+            output_context=_HOOK_CONTEXT,
+            output={"ok": True},
+        )
+    ) == {"ok": True}
+    assert asyncio.run(
+        registry["wrap_output_process"][0].func(
+            cast(Any, None),
+            output_context=_HOOK_CONTEXT,
+            output={"ok": True},
+            handler=ok_output,
+        )
+    ) == {"ok": True}
+    assert (
+        asyncio.run(
+            registry["after_output_process"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="done",
+            )
+        )
+        == "done"
+    )
+    assert (
+        asyncio.run(
+            registry["handle_deferred_tool_calls"][0].func(
+                cast(Any, None),
+                requests=cast(Any, None),
+            )
+        )
+        is None
+    )
+
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+    assert updates is not None
+    titles = [update.title for update in updates if isinstance(update, ToolCallProgress)]
+    assert "hook.prepare_output_tools" in titles
+    assert "hook.wrap_output_validate" in titles
+    assert "hook.wrap_output_process" in titles
+    assert "hook.handle_deferred_tool_calls" in titles
+
+
+def test_hook_bridge_output_error_hooks_emit_failed_updates() -> None:
+    bridge = HookBridge()
+    session = AcpSessionContext(
+        session_id="hook-output-errors",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    registry = bridge.build_capability(session)._registry
+
+    async def fail_output(output: Any) -> Any:
+        del output
+        raise RuntimeError("output failed")
+
+    with pytest.raises(RuntimeError, match="output failed"):
+        asyncio.run(
+            registry["wrap_output_validate"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                handler=fail_output,
+            )
+        )
+    with pytest.raises(RuntimeError, match="validate direct"):
+        asyncio.run(
+            registry["on_output_validate_error"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                error=RuntimeError("validate direct"),
+            )
+        )
+    with pytest.raises(RuntimeError, match="output failed"):
+        asyncio.run(
+            registry["wrap_output_process"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                handler=fail_output,
+            )
+        )
+    with pytest.raises(RuntimeError, match="process direct"):
+        asyncio.run(
+            registry["on_output_process_error"][0].func(
+                cast(Any, None),
+                output_context=_HOOK_CONTEXT,
+                output="raw",
+                error=RuntimeError("process direct"),
+            )
+        )
+
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+    assert updates is not None
+    failed_titles = [
+        update.title
+        for update in updates
+        if isinstance(update, ToolCallProgress) and update.status == "failed"
+    ]
+    assert failed_titles == [
+        "hook.wrap_output_validate",
+        "hook.on_output_validate_error",
+        "hook.wrap_output_process",
+        "hook.on_output_process_error",
+    ]
 
 
 def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> None:

@@ -78,6 +78,10 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.PrepareToolsMode
 
+::: pydantic_acp.PrepareOutputToolsBridge
+
+::: pydantic_acp.PrepareOutputToolsMode
+
 ::: pydantic_acp.ThinkingBridge
 
 ::: pydantic_acp.HookBridge

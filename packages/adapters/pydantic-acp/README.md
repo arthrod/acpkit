@@ -263,6 +263,6 @@ Focused docs recipes:
 
 ## Compatibility Policy
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.83.0`.
+`pydantic-acp` currently pins `pydantic-ai-slim==1.92.0`.
 
-That pin is deliberate. The adapter is tested against a specific Pydantic AI surface and should still be upgraded deliberately, but the hook-compatibility seam is now isolated behind ACP Kit’s own compatibility layer instead of scattering private upstream imports through the runtime.
+That pin is deliberate. The adapter is tested against a specific Pydantic AI surface and should still be upgraded deliberately, but the hook-compatibility seam is isolated behind ACP Kit’s own compatibility layer instead of scattering private upstream imports through the runtime. The 1.92 surface includes function-tool preparation, output-tool preparation, output validation/processing hooks, deferred-tool-call hooks, run metadata, and conversation IDs.

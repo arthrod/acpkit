@@ -116,6 +116,12 @@ High-value public seams:
 - `NativeApprovalBridge`
 - `PermissionToolCallBuilder`
 - `ApprovalPolicyStore`
+- `PrepareToolsBridge`
+- `PrepareToolsMode`
+- `PrepareOutputToolsBridge`
+- `PrepareOutputToolsMode`
+- `ThinkingBridge`
+- `HookBridge`
 - `SlashCommandProvider`
 - `StaticSlashCommandProvider`
 - `ExternalHookEventBridge`
@@ -127,6 +133,19 @@ High-value public seams:
 Package entrypoint:
 
 - [Package entrypoint](https://github.com/vcoderun/acpkit/blob/main/packages/adapters/pydantic-acp/src/pydantic_acp/__init__.py)
+
+## Current Pydantic AI Compatibility
+
+`pydantic-acp` currently targets `pydantic-ai-slim==1.92.0`.
+
+When working on this surface, remember:
+
+- `PrepareToolsBridge` owns function-tool preparation and mode-specific plan tool visibility
+- `PrepareOutputToolsBridge` owns structured-output tool preparation and session metadata for output-tool modes
+- `HookBridge` covers output-tool preparation, output validation, output processing, and deferred tool-call observation
+- prompt runtime passes ACP session identity through Pydantic AI `conversation_id` and run `metadata`
+- `run_stream_events()` returns an async context manager in current Pydantic AI; keep direct async-iterable fallback only for tests and compatibility fakes
+- `OpenAICompactionBridge` must not pass deprecated `instructions=` into upstream `OpenAICompaction`
 
 ## Module Guide
 
@@ -190,7 +209,7 @@ It supports:
 - mode switching
 - config options
 - ACP-native plans
-- tool-based or structured plan generation
+- `Tool Plans` or `Structured Plans` plan generation
 - custom slash command providers
 - session replay and fork/resume/load/close/list lifecycle
 - slash command discovery and rendering
@@ -205,6 +224,10 @@ This package should be the reference answer whenever the question is:
 
 High-value bridges include:
 
+- `PrepareToolsBridge`
+- `PrepareOutputToolsBridge`
+- `ThinkingBridge`
+- `HookBridge`
 - `ThreadExecutorBridge`
 - `SetToolMetadataBridge`
 - `IncludeToolReturnSchemasBridge`

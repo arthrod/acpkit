@@ -183,6 +183,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
             "wrap_model_request",
             "after_model_request",
             "prepare_tools",
+            "prepare_output_tools",
             "before_tool_validate",
             "wrap_tool_validate",
             "after_tool_validate",
@@ -190,6 +191,15 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
             "wrap_tool_execute",
             "after_tool_execute",
             "on_tool_execute_error",
+            "before_output_validate",
+            "wrap_output_validate",
+            "after_output_validate",
+            "on_output_validate_error",
+            "before_output_process",
+            "wrap_output_process",
+            "after_output_process",
+            "on_output_process_error",
+            "handle_deferred_tool_calls",
         ]
     }
     assert metadata["history_processors"] == {"processors": ["trim_history"]}

@@ -213,7 +213,37 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         projection_map = compose_projection_maps(self._runtime._owner._config.projection_maps)
         streamed_output = False
 
-        async for event in agent.run_stream_events(prompt_input, **run_kwargs):
+        stream_source = agent.run_stream_events(prompt_input, **run_kwargs)
+        if hasattr(stream_source, "__aenter__"):
+            async with stream_source as stream:
+                return await self._consume_run_events(
+                    stream,
+                    known_starts=known_starts,
+                    message_id=message_id,
+                    projection_map=projection_map,
+                    session=session,
+                    streamed_output=streamed_output,
+                )
+        return await self._consume_run_events(
+            stream_source,
+            known_starts=known_starts,
+            message_id=message_id,
+            projection_map=projection_map,
+            session=session,
+            streamed_output=streamed_output,
+        )
+
+    async def _consume_run_events(
+        self,
+        stream: Any,
+        *,
+        known_starts: dict[str, ToolCallStart],
+        message_id: str,
+        projection_map: Any,
+        session: AcpSessionContext,
+        streamed_output: bool,
+    ) -> tuple[AgentRunResult[Any], bool]:
+        async for event in stream:
             if isinstance(event, AgentRunResultEvent):
                 return event.result, streamed_output
             if self._runtime._owner._config.enable_generic_tool_projection and isinstance(
@@ -342,6 +372,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         )
         run_output_type = self._runtime._owner._build_run_output_type(agent, session=session)
         run_kwargs = self._runtime._owner._build_run_kwargs(
+            session=session,
             message_history=message_history,
             deferred_tool_results=deferred_tool_results,
             deps=deps,

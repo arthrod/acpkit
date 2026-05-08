@@ -1063,6 +1063,7 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
         )
 
     assert adapter._build_run_kwargs(
+        session=session,
         message_history=None,
         deferred_tool_results=None,
         deps=None,
@@ -1071,7 +1072,9 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
         output_type=None,
     ) == {
         "deferred_tool_results": None,
+        "conversation_id": session.session_id,
         "message_history": None,
+        "metadata": {"pydantic_acp_session_id": session.session_id},
         "model": None,
     }
     adapter._config.approval_bridge = None

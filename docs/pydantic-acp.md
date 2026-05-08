@@ -270,18 +270,22 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.83.0`.
+`pydantic-acp` currently pins `pydantic-ai-slim==1.92.0`.
 
 That is not accidental. The adapter relies on a specific, tested Pydantic AI
 surface and should still be upgraded deliberately.
 
-However, ACP Kit no longer imports Pydantic AI private history-processor
-modules directly. History processor support is expressed through ACP Kit's own
-callable aliases and passed into the public
-`Agent(..., history_processors=...)` interface.
+The current compatibility surface includes function-tool preparation,
+output-tool preparation, output validation/processing hooks,
+deferred-tool-call hooks, run metadata, and conversation IDs.
+
+ACP Kit also no longer imports Pydantic AI private history-processor modules
+directly. History processor support is expressed through ACP Kit's own callable
+aliases and passed into the public `Agent(..., history_processors=...)`
+interface.
 
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- upgrades are still compatibility work, but the history-processor integration
-  is no longer a direct private-import dependency
+- upgrades are still compatibility work, but Pydantic AI integration points stay
+  isolated behind ACP Kit bridge and runtime seams

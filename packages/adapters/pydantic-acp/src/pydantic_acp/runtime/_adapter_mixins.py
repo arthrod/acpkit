@@ -111,6 +111,7 @@ class _PromptRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
     def _build_run_kwargs(
         self,
         *,
+        session: AcpSessionContext,
         message_history: list[ModelMessage] | None,
         deferred_tool_results: DeferredToolResults | None,
         deps: AgentDepsT | None,
@@ -119,6 +120,7 @@ class _PromptRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
         output_type: RunOutputType | None,
     ) -> dict[str, Any]:
         return self._prompt_runtime._build_run_kwargs(
+            session=session,
             message_history=message_history,
             deferred_tool_results=deferred_tool_results,
             deps=deps,

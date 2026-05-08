@@ -20,6 +20,10 @@ class HookBridge(BufferedCapabilityBridge):
     record_event_stream: bool = True
     record_model_requests: bool = True
     record_node_lifecycle: bool = True
+    record_deferred_tool_calls: bool = True
+    record_output_processing: bool = True
+    record_output_validation: bool = True
+    record_prepare_output_tools: bool = True
     record_prepare_tools: bool = True
     record_run_lifecycle: bool = True
     record_tool_execution: bool = True
@@ -54,6 +58,22 @@ class HookBridge(BufferedCapabilityBridge):
     @property
     def _node_lifecycle_enabled(self) -> bool:
         return not self.hide_all and self.record_node_lifecycle
+
+    @property
+    def _deferred_tool_calls_enabled(self) -> bool:
+        return not self.hide_all and self.record_deferred_tool_calls
+
+    @property
+    def _output_processing_enabled(self) -> bool:
+        return not self.hide_all and self.record_output_processing
+
+    @property
+    def _output_validation_enabled(self) -> bool:
+        return not self.hide_all and self.record_output_validation
+
+    @property
+    def _prepare_output_tools_enabled(self) -> bool:
+        return not self.hide_all and self.record_prepare_output_tools
 
     @property
     def _prepare_tools_enabled(self) -> bool:

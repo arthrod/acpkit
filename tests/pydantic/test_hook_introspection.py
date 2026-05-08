@@ -368,6 +368,14 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
         del ctx, call, tool_def  # pragma: no cover
         return args  # pragma: no cover
 
+    async def gamma(ctx, *, output_context, output, handler):
+        del ctx, output_context  # pragma: no cover
+        return await handler(output)  # pragma: no cover
+
+    async def delta(ctx, *, requests):
+        del ctx, requests  # pragma: no cover
+        return None  # pragma: no cover
+
     skipped = _TestHookEntry(skipped_alpha)
     skipped.func.__module__ = "pydantic_acp.bridges.hooks"
     tool_entry = _TestHookEntry(beta, tools=frozenset({"z", "a"}))
@@ -377,12 +385,16 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
         1: [],
         "before_model_request": ["bad", broken_entry, skipped, _TestHookEntry(alpha)],
         "before_tool_execute": [tool_entry],
+        "handle_deferred_tool_calls": [_TestHookEntry(delta)],
+        "wrap_output_validate": [_TestHookEntry(gamma)],
     }
 
     listed = list_agent_hooks(Agent(TestModel(custom_output_text="hooked"), capabilities=[hooks]))
     assert [(info.event_id, info.hook_name, info.tool_filters) for info in listed] == [
         ("before_model_request", "alpha", ()),
         ("before_tool_execute", "beta", ("a", "z")),
+        ("deferred_tool_calls", "delta", ()),
+        ("output_validate", "gamma", ()),
     ]
     assert _tool_filters(cast(Any, SimpleNamespace(tools=None))) == ()
     assert _tool_name({"call": _INVALID_HOOK_VALUE}) is None

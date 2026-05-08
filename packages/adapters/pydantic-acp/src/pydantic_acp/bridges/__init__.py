@@ -25,7 +25,13 @@ from .history_processor import (
 )
 from .hooks import HookBridge
 from .mcp import McpBridge, McpServerDefinition, McpToolDefinition
-from .prepare_tools import PlanGenerationType, PrepareToolsBridge, PrepareToolsMode
+from .prepare_tools import (
+    PlanGenerationType,
+    PrepareOutputToolsBridge,
+    PrepareOutputToolsMode,
+    PrepareToolsBridge,
+    PrepareToolsMode,
+)
 from .thinking import ThinkingBridge
 
 __all__ = (
@@ -50,6 +56,8 @@ __all__ = (
     "OpenAICompactionBridge",
     "PlanGenerationType",
     "PrefixToolsBridge",
+    "PrepareOutputToolsBridge",
+    "PrepareOutputToolsMode",
     "PrepareToolsBridge",
     "PrepareToolsMode",
     "SetToolMetadataBridge",

@@ -69,6 +69,10 @@ Use these seams intentionally:
   advertise image, audio, or embedded context unless the runtime can honor them
 - only one `PrepareToolsMode(..., plan_mode=True)` is allowed
 - `plan_tools=True` is how a non-plan execution mode keeps plan progress tools visible
+- `PrepareOutputToolsBridge` is the separate seam for structured-output tool preparation in
+  current Pydantic AI
+- `HookBridge` covers output-tool preparation, output validation, output processing, and
+  deferred tool-call observation
 - `/thinking` only exists when `ThinkingBridge()` is configured
 - native ACP plan state and `PlanProvider` are separate ownership paths
 - permission card rendering is `NativeApprovalBridge.tool_call_builder`, not an `AdapterConfig`
