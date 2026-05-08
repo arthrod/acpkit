@@ -192,6 +192,32 @@ class _FakeStdout:
 
 
 @dataclass(slots=True)
+class _FakeCommandProcess:
+    stdin: Any = field(default_factory=_FakeStdin)
+    stdout: Any = field(default_factory=object)
+    returncode: int | None = None
+    terminate_calls: int = 0
+    kill_calls: int = 0
+    wait_delay: float = 0.0
+    wait_error: Exception | None = None
+
+    def terminate(self) -> None:
+        self.terminate_calls += 1
+
+    def kill(self) -> None:
+        self.kill_calls += 1
+        self.returncode = -9
+
+    async def wait(self) -> int:
+        await asyncio.sleep(self.wait_delay)
+        if self.wait_error is not None:
+            raise self.wait_error
+        if self.returncode is None:  # pragma: no branch
+            self.returncode = 0
+        return self.returncode
+
+
+@dataclass(slots=True)
 class _FakeCommandWebSocket:
     messages: list[str | bytes]
     sent: list[str] = field(default_factory=list)
@@ -515,31 +541,6 @@ async def test_command_connection_covers_first_completed_branches(
     monkeypatch.setattr(command_module, "_close_websocket", fake_close_websocket)
     monkeypatch.setattr(command_module, "_close_stdin", fake_close_stdin)
 
-    @dataclass(slots=True)
-    class _FakeProcess:
-        stdin: Any = field(default_factory=object)
-        stdout: Any = field(default_factory=object)
-        returncode: int | None = None
-        terminate_calls: int = 0
-        kill_calls: int = 0
-        wait_delay: float = 0.0
-        wait_error: Exception | None = None
-
-        def terminate(self) -> None:
-            self.terminate_calls += 1
-
-        def kill(self) -> None:
-            self.kill_calls += 1
-            self.returncode = -9
-
-        async def wait(self) -> int:
-            await asyncio.sleep(self.wait_delay)
-            if self.wait_error is not None:
-                raise self.wait_error
-            if self.returncode is None:  # pragma: no branch
-                self.returncode = 0
-            return self.returncode
-
     async def done_immediately(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
         return None
@@ -548,9 +549,9 @@ async def test_command_connection_covers_first_completed_branches(
         del args, kwargs
         await asyncio.sleep(0.01)
 
-    fast_exit = _FakeProcess(wait_delay=0.0)
+    fast_exit = _FakeCommandProcess(wait_delay=0.0)
 
-    async def create_fast_process(**kwargs: Any) -> _FakeProcess:
+    async def create_fast_process(**kwargs: Any) -> _FakeCommandProcess:
         del kwargs
         return fast_exit
 
@@ -565,9 +566,9 @@ async def test_command_connection_covers_first_completed_branches(
 
     close_calls.clear()
     stdin_close_calls.clear()
-    delayed_exit = _FakeProcess(wait_delay=0.01, wait_error=ProcessLookupError())
+    delayed_exit = _FakeCommandProcess(wait_delay=0.01, wait_error=ProcessLookupError())
 
-    async def create_delayed_process(**kwargs: Any) -> _FakeProcess:
+    async def create_delayed_process(**kwargs: Any) -> _FakeCommandProcess:
         del kwargs
         return delayed_exit
 
@@ -582,50 +583,6 @@ async def test_command_connection_covers_first_completed_branches(
     assert close_calls
     assert stdin_close_calls
 
-    close_calls.clear()
-    stdin_close_calls.clear()
-    timeout_exit = _FakeProcess(wait_delay=0.02)
-
-    async def create_timeout_process(**kwargs: Any) -> _FakeProcess:
-        del kwargs
-        return timeout_exit
-
-    monkeypatch.setattr(command_module, "_create_command_process", create_timeout_process)
-    monkeypatch.setattr(command_module, "_relay_websocket_to_stdin", done_immediately)
-    monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", done_later)
-    await command_module.run_remote_command_connection(
-        cast(Any, object()),
-        command_options=command_module.CommandOptions(
-            command=("echo", "hi"),
-            terminate_timeout=0.001,
-        ),
-    )
-    assert timeout_exit.terminate_calls >= 1
-    assert timeout_exit.kill_calls >= 1
-    assert close_calls
-    assert stdin_close_calls
-
-    close_calls.clear()
-    stdin_close_calls.clear()
-
-    async def all_done(*args: Any, **kwargs: Any) -> None:
-        del args, kwargs
-        return None
-
-    instant_exit = _FakeProcess(wait_delay=0.0)
-
-    async def create_instant_process(**kwargs: Any) -> _FakeProcess:
-        del kwargs
-        return instant_exit
-
-    monkeypatch.setattr(command_module, "_create_command_process", create_instant_process)
-    monkeypatch.setattr(command_module, "_relay_websocket_to_stdin", all_done)
-    monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", all_done)
-    await command_module.run_remote_command_connection(
-        cast(Any, object()),
-        command_options=command_module.CommandOptions(command=("echo", "hi")),
-    )
-
     async def failing_relay(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
         raise ValueError("boom")
@@ -634,9 +591,9 @@ async def test_command_connection_covers_first_completed_branches(
         del args, kwargs
         await asyncio.sleep(0.05)
 
-    hanging_exit = _FakeProcess(wait_delay=0.05)
+    hanging_exit = _FakeCommandProcess(wait_delay=0.05)
 
-    async def create_hanging_process(**kwargs: Any) -> _FakeProcess:
+    async def create_hanging_process(**kwargs: Any) -> _FakeCommandProcess:
         del kwargs
         return hanging_exit
 
@@ -655,6 +612,43 @@ async def test_command_connection_covers_first_completed_branches(
 
     with pytest.raises(ValueError, match="terminate_timeout"):
         command_module.CommandOptions(command=("echo",), terminate_timeout=0)
+
+
+@pytest.mark.asyncio
+async def test_command_process_terminate_timeout_kills() -> None:
+    process = _FakeCommandProcess(wait_delay=0.02)
+
+    await command_module._terminate_process(cast(Any, process), timeout=0.001)
+
+    assert process.terminate_calls == 1
+    assert process.kill_calls == 1
+    assert process.returncode == -9
+
+
+@pytest.mark.asyncio
+async def test_command_connection_covers_all_done_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def all_done(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        return None
+
+    process = _FakeCommandProcess(wait_delay=0.0)
+
+    async def create_process(**kwargs: Any) -> _FakeCommandProcess:
+        del kwargs
+        return process
+
+    monkeypatch.setattr(command_module, "_create_command_process", create_process)
+    monkeypatch.setattr(command_module, "_relay_websocket_to_stdin", all_done)
+    monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", all_done)
+
+    await command_module.run_remote_command_connection(
+        cast(Any, _FakeCommandWebSocket(messages=[])),
+        command_options=command_module.CommandOptions(command=("echo", "hi")),
+    )
+
+    assert process.returncode == 0
 
 
 @pytest.mark.asyncio
