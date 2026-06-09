@@ -13,8 +13,10 @@ from pydantic_acp.runtime.slash_commands import (
     _iter_mcp_server_infos,
     _mcp_server_info_from_bridge_metadata,
     _mcp_server_info_from_http_toolset,
+    _mcp_server_info_from_mcp_toolset,
     _mcp_server_info_from_session_payload,
     _mcp_server_info_from_stdio_toolset,
+    _mcp_target_from_client,
     _toolset_name,
     build_available_commands,
     extract_session_mcp_servers,
@@ -875,6 +877,45 @@ def test_list_agent_mcp_servers_handles_mcp_toolset() -> None:
     assert [(info.name, info.transport, info.target) for info in stdio_infos] == [
         ("local-mcp", "stdio", "python server.py"),
     ]
+
+    sse_transport_cls = type("StreamableHttpSseTransport", (), {})
+    sse_transport_cls.__module__ = "fastmcp.client.transports"
+    sse_transport = sse_transport_cls()
+    cast(Any, sse_transport).url = "https://example.com/sse"
+    sse_toolset = mcp_toolset_cls()
+    cast(Any, sse_toolset).client = SimpleNamespace(transport=sse_transport)
+    sse_info = _mcp_server_info_from_mcp_toolset(sse_toolset)
+    assert sse_info is not None
+    assert (sse_info.transport, sse_info.target) == ("sse", "https://example.com/sse")
+
+    transport_http_toolset = mcp_toolset_cls()
+    cast(Any, transport_http_toolset).client = SimpleNamespace(
+        transport=SimpleNamespace(url="https://example.com/mcp")
+    )
+    transport_http_info = _mcp_server_info_from_mcp_toolset(transport_http_toolset)
+    assert transport_http_info is not None
+    assert (transport_http_info.transport, transport_http_info.target) == (
+        "http",
+        "https://example.com/mcp",
+    )
+
+    no_client_toolset = mcp_toolset_cls()
+    assert _mcp_server_info_from_mcp_toolset(no_client_toolset) is None
+    assert _iter_mcp_server_infos(no_client_toolset) == []
+
+    assert _mcp_target_from_client(SimpleNamespace()) == ("http", "<mcp>")
+
+    fallback_toolset = mcp_toolset_cls()
+    cast(Any, fallback_toolset).client = SimpleNamespace(
+        transport=SimpleNamespace(),
+        url="https://fallback.example/mcp",
+    )
+    fallback_info = _mcp_server_info_from_mcp_toolset(fallback_toolset)
+    assert fallback_info is not None
+    assert (fallback_info.transport, fallback_info.target) == (
+        "http",
+        "https://fallback.example/mcp",
+    )
 
 
 def test_mcp_servers_slash_command_renders_attached_servers(tmp_path: Path) -> None:
