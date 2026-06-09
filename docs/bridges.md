@@ -124,8 +124,7 @@ That is the intended seam for:
 
 `HistoryProcessorBridge` depends on Pydantic AI history-processor callable types.
 ACP Kit models those callable shapes locally and wraps them as
-[`ProcessHistory`][pydantic_ai.capabilities.ProcessHistory] capabilities inside
-`contributions.capabilities`.
+`ProcessHistory` capabilities inside `contributions.capabilities`.
 
 That means:
 

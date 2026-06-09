@@ -854,6 +854,13 @@ def test_list_agent_mcp_servers_handles_fake_toolsets_and_nested_wrappers() -> N
     assert _iter_mcp_server_infos(object()) == []
 
 
+def _make_named_transport(class_name: str, url: str) -> Any:
+    transport_cls = type(class_name, (), {})
+    transport = transport_cls()
+    cast(Any, transport).url = url
+    return transport
+
+
 def test_list_agent_mcp_servers_handles_mcp_toolset() -> None:
     mcp_toolset_cls = type("MCPToolset", (), {})
     mcp_toolset_cls.__module__ = "pydantic_ai.mcp"
@@ -878,43 +885,85 @@ def test_list_agent_mcp_servers_handles_mcp_toolset() -> None:
         ("local-mcp", "stdio", "python server.py"),
     ]
 
-    sse_transport_cls = type("StreamableHttpSseTransport", (), {})
-    sse_transport_cls.__module__ = "fastmcp.client.transports"
-    sse_transport = sse_transport_cls()
-    cast(Any, sse_transport).url = "https://example.com/sse"
-    sse_toolset = mcp_toolset_cls()
-    cast(Any, sse_toolset).client = SimpleNamespace(transport=sse_transport)
-    sse_info = _mcp_server_info_from_mcp_toolset(sse_toolset)
-    assert sse_info is not None
-    assert (sse_info.transport, sse_info.target) == ("sse", "https://example.com/sse")
 
-    transport_http_toolset = mcp_toolset_cls()
-    cast(Any, transport_http_toolset).client = SimpleNamespace(
-        transport=SimpleNamespace(url="https://example.com/mcp")
+@pytest.mark.parametrize(
+    ("client", "expected_transport", "expected_target"),
+    [
+        (SimpleNamespace(), "http", "<mcp>"),
+        (SimpleNamespace(url="https://example.com/mcp"), "http", "https://example.com/mcp"),
+        (
+            SimpleNamespace(transport=SimpleNamespace(url="https://example.com/mcp")),
+            "http",
+            "https://example.com/mcp",
+        ),
+        (
+            SimpleNamespace(
+                transport=_make_named_transport(
+                    "StreamableHttpSseTransport", "https://example.com/sse"
+                )
+            ),
+            "sse",
+            "https://example.com/sse",
+        ),
+        (
+            SimpleNamespace(
+                transport=SimpleNamespace(command="python", args=["server.py", "--serve"])
+            ),
+            "stdio",
+            "python server.py --serve",
+        ),
+        (
+            SimpleNamespace(transport=SimpleNamespace(command="python", args="not-a-list")),
+            "stdio",
+            "python",
+        ),
+        (
+            SimpleNamespace(transport=SimpleNamespace(command="python")),
+            "stdio",
+            "python",
+        ),
+        (
+            SimpleNamespace(
+                transport=SimpleNamespace(url="", command=""),
+                url="https://fallback.example/mcp",
+            ),
+            "http",
+            "https://fallback.example/mcp",
+        ),
+    ],
+)
+def test_mcp_target_from_client_resolves_transport_and_target(
+    client: Any,
+    expected_transport: str,
+    expected_target: str,
+) -> None:
+    assert _mcp_target_from_client(client) == (expected_transport, expected_target)
+
+
+def test_mcp_server_info_from_mcp_toolset_returns_none_without_client() -> None:
+    mcp_toolset_cls = type("MCPToolset", (), {})
+    mcp_toolset_cls.__module__ = "pydantic_ai.mcp"
+    toolset = mcp_toolset_cls()
+
+    assert _mcp_server_info_from_mcp_toolset(toolset) is None
+    assert _iter_mcp_server_infos(toolset) == []
+
+
+def test_mcp_server_info_from_mcp_toolset_builds_server_info_from_client() -> None:
+    mcp_toolset_cls = type("MCPToolset", (), {})
+    mcp_toolset_cls.__module__ = "pydantic_ai.mcp"
+    toolset = mcp_toolset_cls()
+    cast(Any, toolset).id = "remote-mcp"
+    cast(Any, toolset).client = SimpleNamespace(
+        transport=_make_named_transport("StreamableHttpSseTransport", "https://example.com/sse")
     )
-    transport_http_info = _mcp_server_info_from_mcp_toolset(transport_http_toolset)
-    assert transport_http_info is not None
-    assert (transport_http_info.transport, transport_http_info.target) == (
-        "http",
-        "https://example.com/mcp",
-    )
 
-    no_client_toolset = mcp_toolset_cls()
-    assert _mcp_server_info_from_mcp_toolset(no_client_toolset) is None
-    assert _iter_mcp_server_infos(no_client_toolset) == []
-
-    assert _mcp_target_from_client(SimpleNamespace()) == ("http", "<mcp>")
-
-    fallback_toolset = mcp_toolset_cls()
-    cast(Any, fallback_toolset).client = SimpleNamespace(
-        transport=SimpleNamespace(),
-        url="https://fallback.example/mcp",
-    )
-    fallback_info = _mcp_server_info_from_mcp_toolset(fallback_toolset)
-    assert fallback_info is not None
-    assert (fallback_info.transport, fallback_info.target) == (
-        "http",
-        "https://fallback.example/mcp",
+    server_info = _mcp_server_info_from_mcp_toolset(toolset)
+    assert server_info == McpServerInfo(
+        name="remote-mcp",
+        transport="sse",
+        target="https://example.com/sse",
+        source="agent",
     )
 
 
