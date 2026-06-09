@@ -852,6 +852,31 @@ def test_list_agent_mcp_servers_handles_fake_toolsets_and_nested_wrappers() -> N
     assert _iter_mcp_server_infos(object()) == []
 
 
+def test_list_agent_mcp_servers_handles_mcp_toolset() -> None:
+    mcp_toolset_cls = type("MCPToolset", (), {})
+    mcp_toolset_cls.__module__ = "pydantic_ai.mcp"
+    http_toolset = mcp_toolset_cls()
+    cast(Any, http_toolset).id = "remote-mcp"
+    cast(Any, http_toolset).client = SimpleNamespace(url="https://example.com/mcp")
+
+    http_agent = types.SimpleNamespace(toolsets=[http_toolset])
+    http_infos = list_agent_mcp_servers(cast(Any, http_agent))
+    assert [(info.name, info.transport, info.target) for info in http_infos] == [
+        ("remote-mcp", "http", "https://example.com/mcp"),
+    ]
+
+    stdio_toolset = mcp_toolset_cls()
+    cast(Any, stdio_toolset)._id = "local-mcp"
+    cast(Any, stdio_toolset).client = SimpleNamespace(
+        transport=SimpleNamespace(command="python", args=["server.py"])
+    )
+    stdio_agent = types.SimpleNamespace(toolsets=[stdio_toolset])
+    stdio_infos = list_agent_mcp_servers(cast(Any, stdio_agent))
+    assert [(info.name, info.transport, info.target) for info in stdio_infos] == [
+        ("local-mcp", "stdio", "python server.py"),
+    ]
+
+
 def test_mcp_servers_slash_command_renders_attached_servers(tmp_path: Path) -> None:
     session_store = MemorySessionStore()
     adapter = create_acp_agent(

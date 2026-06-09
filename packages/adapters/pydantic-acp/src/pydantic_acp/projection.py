@@ -18,15 +18,13 @@ from acp.schema import (
     ToolKind,
 )
 from pydantic_ai import (
-    BuiltinToolCallPart,
-    BuiltinToolReturnPart,
     ModelMessage,
     ModelResponse,
     RetryPromptPart,
     ToolCallPart,
     ToolReturnPart,
 )
-from pydantic_ai.messages import CompactionPart
+from pydantic_ai.messages import CompactionPart, NativeToolCallPart, NativeToolReturnPart
 from typing_extensions import TypeIs
 
 from ._projection_text import format_code_block, single_line_summary, truncate_text
@@ -1225,16 +1223,16 @@ def _text_block(text: str) -> TextContentBlock:
     return TextContentBlock(type="text", text=text)
 
 
-def _is_tool_call_part(value: Any) -> TypeIs[ToolCallPart | BuiltinToolCallPart]:
-    return isinstance(value, (ToolCallPart, BuiltinToolCallPart))
+def _is_tool_call_part(value: Any) -> TypeIs[ToolCallPart | NativeToolCallPart]:
+    return isinstance(value, (ToolCallPart, NativeToolCallPart))
 
 
-def _is_tool_return_part(value: Any) -> TypeIs[ToolReturnPart | BuiltinToolReturnPart]:
-    return isinstance(value, (ToolReturnPart, BuiltinToolReturnPart))
+def _is_tool_return_part(value: Any) -> TypeIs[ToolReturnPart | NativeToolReturnPart]:
+    return isinstance(value, (ToolReturnPart, NativeToolReturnPart))
 
 
 def _build_tool_start_projection(
-    part: ToolCallPart | BuiltinToolCallPart,
+    part: ToolCallPart | NativeToolCallPart,
     *,
     cwd: Path | None,
     projection_map: ProjectionMap | None,
@@ -1277,7 +1275,7 @@ def _build_tool_locations(
 
 
 def build_tool_start_update(
-    part: ToolCallPart | BuiltinToolCallPart,
+    part: ToolCallPart | NativeToolCallPart,
     *,
     classifier: ToolClassifier,
     cwd: Path | None = None,
@@ -1310,7 +1308,7 @@ def build_tool_start_update(
 
 
 def build_tool_progress_update(
-    part: ToolReturnPart | BuiltinToolReturnPart | RetryPromptPart,
+    part: ToolReturnPart | NativeToolReturnPart | RetryPromptPart,
     *,
     classifier: ToolClassifier,
     cwd: Path | None = None,
@@ -1416,7 +1414,7 @@ def _build_progress_updates_for_message(
                 known_call_starts[part.tool_call_id] = start_update
                 updates.append(start_update)
                 continue
-            if isinstance(part, BuiltinToolReturnPart):
+            if isinstance(part, NativeToolReturnPart):
                 if _is_output_tool(part.tool_name):
                     continue
                 updates.append(

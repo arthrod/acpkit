@@ -136,7 +136,7 @@ Package entrypoint:
 
 ## Current Pydantic AI Compatibility
 
-`pydantic-acp` currently targets `pydantic-ai-slim==1.92.0`.
+`pydantic-acp` currently targets `pydantic-ai-slim==1.106.0`.
 
 When working on this surface, remember:
 

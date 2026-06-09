@@ -1362,7 +1362,7 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.92.0`.
+`pydantic-acp` currently pins `pydantic-ai-slim==1.106.0`.
 
 That is not accidental. The adapter relies on a specific, tested Pydantic AI
 surface and should still be upgraded deliberately.
@@ -1373,8 +1373,8 @@ deferred-tool-call hooks, run metadata, and conversation IDs.
 
 ACP Kit also no longer imports Pydantic AI private history-processor modules
 directly. History processor support is expressed through ACP Kit's own callable
-aliases and passed into the public `Agent(..., history_processors=...)`
-interface.
+aliases and wrapped as `ProcessHistory` capabilities inside
+`contributions.capabilities`.
 
 What this means in practice:
 
@@ -3347,7 +3347,6 @@ contributions = builder.build()
 agent = Agent(
     model,
     capabilities=contributions.capabilities,
-    history_processors=contributions.history_processors,
 )
 ```
 
@@ -3364,13 +3363,14 @@ That is the intended seam for:
 ## Compatibility Note: History Processor Types
 
 `HistoryProcessorBridge` depends on Pydantic AI history-processor callable types.
-ACP Kit models those callable shapes locally and passes them through the public
-`Agent(..., history_processors=...)` interface.
+ACP Kit models those callable shapes locally and wraps them as
+`ProcessHistory` capabilities inside `contributions.capabilities`.
 
 That means:
 
 - the adapter is no longer directly coupled to upstream private
   history-processor imports
+- pass only `capabilities=contributions.capabilities` when constructing the agent
 
 ## Example: Custom Hook Introspection + MCP Metadata Classification
 
@@ -3803,8 +3803,7 @@ contributions = builder.build()
 
 It returns:
 
-- `capabilities`
-- `history_processors`
+- `capabilities` (including `ProcessHistory` wrappers for configured history processors)
 
 That makes it a natural fit inside `agent_factory` or `AgentSource.get_agent(...)`.
 

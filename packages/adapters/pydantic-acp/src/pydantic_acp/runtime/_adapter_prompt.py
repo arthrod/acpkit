@@ -353,6 +353,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         )
         return PromptResponse(
             stop_reason=prompt_outcome.stop_reason,
-            usage=usage_from_run(result.usage()),
+            usage=usage_from_run(result.usage),
             user_message_id=acknowledged_message_id,
         )

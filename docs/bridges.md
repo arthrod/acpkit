@@ -107,7 +107,6 @@ contributions = builder.build()
 agent = Agent(
     model,
     capabilities=contributions.capabilities,
-    history_processors=contributions.history_processors,
 )
 ```
 
@@ -124,13 +123,15 @@ That is the intended seam for:
 ## Compatibility Note: History Processor Types
 
 `HistoryProcessorBridge` depends on Pydantic AI history-processor callable types.
-ACP Kit models those callable shapes locally and passes them through the public
-`Agent(..., history_processors=...)` interface.
+ACP Kit models those callable shapes locally and wraps them as
+[`ProcessHistory`][pydantic_ai.capabilities.ProcessHistory] capabilities inside
+`contributions.capabilities`.
 
 That means:
 
 - the adapter is no longer directly coupled to upstream private
   history-processor imports
+- pass only `capabilities=contributions.capabilities` when constructing the agent
 
 ## Example: Custom Hook Introspection + MCP Metadata Classification
 
@@ -568,8 +569,7 @@ contributions = builder.build()
 
 It returns:
 
-- `capabilities`
-- `history_processors`
+- `capabilities` (including `ProcessHistory` wrappers for configured history processors)
 
 That makes it a natural fit inside `agent_factory` or `AgentSource.get_agent(...)`.
 

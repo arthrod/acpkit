@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Generic, TypeVar
 
-from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.capabilities import AbstractCapability, ProcessHistory
 
 from ..bridges import (
     CapabilityBridge,
@@ -27,7 +27,6 @@ __all__ = (
 @dataclass(slots=True, frozen=True, kw_only=True)
 class AgentBridgeContributions(Generic[AgentDepsT]):
     capabilities: tuple[AbstractCapability[Any], ...]
-    history_processors: tuple[HistoryProcessorCallable[AgentDepsT], ...]
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -45,12 +44,16 @@ class AgentBridgeBuilder(Generic[AgentDepsT]):
         ] = (),
         plain_history_processors: Sequence[HistoryProcessorPlain] = (),
     ) -> AgentBridgeContributions[AgentDepsT]:
+        resolved_capabilities = self.build_capabilities(capabilities=capabilities)
+        resolved_processors = self.build_history_processors(
+            contextual_history_processors=contextual_history_processors,
+            plain_history_processors=plain_history_processors,
+        )
+        history_capabilities = tuple(
+            ProcessHistory[AgentDepsT](processor) for processor in resolved_processors
+        )
         return AgentBridgeContributions(
-            capabilities=self.build_capabilities(capabilities=capabilities),
-            history_processors=self.build_history_processors(
-                contextual_history_processors=contextual_history_processors,
-                plain_history_processors=plain_history_processors,
-            ),
+            capabilities=resolved_capabilities + history_capabilities,
         )
 
     def build_capabilities(

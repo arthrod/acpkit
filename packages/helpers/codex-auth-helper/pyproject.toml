@@ -8,7 +8,7 @@ license = { text = "Apache 2.0" }
 dependencies = [
     "httpx>=0.28.1",
     "openai>=1.109.1",
-    "pydantic-ai-slim>=1.73.0",
+    "pydantic-ai-slim>=1.106.0",
     "typing-extensions>=4.12.0",
 ]
 

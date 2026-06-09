@@ -439,6 +439,9 @@ def _iter_mcp_server_infos(toolset: Any) -> list[McpServerInfo]:
     if _is_mcp_server_http(toolset):
         server_info = _mcp_server_info_from_http_toolset(toolset)
         return [server_info] if server_info is not None else []
+    if _is_mcp_toolset(toolset):
+        server_info = _mcp_server_info_from_mcp_toolset(toolset)
+        return [server_info] if server_info is not None else []
     return []
 
 
@@ -490,6 +493,48 @@ def _mcp_server_info_from_http_toolset(toolset: Any) -> McpServerInfo | None:
         target=target,
         source="agent",
     )
+
+
+def _is_mcp_toolset(toolset: Any) -> bool:
+    return type(toolset).__module__ == "pydantic_ai.mcp" and type(toolset).__name__ == "MCPToolset"
+
+
+def _mcp_server_info_from_mcp_toolset(toolset: Any) -> McpServerInfo | None:
+    client = getattr(toolset, "client", None)
+    if client is None:
+        return None
+    transport, target = _mcp_target_from_client(client)
+    return McpServerInfo(
+        name=_toolset_name(toolset, fallback=target),
+        transport=transport,
+        target=target,
+        source="agent",
+    )
+
+
+def _mcp_target_from_client(client: Any) -> tuple[str, str]:
+    transport_obj = getattr(client, "transport", None)
+    if transport_obj is not None:
+        url = getattr(transport_obj, "url", None)
+        if isinstance(url, str) and url:
+            transport_name = type(transport_obj).__name__.lower()
+            if "sse" in transport_name:
+                return "sse", url
+            return "http", url
+        command = getattr(transport_obj, "command", None)
+        if isinstance(command, str) and command:
+            args = getattr(transport_obj, "args", None)
+            rendered_args = (
+                " ".join(item for item in args if isinstance(item, str))
+                if isinstance(args, list)
+                else ""
+            )
+            target = command if not rendered_args else f"{command} {rendered_args}"
+            return "stdio", target
+    url = getattr(client, "url", None)
+    if isinstance(url, str) and url:
+        return "http", url
+    return "http", "<mcp>"
 
 
 def _toolset_name(toolset: Any, *, fallback: str) -> str:

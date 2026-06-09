@@ -42,11 +42,11 @@ from pydantic_acp.projection import (
 )
 from pydantic_acp.serialization import DefaultOutputSerializer
 from pydantic_ai import (
-    BuiltinToolCallPart,
-    BuiltinToolReturnPart,
     CompactionPart,
     ModelRequest,
     ModelResponse,
+    NativeToolCallPart,
+    NativeToolReturnPart,
     RetryPromptPart,
 )
 
@@ -376,7 +376,7 @@ def test_builtin_web_search_projection_renders_query_and_results() -> None:
     projection_map = WebToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="web_search",
         args={
             "query": "acpkit",
@@ -392,7 +392,7 @@ def test_builtin_web_search_projection_renders_query_and_results() -> None:
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="web_search",
             tool_call_id="search-1",
             content=[
@@ -427,7 +427,7 @@ def test_builtin_web_fetch_projection_renders_url_and_preview() -> None:
     projection_map = WebToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="web_fetch",
         args={"url": "https://example.com/docs"},
         tool_call_id="fetch-1",
@@ -439,7 +439,7 @@ def test_builtin_web_fetch_projection_renders_url_and_preview() -> None:
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="web_fetch",
             tool_call_id="fetch-1",
             content={
@@ -500,7 +500,7 @@ def test_build_tool_updates_supports_builtin_tool_call_and_return_parts() -> Non
         [
             ModelResponse(
                 parts=[
-                    BuiltinToolCallPart(
+                    NativeToolCallPart(
                         tool_name="web_search",
                         args={"query": "acpkit"},
                         tool_call_id="search-1",
@@ -509,7 +509,7 @@ def test_build_tool_updates_supports_builtin_tool_call_and_return_parts() -> Non
             ),
             ModelResponse(
                 parts=[
-                    BuiltinToolReturnPart(
+                    NativeToolReturnPart(
                         tool_name="web_search",
                         tool_call_id="search-1",
                         content={"results": [{"title": "ACP Kit", "href": "https://example.com"}]},
@@ -536,7 +536,7 @@ def test_builtin_image_generation_projection_renders_prompt_and_result_summary()
     projection_map = BuiltinToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="image_generation",
         args={
             "prompt": "a kiwi bird in a raincoat",
@@ -552,7 +552,7 @@ def test_builtin_image_generation_projection_renders_prompt_and_result_summary()
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="image_generation",
             tool_call_id="img-1",
             content={
@@ -587,7 +587,7 @@ def test_builtin_mcp_projection_renders_start_and_progress_for_tool_calls() -> N
     projection_map = BuiltinToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="mcp_server:repo",
         args={
             "action": "call_tool",
@@ -603,7 +603,7 @@ def test_builtin_mcp_projection_renders_start_and_progress_for_tool_calls() -> N
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="mcp_server:repo",
             tool_call_id="mcp-1",
             content={
@@ -1047,12 +1047,12 @@ def test_build_tool_updates_skips_final_result_and_projects_retry_prompts() -> N
         [
             ModelResponse(
                 parts=[
-                    BuiltinToolCallPart(
+                    NativeToolCallPart(
                         tool_name="final_result",
                         args={"answer": "done"},
                         tool_call_id="out-1",
                     ),
-                    BuiltinToolReturnPart(
+                    NativeToolReturnPart(
                         tool_name="final_result",
                         tool_call_id="out-1",
                         content="done",

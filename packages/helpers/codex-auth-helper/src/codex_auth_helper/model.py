@@ -35,7 +35,7 @@ class CodexResponsesModel(OpenAIResponsesModel):
         messages: Sequence[ModelRequest | ModelResponse],
         model_request_parameters: ModelRequestParameters,
     ) -> list[ModelRequest | ModelResponse]:
-        resolved = super()._get_instructions(messages, model_request_parameters)
+        resolved = super()._get_instruction_parts(messages, model_request_parameters)
         if resolved:
             return list(messages)
         return [ModelRequest(parts=(), instructions=self._default_instructions), *messages]

@@ -265,7 +265,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
                 event,
                 FunctionToolResultEvent,
             ):
-                result_part = event.result
+                result_part = event.part
                 if isinstance(result_part, RetryPromptPart):
                     if result_part.tool_name is None or _is_output_tool(result_part.tool_name):
                         continue

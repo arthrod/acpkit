@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any, Final, Generic, Literal, TypeVar
 from urllib.parse import urlparse
 
 from pydantic_ai import ModelRequestContext
-from pydantic_ai.builtin_tools import ImageAspectRatio, WebSearchUserLocation
 from pydantic_ai.capabilities import (
     MCP,
     AbstractCapability,
@@ -21,6 +20,7 @@ from pydantic_ai.capabilities import (
     WebSearch,
 )
 from pydantic_ai.messages import CompactionPart, ModelMessage, ModelResponse
+from pydantic_ai.native_tools import ImageAspectRatio, WebSearchUserLocation
 from pydantic_ai.tools import RunContext, ToolSelector
 from pydantic_ai.toolsets import AgentToolset
 
@@ -29,8 +29,8 @@ from ..session.state import AcpSessionContext, JsonValue
 from .base import BufferedCapabilityBridge, CapabilityBridge
 
 if TYPE_CHECKING:
-    from pydantic_ai.builtin_tools import ImageGenerationTool, MCPServerTool
     from pydantic_ai.models import KnownModelName, Model
+    from pydantic_ai.native_tools import ImageGenerationTool, MCPServerTool
 
 AgentDepsT = TypeVar("AgentDepsT", contravariant=True)
 
@@ -211,7 +211,7 @@ class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
     ) -> ImageGeneration[AgentDepsT]:
         del session
         return ImageGeneration(
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             fallback_model=self.fallback_model,
             background=self.background,
@@ -278,7 +278,7 @@ class McpCapabilityBridge(CapabilityBridge, Generic[AgentDepsT]):
         del session
         return MCP(
             self.url,
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             id=self.id,
             authorization_token=self.authorization_token,
@@ -569,7 +569,7 @@ class WebSearchBridge(CapabilityBridge, Generic[AgentDepsT]):
     ) -> WebSearch[AgentDepsT]:
         del session
         return WebSearch(
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             search_context_size=self.search_context_size,
             user_location=self.user_location,
@@ -624,7 +624,7 @@ class WebFetchBridge(CapabilityBridge, Generic[AgentDepsT]):
     ) -> WebFetch[AgentDepsT]:
         del session
         return WebFetch(
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             allowed_domains=self.allowed_domains,
             blocked_domains=self.blocked_domains,

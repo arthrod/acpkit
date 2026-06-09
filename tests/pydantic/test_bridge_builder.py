@@ -96,7 +96,6 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
         agent = Agent(
             TestModel(call_tools=["mcp.search_repo"], custom_output_text="review:done"),
             capabilities=contributions.capabilities,
-            history_processors=contributions.history_processors,
         )
 
         @agent.tool_plain(name="mcp.search_repo")
@@ -280,7 +279,7 @@ def test_agent_bridge_builder_auto_wraps_contextual_history_processors(
         contributions = builder.build(contextual_history_processors=[contextual_history])
         return Agent(
             TestModel(custom_output_text="contextual-history"),
-            history_processors=contributions.history_processors,
+            capabilities=contributions.capabilities,
         )
 
     adapter = create_acp_agent(
