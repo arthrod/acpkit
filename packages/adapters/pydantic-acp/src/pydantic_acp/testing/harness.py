@@ -7,13 +7,20 @@ from acp import PROTOCOL_VERSION
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.schema import (
+    AgentPlanUpdate,
+    AgentThoughtChunk,
     AvailableCommandsUpdate,
+    ConfigOptionUpdate,
+    CurrentModeUpdate,
     HttpMcpServer,
     McpServerStdio,
+    PlanEntry,
+    SessionInfoUpdate,
     SseMcpServer,
     ToolCallProgress,
     ToolCallStart,
     ToolCallUpdate,
+    UsageUpdate,
 )
 from pydantic_ai import Agent as PydanticAgent
 
@@ -123,6 +130,56 @@ class BlackBoxHarness:
             session_id=self.require_session_id(session_id),
         )
 
+    async def set_config_option(
+        self,
+        config_id: str,
+        value: str | bool,
+        *,
+        session_id: str | None = None,
+    ):
+        return await self.adapter.set_config_option(
+            config_id=config_id,
+            session_id=self.require_session_id(session_id),
+            value=value,
+        )
+
+    async def list_sessions(self, *, cursor: str | None = None, cwd: str | None = None):
+        return await self.adapter.list_sessions(cursor=cursor, cwd=cwd)
+
+    async def fork_session(
+        self,
+        *,
+        cwd: str,
+        session_id: str | None = None,
+        mcp_servers: Sequence[McpServerDefinition] | None = None,
+    ):
+        response = await self.adapter.fork_session(
+            cwd=cwd,
+            session_id=self.require_session_id(session_id),
+            mcp_servers=list(mcp_servers) if mcp_servers is not None else [],
+        )
+        self.last_session_id = response.session_id
+        return response
+
+    async def resume_session(
+        self,
+        *,
+        cwd: str,
+        session_id: str | None = None,
+        mcp_servers: Sequence[McpServerDefinition] | None = None,
+    ):
+        resolved_session_id = self.require_session_id(session_id)
+        response = await self.adapter.resume_session(
+            cwd=cwd,
+            session_id=resolved_session_id,
+            mcp_servers=list(mcp_servers) if mcp_servers is not None else [],
+        )
+        self.last_session_id = resolved_session_id
+        return response
+
+    async def close_session(self, *, session_id: str | None = None):
+        return await self.adapter.close_session(session_id=self.require_session_id(session_id))
+
     def require_session_id(self, session_id: str | None = None) -> str:
         resolved_session_id = self.last_session_id if session_id is None else session_id
         if resolved_session_id is None:
@@ -164,11 +221,61 @@ class BlackBoxHarness:
             return []
         return [command.name for command in command_updates[-1].available_commands]
 
+    def current_mode_updates(self, *, session_id: str | None = None) -> list[CurrentModeUpdate]:
+        return self.updates_of_type(CurrentModeUpdate, session_id=session_id)
+
+    def current_mode_id(self, *, session_id: str | None = None) -> str | None:
+        mode_updates = self.current_mode_updates(session_id=session_id)
+        if not mode_updates:
+            return None
+        return mode_updates[-1].current_mode_id
+
+    def config_option_updates(
+        self,
+        *,
+        session_id: str | None = None,
+    ) -> list[ConfigOptionUpdate]:
+        return self.updates_of_type(ConfigOptionUpdate, session_id=session_id)
+
+    def plan_updates(self, *, session_id: str | None = None) -> list[AgentPlanUpdate]:
+        return self.updates_of_type(AgentPlanUpdate, session_id=session_id)
+
+    def last_plan_entries(self, *, session_id: str | None = None) -> list[PlanEntry]:
+        plan_updates = self.plan_updates(session_id=session_id)
+        if not plan_updates:
+            return []
+        return list(plan_updates[-1].entries)
+
+    def thought_chunks(self, *, session_id: str | None = None) -> list[AgentThoughtChunk]:
+        return self.updates_of_type(AgentThoughtChunk, session_id=session_id)
+
+    def session_info_updates(self, *, session_id: str | None = None) -> list[SessionInfoUpdate]:
+        return self.updates_of_type(SessionInfoUpdate, session_id=session_id)
+
+    def usage_updates(self, *, session_id: str | None = None) -> list[UsageUpdate]:
+        return self.updates_of_type(UsageUpdate, session_id=session_id)
+
     def permission_requests(self, *, session_id: str | None = None) -> list[ToolCallUpdate]:
         if session_id is None:
             return [request[2] for request in self.client.permission_option_ids]
         return [
             request[2] for request in self.client.permission_option_ids if request[0] == session_id
+        ]
+
+    def permission_request_option_ids(self, *, session_id: str | None = None) -> list[list[str]]:
+        if session_id is None:
+            return [request[1] for request in self.client.permission_option_ids]
+        return [
+            request[1] for request in self.client.permission_option_ids if request[0] == session_id
+        ]
+
+    def permission_request_option_names(self, *, session_id: str | None = None) -> list[list[str]]:
+        if session_id is None:
+            return [request[1] for request in self.client.permission_option_names]
+        return [
+            request[1]
+            for request in self.client.permission_option_names
+            if request[0] == session_id
         ]
 
     def last_permission_request(self, *, session_id: str | None = None) -> ToolCallUpdate | None:

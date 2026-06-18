@@ -10,6 +10,9 @@ from pydantic_acp.projection import (
     BuiltinToolProjectionMap,
     CompositeProjectionMap,
     DefaultToolClassifier,
+    HarnessCodeModeProjectionMap,
+    HarnessFileSystemProjectionMap,
+    HarnessShellProjectionMap,
     ToolProjection,
     WebToolProjectionMap,
     _append_string_list_line,
@@ -1119,6 +1122,157 @@ def test_filesystem_search_projection_renders_tree_output() -> None:
     assert text.endswith("...")
 
 
+def test_harness_filesystem_projection_uses_upstream_tool_names() -> None:
+    projection = HarnessFileSystemProjectionMap()
+
+    read_start = projection.project_start("read_file", raw_input={"path": "src/app.py"})
+    read_progress = projection.project_progress(
+        "read_file",
+        raw_input={"path": "src/app.py"},
+        raw_output="[src/app.py | 2 lines | hash:abc123]\n     1\tprint('hi')\n",
+        serialized_output="ignored",
+        status="completed",
+    )
+    write_start = projection.project_start(
+        "write_file",
+        raw_input={"path": "src/app.py", "content": "print('hi')"},
+    )
+    search_progress = projection.project_progress(
+        "list_directory",
+        raw_input={"path": "src"},
+        raw_output="app.py\npkg/module.py",
+        serialized_output="ignored",
+        status="completed",
+    )
+
+    assert read_start is not None
+    assert read_start.title == "Read src/app.py"
+    assert read_start.locations == [ToolCallLocation(path="src/app.py")]
+    assert read_start.content is not None
+    read_start_content = read_start.content[0]
+    assert isinstance(read_start_content, ContentToolCallContent)
+    assert read_start_content.content.text == "Read file: `src/app.py`"
+
+    assert read_progress is not None
+    assert read_progress.locations == [ToolCallLocation(path="src/app.py")]
+    assert read_progress.status == "completed"
+    assert read_progress.content is not None
+    read_progress_content = read_progress.content[0]
+    assert isinstance(read_progress_content, ContentToolCallContent)
+    assert "Read `src/app.py`:" in read_progress_content.content.text
+    assert "[src/app.py | 2 lines | hash:abc123]" in read_progress_content.content.text
+    assert "print('hi')" in read_progress_content.content.text
+
+    assert write_start is not None
+    assert write_start.content is not None
+    write_content = write_start.content[0]
+    assert isinstance(write_content, FileEditToolCallContent)
+    assert write_content.path == "src/app.py"
+    assert write_content.new_text == "print('hi')"
+
+    assert search_progress is not None
+    assert search_progress.content is not None
+    search_content = search_progress.content[0]
+    assert isinstance(search_content, ContentToolCallContent)
+    assert "Tree: src" in search_content.content.text
+    assert "module.py" in search_content.content.text
+
+
+def test_harness_filesystem_read_projection_rejects_invalid_inputs() -> None:
+    projection = HarnessFileSystemProjectionMap()
+
+    assert projection.project_start("read_file", raw_input="invalid") is None
+    assert projection.project_start("read_file", raw_input={"offset": 5}) is None
+    assert (
+        projection.project_progress(
+            "read_file",
+            raw_input="invalid",
+            raw_output="ignored",
+            serialized_output="ignored",
+            status="completed",
+        )
+        is None
+    )
+    assert (
+        projection.project_progress(
+            "read_file",
+            raw_input={"offset": 5},
+            raw_output="ignored",
+            serialized_output="ignored",
+            status="completed",
+        )
+        is None
+    )
+
+
+def test_harness_shell_projection_renders_command_and_control_tools() -> None:
+    projection = HarnessShellProjectionMap()
+
+    run_start = projection.project_start("run_command", raw_input={"command": "pytest -q"})
+    check_start = projection.project_start("check_command", raw_input={"command_id": "cmd-1"})
+    stop_start = projection.project_start("stop_command", raw_input={})
+    invalid_start = projection.project_start("check_command", raw_input="invalid")
+    progress = projection.project_progress(
+        "start_command",
+        raw_input={"command": "python app.py"},
+        raw_output={"command_id": "cmd-2"},
+        serialized_output="ignored",
+        status="pending",
+    )
+
+    assert run_start is not None
+    assert run_start.title == "Execute pytest -q"
+    assert run_start.content is not None
+    assert run_start.content[0].content.text == "```bash\npytest -q\n```"
+
+    assert check_start is not None
+    assert check_start.title == "Check command cmd-1"
+    assert check_start.content is not None
+    assert check_start.content[0].content.text == "Command ID: cmd-1"
+
+    assert stop_start is not None
+    assert stop_start.title == "Stop command"
+    assert invalid_start is None
+
+    assert progress is not None
+    assert progress.content is not None
+    terminal_content = progress.content[0]
+    assert isinstance(terminal_content, TerminalToolCallContent)
+    assert terminal_content.terminal_id == "cmd-2"
+
+
+def test_harness_code_mode_projection_renders_code_and_output() -> None:
+    projection = HarnessCodeModeProjectionMap()
+
+    start = projection.project_start("run_code", raw_input={"code": "print('hi')"})
+    title_only = projection.project_start("run_code", raw_input={})
+    miss_start = projection.project_start("other", raw_input={})
+    progress = projection.project_progress(
+        "run_code",
+        raw_output={"stdout": "hi"},
+        serialized_output="ignored",
+        status="completed",
+    )
+    pending_progress = projection.project_progress(
+        "run_code",
+        raw_output="hi",
+        serialized_output="hi",
+        status="pending",
+    )
+
+    assert start is not None
+    assert start.title == "Run code: print('hi')"
+    assert start.content is not None
+    assert start.content[0].content.text == "```python\nprint('hi')\n```"
+    assert title_only is not None
+    assert title_only.title == "Run code"
+    assert miss_start is None
+    assert progress is not None
+    assert progress.content is not None
+    assert progress.content[0].content.text == "ignored"
+    assert pending_progress is None
+
+
 def test_filesystem_search_projection_keeps_plain_output_for_errors_and_disabled_tree() -> None:
     projection = FileSystemProjectionMap(default_search_tool="search_files")
 
@@ -1242,6 +1396,23 @@ def test_projection_aware_tool_classifier_uses_filesystem_projection_names() -> 
     assert classifier.approval_policy_key("list_files") == "list_files"
 
 
+def test_projection_aware_tool_classifier_uses_harness_projection_names() -> None:
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=DefaultToolClassifier(),
+        projection_maps=[
+            HarnessFileSystemProjectionMap(),
+            HarnessShellProjectionMap(),
+            HarnessCodeModeProjectionMap(),
+        ],
+    )
+
+    assert classifier.classify("read_file") == "read"
+    assert classifier.classify("write_file") == "edit"
+    assert classifier.classify("list_directory") == "search"
+    assert classifier.classify("run_command") == "execute"
+    assert classifier.classify("run_code") == "execute"
+
+
 def test_projection_aware_tool_classifier_preserves_raw_input_for_fallback() -> None:
     class ArgSensitiveClassifier:
         def classify(self, tool_name: str, raw_input: Any = None) -> ToolKind:
@@ -1270,6 +1441,7 @@ def test_projection_aware_tool_classifier_recurses_into_composite_maps() -> None
         projection_maps=[
             CompositeProjectionMap(
                 maps=(
+                    WebToolProjectionMap(search_tool_names=frozenset({"web_search"})),
                     FileSystemProjectionMap(default_search_tool="nested_search"),
                     CompositeProjectionMap(
                         maps=(

@@ -2,6 +2,7 @@ from __future__ import annotations as _annotations
 
 import asyncio
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
@@ -60,11 +61,23 @@ class PydanticAcpAgent(
         config: AdapterConfig,
     ) -> None:
         self._agent_source = agent_source
-        self._config = config
+        bridge_projection_maps = tuple(
+            projection_map
+            for bridge in config.capability_bridges
+            for projection_map in bridge.get_projection_maps()
+        )
+        self._config = (
+            replace(
+                config,
+                projection_maps=(*config.projection_maps, *bridge_projection_maps),
+            )
+            if bridge_projection_maps
+            else config
+        )
         self._client: AcpClient | None = None
         self._bridge_manager = BridgeManager(
-            base_classifier=config.tool_classifier,
-            bridges=tuple(config.capability_bridges),
+            base_classifier=self._config.tool_classifier,
+            bridges=tuple(self._config.capability_bridges),
         )
         self._tool_classifier = self._bridge_manager.tool_classifier
         self._prompt_runtime = _PromptRuntime(self)

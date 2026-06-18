@@ -12,6 +12,7 @@ Use it when you want ACP-native clients to see truthful:
 - approval workflows
 - cancellation behavior
 - MCP metadata and host-backed tools
+- harness-backed filesystem, shell, and optional CodeMode capability surfaces
 - prompt resources such as editor selections, branch diffs, file references, and multimodal input
 - persisted ACP sessions and replayable transcript state
 
@@ -187,6 +188,23 @@ Common bridges:
 
 The important rule is that bridges should describe real runtime behavior, not hypothetical UI affordances.
 
+Harness-backed capability bridges follow the same rule. Use:
+
+- `HarnessFileSystemBridge` for workspace-scoped file tools
+- `HarnessShellBridge` for bounded shell tools
+- `HarnessCodeModeBridge` only when the run should expose CodeMode execution tools
+
+When you use those bridges, pair them with:
+
+- `HarnessFileSystemProjectionMap`
+- `HarnessShellProjectionMap`
+- `HarnessCodeModeProjectionMap`
+
+That combination keeps ACP transcript updates readable and tool-family-specific. The maintained guide
+for this surface is:
+
+- [Harness-backed Capabilities](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md)
+
 ## Runtime Notes
 
 - `Agent(output_type=str | None)` is supported, but a successful `None` result ends the turn without emitting a synthetic `"null"` transcript message.
@@ -253,10 +271,11 @@ If you are integrating `pydantic-acp` in a real product:
 2. Read [AdapterConfig](pydantic-acp/adapter-config.md).
 3. Read [Models, Modes, and Slash Commands](pydantic-acp/runtime-controls.md).
 4. Read [Plans, Thinking, and Approvals](pydantic-acp/plans-thinking-approvals.md).
-5. Read [Prompt Resources and Context](pydantic-acp/prompt-resources.md) if your client attaches selections, diffs, file refs, or multimodal input.
-6. Read [Providers](providers.md) if the host already owns state.
-7. Read [Bridges](bridges.md) if you need ACP-visible runtime extensions.
-8. Read [Finance Agent](examples/finance.md) and [Travel Agent](examples/travel.md) for maintained end-to-end examples.
+5. Read [Harness-backed Capabilities](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md) if your agent should expose `pydantic-ai-harness` filesystem, shell, or CodeMode tools.
+6. Read [Prompt Resources and Context](pydantic-acp/prompt-resources.md) if your client attaches selections, diffs, file refs, or multimodal input.
+7. Read [Providers](providers.md) if the host already owns state.
+8. Read [Bridges](bridges.md) if you need ACP-visible runtime extensions.
+9. Read [Finance Agent](examples/finance.md) and [Travel Agent](examples/travel.md) for maintained end-to-end examples.
 
 ## Common Mistakes
 

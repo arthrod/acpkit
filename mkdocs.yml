@@ -97,6 +97,7 @@ nav:
           - Models, Modes, and Slash Commands: pydantic-acp/runtime-controls.md
           - Plans, Thinking, and Approvals: pydantic-acp/plans-thinking-approvals.md
           - Prompt Resources and Context: pydantic-acp/prompt-resources.md
+          - Harness-backed Capabilities: pydantic-acp/harness-capabilities.md
           - Providers: providers.md
           - Bridges: bridges.md
           - Host Backends and Projections: host-backends.md
@@ -134,5 +135,7 @@ nav:
       - langchain_acp: api/langchain_acp.md
       - pydantic_acp: api/pydantic_acp.md
       - codex_auth_helper: api/codex_auth_helper.md
+  - Release Notes:
+      - pydantic-acp 0.9.7 Harness: releases/pydantic-acp-0.9.7-harness.md
   - Testing: testing.md
   - About: about/index.md

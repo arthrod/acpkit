@@ -212,6 +212,68 @@ Current built-in bridges include:
 
 Use bridges when the runtime should gain upstream Pydantic AI capabilities and ACP-visible metadata without rewriting the adapter core.
 
+## Harness-backed Capabilities
+
+`pydantic-acp` also ships a maintained bridge and projection layer for `pydantic-ai-harness`.
+
+Public seams:
+
+- `HarnessFileSystemBridge`
+- `HarnessShellBridge`
+- `HarnessCodeModeBridge`
+- `HarnessFileSystemProjectionMap`
+- `HarnessShellProjectionMap`
+- `HarnessCodeModeProjectionMap`
+
+Minimal example:
+
+```python
+from pathlib import Path
+
+from pydantic_ai import Agent
+from pydantic_acp import (
+    AdapterConfig,
+    HarnessFileSystemBridge,
+    HarnessFileSystemProjectionMap,
+    HarnessShellBridge,
+    HarnessShellProjectionMap,
+    MemorySessionStore,
+    run_acp,
+)
+
+workspace_root = Path(".harness-agent")
+
+agent = Agent(
+    "openai:gpt-5",
+    name="harness-agent",
+    instructions="Use the harness filesystem and shell tools inside the workspace only.",
+)
+
+run_acp(
+    agent=agent,
+    config=AdapterConfig(
+        session_store=MemorySessionStore(),
+        capability_bridges=[
+            HarnessFileSystemBridge(root_dir=workspace_root),
+            HarnessShellBridge(cwd=workspace_root),
+        ],
+        projection_maps=[
+            HarnessFileSystemProjectionMap(),
+            HarnessShellProjectionMap(),
+        ],
+    ),
+)
+```
+
+Use `HarnessCodeModeBridge` only when the run should expose CodeMode. The maintained example keeps
+that bridge opt-in so the native ACP target stays limited to filesystem and shell by default:
+
+- [example source](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py)
+- [detailed guide](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md)
+
+The harness filesystem projection now renders `read_file` as a read-specific preview instead of a
+fake diff, which makes ACP transcript output much more truthful for inspection-only tool calls.
+
 ## Factories, Sources, And Host-owned State
 
 Use `agent_factory=` when the ACP session should influence which agent gets built:

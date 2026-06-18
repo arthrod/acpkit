@@ -36,6 +36,7 @@ dev = [
     "langchain-acp",
     "python-dotenv",
     "pydantic-acp",
+    "pydantic-ai-harness[code-mode]>=0.4.0",
     "pydantic-ai-slim",
     "pydantic-graph",
     "pydantic>=2.7",

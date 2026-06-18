@@ -1,7 +1,10 @@
 from __future__ import annotations as _annotations
 
 import asyncio
+import builtins
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 import pytest
@@ -15,10 +18,11 @@ from pydantic_acp.types import (
     TextResourceContents,
 )
 from pydantic_ai import ModelRequest, ModelResponse, TextPart
+from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from examples.pydantic import finance_agent, travel_agent
+from examples.pydantic import finance_agent, mock_harness_agent, travel_agent
 
 from .support import (
     UTC,
@@ -43,23 +47,67 @@ def _finance_text_model(
     return ModelResponse(parts=[TextPart("Finance agent ready.")])
 
 
+def _harness_test_model(*, instructions: str = "") -> TestModel:
+    del instructions
+    return TestModel(call_tools=[], custom_output_text="Harness agent ready.")
+
+
+class _FakeHarnessCapability(AbstractCapability[None]):
+    def __init__(self, **kwargs: Any) -> None:
+        self.id = None
+        self.description = None
+        self.defer_loading = False
+        self.kwargs = kwargs
+
+
+def _install_fake_harness_modules(monkeypatch: pytest.MonkeyPatch) -> list[_FakeHarnessCapability]:
+    created: list[_FakeHarnessCapability] = []
+
+    class FakeHarnessCapability(_FakeHarnessCapability):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            created.append(self)
+
+    filesystem_module = ModuleType("pydantic_ai_harness.filesystem")
+    shell_module = ModuleType("pydantic_ai_harness.shell")
+    code_mode_module = ModuleType("pydantic_ai_harness.code_mode")
+    cast(Any, filesystem_module).FileSystem = FakeHarnessCapability
+    cast(Any, shell_module).Shell = FakeHarnessCapability
+    cast(Any, code_mode_module).CodeMode = FakeHarnessCapability
+
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness", ModuleType("pydantic_ai_harness"))
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness.filesystem", filesystem_module)
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness.shell", shell_module)
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness.code_mode", code_mode_module)
+    return created
+
+
 def test_example_main_functions_dispatch_run_acp(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: list[tuple[Any, Any]] = []
+    captured: list[tuple[Any, Any, Any]] = []
 
-    def fake_run_acp(*, agent: Any, config: Any) -> None:
-        captured.append((agent, config))
+    def fake_run_acp(
+        agent: Any = None,
+        *,
+        agent_factory: Any = None,
+        config: Any,
+    ) -> None:
+        captured.append((agent, agent_factory, config))
 
     monkeypatch.setattr(finance_agent, "run_acp", fake_run_acp)
+    monkeypatch.setattr(mock_harness_agent, "_ensure_workspace", lambda: None)
+    monkeypatch.setattr(mock_harness_agent, "run_acp", fake_run_acp)
     monkeypatch.setattr(travel_agent, "run_acp", fake_run_acp)
 
     finance_agent.main()
+    mock_harness_agent.main()
     travel_agent.main()
 
     assert captured == [
-        (finance_agent.agent, finance_agent.config),
-        (travel_agent.agent, travel_agent.config),
+        (finance_agent.agent, None, finance_agent.config),
+        (None, mock_harness_agent.agent_factory, mock_harness_agent.config),
+        (travel_agent.agent, None, travel_agent.config),
     ]
 
 
@@ -103,6 +151,235 @@ def test_finance_example_helpers_cover_workspace_and_plan_paths(tmp_path: Path) 
         entries=[PlanEntry(content="Check liquidity", priority="low", status="pending")],
         plan_markdown=None,
     )
+
+
+def test_harness_example_builds_agent_from_harness_capability_bridges(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_capabilities = _install_fake_harness_modules(monkeypatch)
+    expected_root = tmp_path / ".harness-agent"
+    monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", expected_root)
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_harness_model",
+        _harness_test_model,
+    )
+    session = AcpSessionContext(
+        session_id="harness-session",
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    agent = mock_harness_agent.agent_factory(session)
+
+    assert agent.name == "harness-agent"
+    assert (expected_root / "README.md").exists()
+    assert [capability.kwargs for capability in created_capabilities] == [
+        {
+            "root_dir": expected_root,
+            "allowed_patterns": ["**/*"],
+            "denied_patterns": [],
+            "max_read_lines": 400,
+            "max_search_results": 50,
+            "max_find_results": 50,
+            "protected_patterns": [".git/*", ".env", ".env.*", "*.pem", "*.key"],
+        },
+        {
+            "cwd": expected_root,
+            "allowed_commands": [],
+            "denied_operators": [],
+            "default_timeout": 5.0,
+            "max_output_chars": 8000,
+            "persist_cwd": False,
+            "allow_interactive": False,
+            "env": None,
+            "denied_env_patterns": [],
+            "denied_commands": ["rm", "mv", "cp", "curl", "wget", "git"],
+        },
+    ]
+    instructions = cast(list[str], cast(Any, agent)._instructions)
+    assert all("code-mode tools are enabled" not in instruction for instruction in instructions)
+
+
+def test_harness_example_codemode_factory_includes_code_mode_bridge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_capabilities = _install_fake_harness_modules(monkeypatch)
+    expected_root = tmp_path / ".harness-agent"
+    monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", expected_root)
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_harness_model",
+        _harness_test_model,
+    )
+    session = AcpSessionContext(
+        session_id="harness-codemode-session",
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    agent = _resolve_result(
+        mock_harness_agent._build_agent_factory(include_code_mode=True)(session)
+    )
+
+    assert agent.name == "harness-agent"
+    instructions = cast(list[str], agent._instructions)
+    assert any("Code-mode tools are enabled" in instruction for instruction in instructions)
+    assert [capability.kwargs for capability in created_capabilities] == [
+        {
+            "root_dir": expected_root,
+            "allowed_patterns": ["**/*"],
+            "denied_patterns": [],
+            "max_read_lines": 400,
+            "max_search_results": 50,
+            "max_find_results": 50,
+            "protected_patterns": [".git/*", ".env", ".env.*", "*.pem", "*.key"],
+        },
+        {
+            "cwd": expected_root,
+            "allowed_commands": [],
+            "denied_operators": [],
+            "default_timeout": 5.0,
+            "max_output_chars": 8000,
+            "persist_cwd": False,
+            "allow_interactive": False,
+            "env": None,
+            "denied_env_patterns": [],
+            "denied_commands": ["rm", "mv", "cp", "curl", "wget", "git"],
+        },
+        {
+            "tools": "all",
+            "max_retries": 2,
+            "os_access": None,
+            "mount": None,
+            "dynamic_catalog": False,
+        },
+    ]
+
+
+def test_harness_example_acp_agent_runs_with_test_model_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_harness_modules(monkeypatch)
+    monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", tmp_path / ".harness-agent")
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_harness_model",
+        _harness_test_model,
+    )
+    adapter = mock_harness_agent.acp_agent
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    asyncio.run(
+        adapter.prompt(
+            prompt=[text_block("Use the harness surface.")],
+            session_id=session.session_id,
+        )
+    )
+
+    assert agent_message_texts(client) == ["Harness agent ready."]
+    config = cast(Any, adapter)._config
+    classifier = cast(Any, adapter)._tool_classifier
+    projection_map_names = {
+        type(projection_map).__name__ for projection_map in config.projection_maps
+    }
+    assert projection_map_names >= {
+        "HarnessFileSystemProjectionMap",
+        "HarnessShellProjectionMap",
+    }
+    assert "HarnessCodeModeProjectionMap" not in projection_map_names
+    assert classifier.classify("read_file") == "read"
+    assert classifier.classify("run_command") == "execute"
+
+
+def test_harness_example_main_codemode_dispatches_runtime_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[Any, Any, Any]] = []
+
+    def fake_run_acp(
+        agent: Any = None,
+        *,
+        agent_factory: Any = None,
+        config: Any,
+    ) -> None:
+        captured.append((agent, agent_factory, config))
+
+    monkeypatch.setattr(mock_harness_agent, "_ensure_workspace", lambda: None)
+    monkeypatch.setattr(mock_harness_agent, "run_acp", fake_run_acp)
+
+    mock_harness_agent.main(["--codemode"])
+
+    assert len(captured) == 1
+    agent, runtime_agent_factory, runtime_config = captured[0]
+    assert agent is None
+    assert runtime_agent_factory is not mock_harness_agent.agent_factory
+    assert [bridge.__class__.__name__ for bridge in runtime_config.capability_bridges] == [
+        "HarnessFileSystemBridge",
+        "HarnessShellBridge",
+        "HarnessCodeModeBridge",
+    ]
+
+
+def test_harness_example_model_uses_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ACP_HARNESS_MODEL", "openai:gpt-5.4-mini")
+
+    assert mock_harness_agent._harness_model() == "openai:gpt-5.4-mini"
+
+
+def test_harness_example_model_uses_openrouter_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ACP_HARNESS_MODEL", raising=False)
+    monkeypatch.delenv("ACP_HARNESS_CODEX_MODEL", raising=False)
+
+    assert mock_harness_agent._harness_model() == "openrouter:google/gemini-3-flash-preview"
+
+
+def test_harness_example_model_uses_codex_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, str] = {}
+    fake_module = ModuleType("codex_auth_helper")
+
+    def create_codex_responses_model(model_name: str, *, instructions: str) -> str:
+        captured["model_name"] = model_name
+        captured["instructions"] = instructions
+        return "codex-model"
+
+    fake_module.__dict__["create_codex_responses_model"] = create_codex_responses_model
+    monkeypatch.delenv("ACP_HARNESS_MODEL", raising=False)
+    monkeypatch.setenv("ACP_HARNESS_CODEX_MODEL", "gpt-5-codex-test")
+    monkeypatch.setitem(sys.modules, "codex_auth_helper", fake_module)
+
+    assert mock_harness_agent._harness_model() == "codex-model"
+    assert captured == {
+        "model_name": "gpt-5-codex-test",
+        "instructions": mock_harness_agent._INSTRUCTIONS,
+    }
+
+
+def test_harness_example_model_reports_missing_codex_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+
+    def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "codex_auth_helper":
+            raise ModuleNotFoundError(name)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.delenv("ACP_HARNESS_MODEL", raising=False)
+    monkeypatch.delenv("ACP_HARNESS_CODEX_MODEL", raising=False)
+    monkeypatch.setenv("ACP_HARNESS_CODEX_MODEL", "gpt-5-codex-test")
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert fake_import("math").sqrt(4) == 2.0
+    with pytest.raises(ModuleNotFoundError, match="ACP_HARNESS_MODEL"):
+        mock_harness_agent._harness_model()
 
 
 def test_finance_example_uses_env_override_and_raw_module_surfaces(

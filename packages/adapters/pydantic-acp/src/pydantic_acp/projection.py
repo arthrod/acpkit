@@ -36,6 +36,9 @@ __all__ = (
     "CompositeProjectionMap",
     "DefaultToolClassifier",
     "FileSystemProjectionMap",
+    "HarnessCodeModeProjectionMap",
+    "HarnessFileSystemProjectionMap",
+    "HarnessShellProjectionMap",
     "ProjectionMap",
     "ProjectionAwareToolClassifier",
     "ToolClassifier",
@@ -63,6 +66,7 @@ _SEARCH_PATTERN_KEYS = ("pattern", "query", "q", "glob", "search")
 _TERMINAL_ID_KEYS = ("terminal_id", "terminalId")
 _MAX_COMMAND_PREVIEW_CHARS = 4000
 _MAX_COMMAND_TITLE_CHARS = 80
+_MAX_FILE_READ_PREVIEW_CHARS = 12000
 _MAX_WEB_PREVIEW_CHARS = 2000
 _DEFAULT_SEARCH_TOOL_NAMES = frozenset(
     {"duckduckgo_search", "exa_search", "tavily_search", "web_search"}
@@ -70,6 +74,14 @@ _DEFAULT_SEARCH_TOOL_NAMES = frozenset(
 _DEFAULT_FETCH_TOOL_NAMES = frozenset({"web_fetch"})
 _DEFAULT_IMAGE_GENERATION_TOOL_NAMES = frozenset({"generate_image", "image_generation"})
 _DEFAULT_MCP_TOOL_NAME_PREFIXES = frozenset({"mcp_server:"})
+_HARNESS_READ_TOOL_NAMES = frozenset({"read_file"})
+_HARNESS_WRITE_TOOL_NAMES = frozenset({"write_file", "create_directory"})
+_HARNESS_EDIT_TOOL_NAMES = frozenset({"edit_file"})
+_HARNESS_SEARCH_TOOL_NAMES = frozenset({"list_directory", "search_files"})
+_HARNESS_SHELL_TOOL_NAMES = frozenset(
+    {"run_command", "start_command", "check_command", "stop_command"}
+)
+_HARNESS_CODE_MODE_TOOL_NAMES = frozenset({"run_code"})
 
 
 def _is_string_keyed_object_dict(value: Any) -> TypeIs[dict[str, Any]]:
@@ -432,6 +444,21 @@ class FileSystemProjectionMap:
         return None
 
 
+def _iter_filesystem_projection_maps(
+    projection_map: ProjectionMap,
+) -> Iterable[FileSystemProjectionMap]:
+    if isinstance(projection_map, FileSystemProjectionMap):
+        yield projection_map
+        return
+    filesystem_projection = getattr(projection_map, "_filesystem_projection", None)
+    if isinstance(filesystem_projection, FileSystemProjectionMap):
+        yield filesystem_projection
+        return
+    if isinstance(projection_map, CompositeProjectionMap):
+        for nested_map in projection_map.maps:
+            yield from _iter_filesystem_projection_maps(nested_map)
+
+
 @dataclass(slots=True, frozen=True, kw_only=True)
 class WebToolProjectionMap:
     search_tool_names: frozenset[str] = _DEFAULT_SEARCH_TOOL_NAMES
@@ -605,6 +632,221 @@ class BuiltinToolProjectionMap:
         )
 
 
+@dataclass(slots=True, frozen=True, kw_only=True)
+class HarnessFileSystemProjectionMap:
+    read_tool_names: frozenset[str] = _HARNESS_READ_TOOL_NAMES
+    write_tool_names: frozenset[str] = _HARNESS_WRITE_TOOL_NAMES
+    edit_tool_names: frozenset[str] = _HARNESS_EDIT_TOOL_NAMES
+    search_tool_names: frozenset[str] = _HARNESS_SEARCH_TOOL_NAMES
+
+    @property
+    def _filesystem_projection(self) -> FileSystemProjectionMap:
+        return FileSystemProjectionMap(
+            read_tool_names=self.read_tool_names,
+            write_tool_names=self.write_tool_names | self.edit_tool_names,
+            search_tool_names=self.search_tool_names,
+            path_arg="path",
+            content_arg="content",
+            old_text_arg="old_text",
+            search_pattern_arg="pattern",
+            search_path_arg="path",
+            render_search_results_as_tree=True,
+        )
+
+    def project_start(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+    ) -> ToolProjection | None:
+        if tool_name in self.read_tool_names:
+            return self._project_read_start(raw_input)
+        return self._filesystem_projection.project_start(tool_name, cwd=cwd, raw_input=raw_input)
+
+    def project_progress(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+        raw_output: Any = None,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        if tool_name in self.read_tool_names:
+            return self._project_read_progress(
+                raw_input=raw_input,
+                raw_output=raw_output,
+                serialized_output=serialized_output,
+                status=status,
+            )
+        return self._filesystem_projection.project_progress(
+            tool_name,
+            cwd=cwd,
+            raw_input=raw_input,
+            raw_output=raw_output,
+            serialized_output=serialized_output,
+            status=status,
+        )
+
+    def _project_read_start(self, raw_input: Any) -> ToolProjection | None:
+        if not _is_string_keyed_object_dict(raw_input):
+            return None
+        path = self._read_path_from_input(raw_input)
+        if path is None:
+            return None
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(f"Read file: `{path}`"),
+                )
+            ],
+            locations=[ToolCallLocation(path=path)],
+            title=f"Read {_single_line_preview(path, limit=_MAX_COMMAND_TITLE_CHARS)}",
+        )
+
+    def _project_read_progress(
+        self,
+        *,
+        raw_input: Any,
+        raw_output: Any,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        if not _is_string_keyed_object_dict(raw_input):
+            return None
+        path = self._read_path_from_input(raw_input)
+        if path is None:
+            return None
+        output_text = _stringify_value(raw_output, serialized_output)
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(_format_harness_read_progress(path, output_text)),
+                )
+            ],
+            locations=[ToolCallLocation(path=path)],
+            status=status,
+        )
+
+    def _read_path_from_input(self, raw_input: dict[str, Any]) -> str | None:
+        return self._filesystem_projection._path_from_input(raw_input)
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class HarnessShellProjectionMap:
+    tool_names: frozenset[str] = _HARNESS_SHELL_TOOL_NAMES
+
+    @property
+    def _filesystem_projection(self) -> FileSystemProjectionMap:
+        return FileSystemProjectionMap(
+            bash_tool_names=self.tool_names,
+            command_arg="command",
+            terminal_id_arg="command_id",
+        )
+
+    def project_start(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+    ) -> ToolProjection | None:
+        if tool_name in {"run_command", "start_command"}:
+            return self._filesystem_projection.project_start(
+                tool_name,
+                cwd=cwd,
+                raw_input=raw_input,
+            )
+        if tool_name not in self.tool_names or not _is_string_keyed_object_dict(raw_input):
+            return None
+        command_id = _first_string(raw_input, "command_id", "terminal_id", "terminalId")
+        action = "Check" if tool_name == "check_command" else "Stop"
+        if command_id is None:
+            return ToolProjection(title=f"{action} command")
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(f"Command ID: {command_id}"),
+                )
+            ],
+            title=f"{action} command {command_id}",
+        )
+
+    def project_progress(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+        raw_output: Any = None,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        return self._filesystem_projection.project_progress(
+            tool_name,
+            cwd=cwd,
+            raw_input=raw_input,
+            raw_output=raw_output,
+            serialized_output=serialized_output,
+            status=status,
+        )
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class HarnessCodeModeProjectionMap:
+    tool_names: frozenset[str] = _HARNESS_CODE_MODE_TOOL_NAMES
+
+    def project_start(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+    ) -> ToolProjection | None:
+        del cwd
+        if tool_name not in self.tool_names or not _is_string_keyed_object_dict(raw_input):
+            return None
+        code = _first_string(raw_input, "code", "script", "python")
+        if code is None:
+            return ToolProjection(title="Run code")
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(format_code_block(code, language="python")),
+                )
+            ],
+            title=f"Run code: {_single_line_preview(code, limit=_MAX_COMMAND_TITLE_CHARS)}",
+        )
+
+    def project_progress(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+        raw_output: Any = None,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        del cwd, raw_input
+        if tool_name not in self.tool_names or status != "completed":
+            return None
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(_stringify_value(raw_output, serialized_output)),
+                )
+            ]
+        )
+
+
 class DefaultToolClassifier:
     def classify(self, tool_name: str, raw_input: Any = None) -> ToolKind:
         del raw_input
@@ -644,24 +886,9 @@ class ProjectionAwareToolClassifier:
     projection_maps: Sequence[ProjectionMap]
 
     def classify(self, tool_name: str, raw_input: Any = None) -> ToolKind:
-        for projection_map in self.projection_maps:
-            if isinstance(projection_map, FileSystemProjectionMap):
-                if tool_name in projection_map._read_tool_names():
-                    return "read"
-                if tool_name in projection_map._write_tool_names():
-                    return "edit"
-                if tool_name in projection_map._bash_tool_names():
-                    return "execute"
-                if tool_name in projection_map._search_tool_names():
-                    return "search"
-            if isinstance(projection_map, CompositeProjectionMap):
-                nested_classifier = ProjectionAwareToolClassifier(
-                    base_classifier=self.base_classifier,
-                    projection_maps=projection_map.maps,
-                )
-                nested_kind = nested_classifier._projection_kind(tool_name)
-                if nested_kind is not None:
-                    return nested_kind
+        projection_kind = self._projection_kind(tool_name)
+        if projection_kind is not None:
+            return projection_kind
         return self.base_classifier.classify(tool_name, raw_input)
 
     def approval_policy_key(self, tool_name: str, raw_input: Any = None) -> str:
@@ -669,23 +896,20 @@ class ProjectionAwareToolClassifier:
 
     def _projection_kind(self, tool_name: str) -> ToolKind | None:
         for projection_map in self.projection_maps:
-            if isinstance(projection_map, FileSystemProjectionMap):
-                if tool_name in projection_map._read_tool_names():
+            if (
+                isinstance(projection_map, HarnessCodeModeProjectionMap)
+                and tool_name in projection_map.tool_names
+            ):
+                return "execute"
+            for filesystem_map in _iter_filesystem_projection_maps(projection_map):
+                if tool_name in filesystem_map._read_tool_names():
                     return "read"
-                if tool_name in projection_map._write_tool_names():
+                if tool_name in filesystem_map._write_tool_names():
                     return "edit"
-                if tool_name in projection_map._bash_tool_names():
+                if tool_name in filesystem_map._bash_tool_names():
                     return "execute"
-                if tool_name in projection_map._search_tool_names():
+                if tool_name in filesystem_map._search_tool_names():
                     return "search"
-            if isinstance(projection_map, CompositeProjectionMap):
-                nested_classifier = ProjectionAwareToolClassifier(
-                    base_classifier=self.base_classifier,
-                    projection_maps=projection_map.maps,
-                )
-                nested_kind = nested_classifier._projection_kind(tool_name)
-                if nested_kind is not None:
-                    return nested_kind
         return None
 
 
@@ -893,6 +1117,15 @@ def _format_command_preview(command: str) -> str:
         language="bash",
         limit=_MAX_COMMAND_PREVIEW_CHARS,
     )
+
+
+def _format_harness_read_progress(path: str, output_text: str) -> str:
+    preview = format_code_block(
+        output_text,
+        language="text",
+        limit=_MAX_FILE_READ_PREVIEW_CHARS,
+    )
+    return f"Read `{path}`:\n\n{preview}"
 
 
 def _bash_status(raw_output: Any = None, *, fallback: ToolCallStatus) -> ToolCallStatus:
