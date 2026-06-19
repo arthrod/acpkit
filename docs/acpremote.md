@@ -12,7 +12,71 @@ If you already have an `acp.interfaces.Agent` or a stdio ACP command, `acpremote
 ACP surface across a WebSocket boundary.
 
 Use `acpremote` when the runtime already speaks ACP and you only need transport. Use `acpkit`
-when the runtime is still a Python target and should be resolved into the correct adapter first.
+when the runtime is a Pydantic AI, LangChain, or LangGraph target and should be resolved into the
+correct adapter first.
+
+## CLI
+
+`acpremote` installs an executable for direct transport operations.
+
+Start here if you already have a WebSocket URL:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
+
+That command connects to the remote WebSocket and presents it locally as stdio ACP. It is the
+`acpremote` equivalent of:
+
+```bash
+acpkit run --addr ws://remote.example.com:8080/acp/ws
+```
+
+Command map:
+
+| Situation | Command | Direction |
+|---|---|---|
+| WebSocket endpoint already exists | `acpremote mirror ws://host:8080/acp/ws` | remote WebSocket to local stdio ACP |
+| local command already speaks ACP over stdio | `acpremote expose -- <command>` | local stdio ACP to WebSocket |
+| Python object is already an ACP agent | `acpremote serve module:agent` | native ACP object to WebSocket |
+
+Expose a native ACP Python target:
+
+```bash
+acpremote serve my_app:agent --host 0.0.0.0 --port 8080
+```
+
+`serve` expects the target to already be an `acp.interfaces.Agent`. Use `acpkit serve ...` when a
+framework target still needs adapter dispatch:
+
+```bash
+acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+```
+
+Expose a stdio ACP command:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8080 -- npx @zed-industries/codex-acp
+```
+
+Command options belong after `--`:
+
+```bash
+acpremote expose --cwd /srv/workspace --env MODEL=gpt-5 -- python agent.py --stdio
+```
+
+Mirror a remote endpoint back into local stdio ACP:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
+
+Auth can use either a direct token or an environment variable:
+
+```bash
+acpremote expose --token-env ACPREMOTE_TOKEN -- npx @zed-industries/codex-acp
+acpremote mirror ws://remote.example.com:8080/acp/ws --bearer-token "$ACPREMOTE_TOKEN"
+```
 
 ## Core Construction Paths
 
@@ -88,9 +152,16 @@ Local mirror flow:
 
 ```bash
 acpkit run --addr ws://remote.example.com:8080/acp/ws
+acpremote mirror ws://remote.example.com:8080/acp/ws
 ```
 
 Direct ACP transport flow:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8080 -- fast-agent --server --transport acp
+```
+
+The same flow through Python:
 
 ```python
 from acpremote import serve_command
@@ -106,7 +177,7 @@ await server.serve_forever()
 When an editor or launcher wants to shell out, the same mirror path can be wrapped with Toad:
 
 ```bash
-toad acp "acpkit run --addr ws://remote.example.com:8080/acp/ws"
+toad acp "acpremote mirror ws://remote.example.com:8080/acp/ws"
 ```
 
 ## Default HTTP And WebSocket Surface
@@ -187,5 +258,5 @@ The documented flows cover both supported remote-host stories:
 
 1. adapt a Python runtime through `pydantic-acp` or `langchain-acp`
 2. expose the resulting ACP server through `acpkit serve ...` or `acpremote.serve_acp(...)`
-3. mirror it locally with `acpkit run --addr ...` or `connect_acp(...)`
-4. or skip adaptation entirely and expose a native ACP stdio command directly through `serve_command(...)`
+3. mirror it locally with `acpkit run --addr ...`, `acpremote mirror ...`, or `connect_acp(...)`
+4. or skip adaptation entirely and expose a native ACP stdio command directly through `acpremote expose ...` or `serve_command(...)`

@@ -58,6 +58,35 @@ acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8081
 acpkit run --addr ws://127.0.0.1:8080/acp/ws
 ```
 
+If the WebSocket is already exposed and you only need to connect a local ACP client to it, use:
+
+```bash
+acpremote mirror ws://127.0.0.1:8080/acp/ws
+```
+
+Use that command directly in launchers that expect a stdio ACP command.
+
+Use the standalone `acpremote` CLI when the runtime already speaks ACP and no adapter dispatch is
+needed.
+
+Native ACP command on the remote host:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8082 -- npx @zed-industries/codex-acp
+```
+
+Native ACP Python target on the remote host:
+
+```bash
+acpremote serve my_native_acp_app:agent --host 0.0.0.0 --port 8083
+```
+
+Local mirror:
+
+```bash
+acpremote mirror ws://127.0.0.1:8082/acp/ws
+```
+
 ## Mock Python Sketch
 
 If you want the same shape in Python instead of the CLI, the transport boundary looks like this:

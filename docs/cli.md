@@ -104,6 +104,13 @@ With Toad ACP:
 toad acp "acpkit run --addr ws://remote.example.com:8080/acp/ws"
 ```
 
+If you installed the standalone transport package, the equivalent transport-only command is:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+toad acp "acpremote mirror ws://remote.example.com:8080/acp/ws"
+```
+
 ## CLI Versus Runtime API
 
 Use the root CLI when:

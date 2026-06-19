@@ -19,6 +19,9 @@ Homepage = "https://vcoderun.github.io/acpkit/acpremote/"
 Issues = "https://github.com/vcoderun/acpkit/issues"
 Repository = "https://github.com/vcoderun/acpkit"
 
+[project.scripts]
+acpremote = "acpremote.__main__:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

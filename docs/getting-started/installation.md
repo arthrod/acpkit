@@ -118,6 +118,13 @@ pip install acpremote
 
 `acpremote` is transport-only. It does not adapt a framework runtime into ACP; it exposes or mirrors an ACP boundary that already exists.
 
+It also installs the `acpremote` executable:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8080 -- npx @zed-industries/codex-acp
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
+
 ## Development Setup
 
 From the repo root:
