@@ -38,7 +38,7 @@ dev = [
     "langchain-acp",
     "python-dotenv",
     "pydantic-acp",
-    "pydantic-ai-slim",
+    "pydantic-ai-slim>=2.0.0,<3",
     "pydantic-graph",
     "pydantic>=2.7",
     "pytest-asyncio",
