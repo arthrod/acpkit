@@ -34,6 +34,14 @@ from .bridges import (
     WebSearchBridge,
 )
 from .builders import AgentBridgeBuilder, AgentBridgeContributions
+from .client import (
+    ACP_MODEL_PROFILE,
+    AcpHostBridge,
+    AcpModel,
+    AcpPromptRenderer,
+    AcpProvider,
+    AcpUpdateRecord,
+)
 from .config import AdapterConfig
 from .hook_projection import HookEvent, HookProjectionMap
 from .host import (
@@ -102,8 +110,14 @@ from .types import (
 )
 
 __all__ = (
+    "ACP_MODEL_PROFILE",
     "AcpSessionContext",
     "AcpAgent",
+    "AcpHostBridge",
+    "AcpModel",
+    "AcpPromptRenderer",
+    "AcpProvider",
+    "AcpUpdateRecord",
     "AgentFactory",
     "AgentPromptBlock",
     "AgentSource",
