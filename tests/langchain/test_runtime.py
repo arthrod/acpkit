@@ -25,7 +25,9 @@ from acp.schema import (
     SessionMode,
     TerminalToolCallContent,
     TextResourceContents,
+    ToolCallLocation,
 )
+from deepagents import create_deep_agent
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain_acp import (
@@ -35,6 +37,7 @@ from langchain_acp import (
     CapabilityBridge,
     CommandProjectionMap,
     CommunityFileManagementProjectionMap,
+    DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     FileSystemProjectionMap,
     FinanceProjectionMap,
@@ -765,6 +768,66 @@ def test_langchain_acp_phase6_projects_deepagents_execute_updates_at_runtime(
     assert isinstance(tool_progress.content[1], ContentToolCallContent)
     assert tool_progress.content[1].content.text == "ran:echo hi && sudo rm /tmp/demo"
     assert agent_message_texts(client) == ["Command finished."]
+
+
+def test_langchain_acp_runs_real_deepagents_graph(tmp_path: Path) -> None:
+    graph = create_deep_agent(
+        model=GenericFakeChatModel(messages=iter([AIMessage(content="DeepAgents ready.")])),
+        tools=[],
+        name="deepagents-smoke",
+    )
+    adapter = create_acp_agent(
+        graph=graph,
+        config=AdapterConfig(
+            capability_bridges=[DeepAgentsCompatibilityBridge()],
+            projection_maps=[DeepAgentsProjectionMap()],
+        ),
+    )
+    client = RecordingACPClient()
+    adapter.on_connect(cast(AcpClient, client))
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    response = asyncio.run(
+        adapter.prompt(
+            prompt=[text_block("Confirm the integration.")],
+            session_id=session.session_id,
+        )
+    )
+
+    assert response.stop_reason == "end_turn"
+    assert agent_message_texts(client) == ["DeepAgents ready."]
+
+
+def test_deepagents_projection_matches_builtin_tool_schemas() -> None:
+    projection_map = DeepAgentsProjectionMap()
+
+    read_start = projection_map.project_start(
+        "read_file",
+        raw_input={"file_path": "/workspace/notes.md", "offset": 0, "limit": 20},
+    )
+    write_start = projection_map.project_start(
+        "write_file",
+        raw_input={"file_path": "/workspace/report.md", "content": "Ready."},
+    )
+    search_start = projection_map.project_start(
+        "glob",
+        raw_input={"pattern": "**/*.py", "path": "/workspace"},
+    )
+    execute_start = projection_map.project_start(
+        "execute",
+        raw_input={"command": "pytest -q"},
+    )
+
+    assert read_start is not None
+    assert read_start.title == "Read `/workspace/notes.md`"
+    assert read_start.locations == [ToolCallLocation(path="/workspace/notes.md")]
+    assert write_start is not None
+    assert write_start.title == "Write `/workspace/report.md`"
+    assert write_start.locations == [ToolCallLocation(path="/workspace/report.md")]
+    assert search_start is not None
+    assert search_start.title == "Glob `**/*.py`"
+    assert execute_start is not None
+    assert execute_start.title == "pytest -q"
 
 
 def test_langchain_acp_graph_factory_receives_session_context(tmp_path) -> None:

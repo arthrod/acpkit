@@ -1,6 +1,5 @@
 from __future__ import annotations as _annotations
 
-import asyncio
 from typing import Any, cast
 
 import pydantic_acp.approvals as approvals_module
@@ -58,8 +57,8 @@ class _RecordingPermissionBuilder:
         )
 
 
-def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+async def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -75,12 +74,10 @@ def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
     client.queue_permission_selected("allow_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -97,8 +94,8 @@ def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
     assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
 
 
-def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+async def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -114,12 +111,10 @@ def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> No
     client.queue_permission_selected("reject_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -132,8 +127,8 @@ def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> No
     assert agent_message_texts(client) == ['{"dangerous":"The tool call was denied."}']
 
 
-def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+async def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -149,12 +144,10 @@ def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
     client.queue_permission_cancelled()
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "cancelled"
@@ -187,7 +180,7 @@ def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
     )
 
 
-def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
+async def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
     tmp_path: Path,
 ) -> None:
     def route_failing_tool(
@@ -209,7 +202,10 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
                     )
         raise AssertionError("expected the failing tool call to be requested")  # pragma: no cover
 
-    agent = Agent(FunctionModel(route_failing_tool, model_name="failing-tool-model"))
+    agent = Agent(
+        FunctionModel(route_failing_tool, model_name="failing-tool-model"),
+        deps_type=type(None),
+    )
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -223,7 +219,7 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
     client = RecordingClient()
     adapter.on_connect(client)
 
-    session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
     stored_session = cast(Any, adapter)._config.session_store.get(session_response.session_id)
     assert stored_session is not None
     stored_session.message_history_json = dump_message_history(
@@ -244,11 +240,9 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
     cast(Any, adapter)._config.session_store.save(stored_session)
 
     with pytest.raises(RuntimeError, match="tool exploded"):
-        asyncio.run(
-            adapter.prompt(
-                prompt=[text_block("Trigger the failing tool.")],
-                session_id=session_response.session_id,
-            )
+        await adapter.prompt(
+            prompt=[text_block("Trigger the failing tool.")],
+            session_id=session_response.session_id,
         )
 
     updated_session = cast(Any, adapter)._config.session_store.get(session_response.session_id)
@@ -274,11 +268,11 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
     )
 
 
-def test_deferred_approval_write_projection_keeps_diff_after_approval(
+async def test_deferred_approval_write_projection_keeps_diff_after_approval(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "a").write_text("before", encoding="utf-8")
-    agent = Agent(TestModel(call_tools=["write_file"]))
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
 
     @agent.tool
     def write_file(ctx: RunContext[None], path: str, content: str) -> str:
@@ -295,12 +289,10 @@ def test_deferred_approval_write_projection_keeps_diff_after_approval(
     client.queue_permission_selected("allow_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the write tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -331,10 +323,10 @@ def test_deferred_approval_write_projection_keeps_diff_after_approval(
     assert tool_progress.status == "completed"
 
 
-def test_deferred_approval_permission_request_uses_projection_content(
+async def test_deferred_approval_permission_request_uses_projection_content(
     tmp_path: Path,
 ) -> None:
-    agent = Agent(TestModel(call_tools=["write_file"]))
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
 
     @agent.tool
     def write_file(ctx: RunContext[None], path: str, content: str) -> str:
@@ -351,12 +343,10 @@ def test_deferred_approval_permission_request_uses_projection_content(
     client.queue_permission_selected("allow_once")
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the write tool.")],
-            session_id=session.session_id,
-        )
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=session.session_id,
     )
 
     permission_request = client.permission_option_ids[0][2]
@@ -368,8 +358,10 @@ def test_deferred_approval_permission_request_uses_projection_content(
     assert content.new_text == "a"
 
 
-def test_native_approval_bridge_uses_custom_builder_store_and_labels(tmp_path: Path) -> None:
-    agent = Agent(TestModel(call_tools=["write_file"]))
+async def test_native_approval_bridge_uses_custom_builder_store_and_labels(
+    tmp_path: Path,
+) -> None:
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
 
     @agent.tool
     def write_file(ctx: RunContext[None], path: str, content: str) -> str:
@@ -429,12 +421,10 @@ def test_native_approval_bridge_uses_custom_builder_store_and_labels(tmp_path: P
     client.queue_permission_selected("allow_always")
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the write tool.")],
-            session_id=session.session_id,
-        )
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=session.session_id,
     )
 
     assert client.permission_option_ids[0][1] == [
@@ -462,10 +452,10 @@ def test_native_approval_bridge_uses_custom_builder_store_and_labels(tmp_path: P
     assert store.export_state(export_session) == {"write_file": "allow"}
 
 
-def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
+async def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
     tmp_path: Path,
 ) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -515,12 +505,10 @@ def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
     client = RecordingClient()
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=session.session_id,
-        )
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=session.session_id,
     )
 
     assert response.stop_reason == "end_turn"
@@ -542,7 +530,7 @@ def test_session_metadata_approval_policy_store_reads_valid_policy(tmp_path: Pat
     assert store.get_policy(session, "write_file") == "allow"
 
 
-def test_projection_aware_approval_bridge_detection_edges(
+async def test_projection_aware_approval_bridge_detection_edges(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     class MissingCallable:
@@ -559,7 +547,7 @@ def test_projection_aware_approval_bridge_detection_edges(
     assert not supports_projection_aware_approval_bridge(MissingCallable())
     assert supports_projection_aware_approval_bridge(VarKeywordBridge())
     with pytest.raises(AssertionError, match="not called"):
-        asyncio.run(VarKeywordBridge().resolve_deferred_approvals())
+        await VarKeywordBridge().resolve_deferred_approvals()
 
     def raise_signature_error(value: object) -> object:
         del value
@@ -568,10 +556,10 @@ def test_projection_aware_approval_bridge_detection_edges(
     monkeypatch.setattr(approvals_module, "signature", raise_signature_error)
     assert not supports_projection_aware_approval_bridge(SignatureBridge())
     with pytest.raises(AssertionError, match="not called"):
-        asyncio.run(SignatureBridge().resolve_deferred_approvals())
+        await SignatureBridge().resolve_deferred_approvals()
 
 
-def test_legacy_approval_bridge_without_projection_signature_still_runs(
+async def test_legacy_approval_bridge_without_projection_signature_still_runs(
     tmp_path: Path,
 ) -> None:
     class LegacyBridge:
@@ -594,7 +582,7 @@ def test_legacy_approval_bridge_without_projection_signature_still_runs(
             return ApprovalResolution(deferred_tool_results=results)
 
     bridge = LegacyBridge()
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -612,12 +600,10 @@ def test_legacy_approval_bridge_without_projection_signature_still_runs(
     client = RecordingClient()
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=session.session_id,
-        )
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=session.session_id,
     )
 
     assert response.stop_reason == "end_turn"
@@ -626,12 +612,12 @@ def test_legacy_approval_bridge_without_projection_signature_still_runs(
     assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
 
 
-def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_changes(
+async def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_changes(
     tmp_path: Path,
 ) -> None:
     target_path = tmp_path / "a"
     target_path.write_text("before", encoding="utf-8")
-    agent = Agent(TestModel(call_tools=["write_file"]))
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
 
     @agent.tool
     def write_file(ctx: RunContext[None], path: str, content: str) -> str:
@@ -650,12 +636,10 @@ def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_
     client.queue_permission_selected("allow_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the write tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -685,7 +669,7 @@ def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_
     assert tool_progress.status == "completed"
 
 
-def test_prompt_without_generic_tool_projection_omits_tool_updates(
+async def test_prompt_without_generic_tool_projection_omits_tool_updates(
     tmp_path: Path,
 ) -> None:
     tool_model = TestModel(call_tools=["read_file"], custom_output_text="projection-disabled")
@@ -705,12 +689,10 @@ def test_prompt_without_generic_tool_projection_omits_tool_updates(
     client = RecordingClient()
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Do not emit tool updates.")],
-            session_id=session.session_id,
-        )
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    await adapter.prompt(
+        prompt=[text_block("Do not emit tool updates.")],
+        session_id=session.session_id,
     )
 
     assert not any(

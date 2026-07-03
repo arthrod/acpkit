@@ -60,6 +60,27 @@ It does not own:
 - Codex auth handling
 - WebSocket transport
 
+## Current Framework Compatibility
+
+The package metadata and compatibility gate use these minimum versions:
+
+- `langchain>=1.3.11`
+- `langgraph>=1.2.7`
+- `deepagents>=0.6.12` through `langchain-acp[deepagents]`
+
+Treat the three packages as one resolved stack. Validate changes with `make check-langchain-stack`;
+that gate runs both runtime tests and `ty` against the exact baseline versions.
+
+Compatibility details:
+
+- LangChain 1.3 agent graphs remain the primary `create_agent(...)` path.
+- LangGraph 1.2 graph state, interrupts, and streamed events stay upstream-owned.
+- DeepAgents 0.6 uses newer state-channel internals; do not inspect them from the adapter.
+- Project DeepAgents' public `read_file`, `write_file`, `edit_file`, `ls`, `glob`, `grep`, and
+  `execute` calls through `DeepAgentsProjectionMap`.
+- Keep `write_todos` handling in `DeepAgentsCompatibilityBridge`; ACP-native `TaskPlan` remains the
+  preferred framework-neutral plan surface.
+
 ## Do Not Confuse With
 
 - `langchain-acp` vs `pydantic-acp`

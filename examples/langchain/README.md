@@ -2,6 +2,9 @@
 
 All maintained LangChain examples live under `examples/langchain/`.
 
+They are tested against LangChain 1.3.11, LangGraph 1.2.7, and DeepAgents 0.6.12. The package
+declares those versions as minimums, and the repository lockfile records the exact tested stack.
+
 - `codex_graph.py`
   Smallest Codex-backed LangChain example. It uses `codex_auth_helper.create_codex_chat_openai(...)`
   directly and passes `instructions=` to the Responses request so you can see the exact LangChain
@@ -14,7 +17,8 @@ All maintained LangChain examples live under `examples/langchain/`.
 - `deepagents_graph.py`
   Codex-backed DeepAgents compatibility example with real workspace tools,
   `DeepAgentsCompatibilityBridge`, and `DeepAgentsProjectionMap`. Its workspace is created under the
-  current working directory as `.deepagents-graph/`.
+  current working directory as `.deepagents-graph/`. It calls the real
+  `deepagents.create_deep_agent(...)` constructor; no mock DeepAgents module is used.
 
 All three examples use the local Codex auth flow through `codex-auth-helper`. By default they use
 `CODEX_MODEL=gpt-5.4`; set `CODEX_MODEL` before running them when you want a different Codex model.

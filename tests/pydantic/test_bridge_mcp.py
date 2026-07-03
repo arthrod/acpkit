@@ -1,6 +1,5 @@
 from __future__ import annotations as _annotations
 
-import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -273,7 +272,7 @@ def test_mcp_bridge_accepts_grouped_select_options() -> None:
     assert bridge.set_config_option(session, agent, "scope", "missing") is None
 
 
-def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
+async def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
     tmp_path: Path,
 ) -> None:
     mcp_bridge = McpBridge(
@@ -337,19 +336,17 @@ def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
     client.queue_permission_selected("allow_always")
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
     assert session.config_options is not None
     auto_connect_option = next(
         option for option in session.config_options if option.id == "mcp_auto_connect"
     )
     assert auto_connect_option.current_value is False
 
-    config_response = asyncio.run(
-        adapter.set_config_option(
-            config_id="mcp_auto_connect",
-            session_id=session.session_id,
-            value=True,
-        )
+    config_response = await adapter.set_config_option(
+        config_id="mcp_auto_connect",
+        session_id=session.session_id,
+        value=True,
     )
 
     assert config_response is not None
@@ -358,17 +355,13 @@ def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
     )
     assert updated_auto_connect_option.current_value is True
 
-    first_prompt = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the first MCP tool.")],
-            session_id=session.session_id,
-        )
+    first_prompt = await adapter.prompt(
+        prompt=[text_block("Use the first MCP tool.")],
+        session_id=session.session_id,
     )
-    second_prompt = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the second MCP tool.")],
-            session_id=session.session_id,
-        )
+    second_prompt = await adapter.prompt(
+        prompt=[text_block("Use the second MCP tool.")],
+        session_id=session.session_id,
     )
 
     assert first_prompt.stop_reason == "end_turn"

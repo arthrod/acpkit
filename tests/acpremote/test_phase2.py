@@ -180,7 +180,7 @@ async def test_phase2_http_metadata_and_health_routes_are_served() -> None:
     )
     try:
         assert server.sockets is not None
-        port = server.sockets[0].getsockname()[1]
+        port = next(iter(server.sockets)).getsockname()[1]
         health_status, health_body = await asyncio.to_thread(
             _http_get,
             f"http://127.0.0.1:{port}/healthz",
@@ -219,7 +219,7 @@ async def test_phase2_websocket_path_and_bearer_auth_are_enforced() -> None:
         supported_agent_families=("generic-acp",),
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     try:
         with pytest.raises(InvalidStatus) as missing_token:
             async with connect(f"ws://127.0.0.1:{port}/secure/ws"):

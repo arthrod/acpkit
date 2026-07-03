@@ -177,7 +177,7 @@ async def test_serve_command_relays_stdio_acp_process(tmp_path: Path) -> None:
         },
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     remote = await connect_remote_agent(
         cast(Client, client),
         f"ws://127.0.0.1:{port}/command/ws",
@@ -218,7 +218,7 @@ async def test_serve_command_metadata_exposes_remote_cwd(tmp_path: Path) -> None
         },
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     remote = await connect_remote_agent(
         cast(Client, client),
         f"ws://127.0.0.1:{port}/command/ws",
@@ -249,7 +249,7 @@ async def test_serve_stdio_command_supports_discarded_stderr(tmp_path: Path) -> 
         mount_path="/discard",
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     remote = await connect_remote_agent(
         cast(Client, client),
         f"ws://127.0.0.1:{port}/discard/ws",

@@ -176,7 +176,7 @@ async def _open_stream_pair() -> tuple[
 
     server = await asyncio.start_server(_handle, "127.0.0.1", 0)
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     client_reader, client_writer = await asyncio.open_connection("127.0.0.1", port)
     server_reader, server_writer = await accepted
     server.close()
@@ -189,7 +189,7 @@ async def test_phase3_connect_acp_returns_local_agent_proxy_with_remote_passthro
     target = _ProxyTargetAgent()
     server = await serve_acp(cast(Agent, target), mount_path="/proxy", remote_cwd="/srv/remote")
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     proxy = cast(RemoteProxyAgent, connect_acp(f"ws://127.0.0.1:{port}/proxy/ws"))
     client = _RecordingClient()
     proxy.on_connect(cast(Client, client))
@@ -298,14 +298,14 @@ async def test_phase3_proxy_defaults_to_remote_host_ownership_but_can_opt_into_p
     remote_target = _ProxyTargetAgent()
     remote_server = await serve_acp(cast(Agent, remote_target), mount_path="/remote")
     assert remote_server.sockets is not None
-    remote_port = remote_server.sockets[0].getsockname()[1]
+    remote_port = next(iter(remote_server.sockets)).getsockname()[1]
     remote_proxy = cast(RemoteProxyAgent, connect_acp(f"ws://127.0.0.1:{remote_port}/remote/ws"))
     remote_proxy.on_connect(cast(Client, _RecordingClient()))
 
     passthrough_target = _ProxyTargetAgent()
     passthrough_server = await serve_acp(cast(Agent, passthrough_target), mount_path="/pass")
     assert passthrough_server.sockets is not None
-    passthrough_port = passthrough_server.sockets[0].getsockname()[1]
+    passthrough_port = next(iter(passthrough_server.sockets)).getsockname()[1]
     passthrough_proxy = cast(
         RemoteProxyAgent,
         connect_acp(
@@ -351,7 +351,7 @@ async def test_phase3_proxy_supports_local_acp_stream_clients_transparently() ->
     target = _ProxyTargetAgent()
     remote_server = await serve_acp(cast(Agent, target), mount_path="/proxy")
     assert remote_server.sockets is not None
-    remote_port = remote_server.sockets[0].getsockname()[1]
+    remote_port = next(iter(remote_server.sockets)).getsockname()[1]
 
     proxy = connect_acp(f"ws://127.0.0.1:{remote_port}/proxy/ws")
     local_client = _RecordingClient()
@@ -395,7 +395,7 @@ async def test_phase3_proxy_can_emit_transport_latency_meta_and_projection() -> 
     target = _ProxyTargetAgent()
     remote_server = await serve_acp(cast(Agent, target), mount_path="/latency")
     assert remote_server.sockets is not None
-    remote_port = remote_server.sockets[0].getsockname()[1]
+    remote_port = next(iter(remote_server.sockets)).getsockname()[1]
 
     proxy = connect_acp(
         f"ws://127.0.0.1:{remote_port}/latency/ws",

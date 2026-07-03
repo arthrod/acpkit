@@ -86,6 +86,7 @@ def test_existing_before_model_request_hook_emits_acp_updates(tmp_path) -> None:
         agent=Agent(
             TestModel(custom_output_text="hooked"),
             name="hooked-agent",
+            deps_type=type(None),
             capabilities=[hooks],
         ),
         config=AdapterConfig(session_store=MemorySessionStore()),
@@ -181,6 +182,7 @@ def test_multiple_registered_hook_callbacks_each_emit_updates(tmp_path) -> None:
     adapter = create_acp_agent(
         agent=Agent(
             TestModel(custom_output_text="hooked"),
+            deps_type=type(None),
             capabilities=[hooks],
         ),
         config=AdapterConfig(session_store=MemorySessionStore()),
@@ -219,6 +221,7 @@ def test_tool_filtered_hook_preserves_tool_metadata(tmp_path) -> None:
 
     agent = Agent(
         TestModel(call_tools=["echo"], custom_output_text="tool-hooked"),
+        deps_type=type(None),
         capabilities=[hooks],
     )
 
@@ -278,6 +281,7 @@ def test_custom_hook_projection_map_can_hide_and_relabel_events(tmp_path) -> Non
     adapter = create_acp_agent(
         agent=Agent(
             TestModel(custom_output_text="hooked"),
+            deps_type=type(None),
             capabilities=[hooks],
         ),
         config=AdapterConfig(session_store=MemorySessionStore()),
@@ -485,7 +489,11 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
     with pytest.raises(HookTimeoutError):
         asyncio.run(_call_hook_func(slow, timeout=0, hook_name="before_run"))
 
-    real_agent = Agent(TestModel(custom_output_text="observed"), capabilities=[Hooks[None]()])
+    real_agent = Agent(
+        TestModel(custom_output_text="observed"),
+        deps_type=type(None),
+        capabilities=[Hooks[None]()],
+    )
     override_var = ContextVar("_override_root_capability", default=None)
     cast(Any, real_agent)._override_root_capability = override_var
     cast(Any, real_agent)._root_capability = CombinedCapability(capabilities=[])

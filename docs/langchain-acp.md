@@ -8,6 +8,19 @@
 
 It is not a separate agent framework. The adapter takes a runtime that is already graph-shaped and exposes it through ACP without discarding the runtime's real semantics.
 
+## Framework Compatibility
+
+`langchain-acp` currently requires:
+
+| Framework | Supported baseline | Adapter contract |
+| --- | --- | --- |
+| LangChain | `>=1.3.11` | `create_agent(...)`, middleware, messages, and streaming |
+| LangGraph | `>=1.2.7` | compiled graph invocation, state, interrupts, and stream events |
+| DeepAgents | `>=0.6.12` | optional `deepagents` extra, built-in tool projection, and plan compatibility |
+
+The baseline is tested as one resolved stack in CI. The adapter does not cap future compatible
+minor releases, but the lockfile records the exact versions used by the repository.
+
 ## Core Construction Paths
 
 The public construction seams stay centered on graph ownership:
@@ -388,6 +401,18 @@ acp_agent = create_acp_agent(
 ```
 
 That compatibility layer keeps `write_todos` plan extraction and familiar filesystem or shell projection behavior available without making DeepAgents policy the core adapter architecture.
+
+`DeepAgentsProjectionMap` follows the stable DeepAgents 0.6 built-in tool contracts:
+
+- `read_file(file_path=...)`
+- `write_file(file_path=..., content=...)`
+- `edit_file(file_path=..., old_string=..., new_string=...)`
+- `ls(path=...)`, `glob(pattern=..., path=...)`, and `grep(pattern=..., path=...)`
+- `execute(command=...)`
+
+DeepAgents 0.6 moved filesystem state onto newer LangGraph channel semantics. That state remains
+owned by the compiled graph; the ACP adapter observes public stream and tool-call events instead of
+reaching into DeepAgents state internals.
 
 ## Migration From `deepagents-acp`
 

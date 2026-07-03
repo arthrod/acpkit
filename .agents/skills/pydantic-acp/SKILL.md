@@ -136,15 +136,25 @@ Package entrypoint:
 
 ## Current Pydantic AI Compatibility
 
-`pydantic-acp` currently targets `pydantic-ai-slim==1.106.0`.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Do not restore
+Pydantic AI V1 compatibility or widen the upper bound without running the
+runtime and type-check matrix:
+
+```bash
+make check-pydantic-ai-matrix
+```
 
 When working on this surface, remember:
 
+- Pydantic AI V2 defaults `Agent` dependency and output generics to `object`; use
+  `deps_type=type(None)` when tools or hooks explicitly use `RunContext[None]`
+  or `Hooks[None]`
 - `PrepareToolsBridge` owns function-tool preparation and mode-specific plan tool visibility
 - `PrepareOutputToolsBridge` owns structured-output tool preparation and session metadata for output-tool modes
 - `HookBridge` covers output-tool preparation, output validation, output processing, and deferred tool-call observation
 - prompt runtime passes ACP session identity through Pydantic AI `conversation_id` and run `metadata`
-- `run_stream_events()` returns an async context manager in current Pydantic AI; keep direct async-iterable fallback only for tests and compatibility fakes
+- `run_stream_events()` is consumed as an async context manager throughout the supported range; 2.4.0 starts the run lazily on first event iteration
+- keep the direct async-iterable fallback only for tests and compatibility fakes
 - `OpenAICompactionBridge` must not pass deprecated `instructions=` into upstream `OpenAICompaction`
 
 ## Module Guide

@@ -56,7 +56,8 @@ uv pip install pydantic-acp
 pip install pydantic-acp
 ```
 
-`pydantic-acp` pins the ACP and Pydantic AI versions it integrates against, so it is the safest direct dependency when you are embedding the adapter inside another application.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0` and pins the ACP
+protocol version it integrates against. Pydantic AI V1 is not supported.
 
 For LangChain, LangGraph, or DeepAgents runtimes:
 
@@ -77,6 +78,10 @@ uv pip install "langchain-acp[deepagents]"
 ```bash
 pip install "langchain-acp[deepagents]"
 ```
+
+The current minimum versions are `langchain>=1.3.11`, `langgraph>=1.2.7`, and, when the optional
+extra is installed, `deepagents>=0.6.12`. ACP Kit's CI resolves and tests these three versions
+together rather than validating them in isolation.
 
 `langchain-acp` is the direct dependency when your app already owns a compiled LangGraph graph or a LangChain `create_agent(...)` graph and you want ACP Kit's adapter seams without the root CLI.
 

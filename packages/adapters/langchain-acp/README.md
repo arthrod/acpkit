@@ -34,6 +34,19 @@ Contributor setup from the monorepo root:
 uv sync --extra dev --extra langchain
 ```
 
+## Supported Framework Versions
+
+The current compatibility baseline is:
+
+- `langchain>=1.3.11`
+- `langgraph>=1.2.7`
+- `deepagents>=0.6.12` through the optional `deepagents` extra
+
+These are minimum versions rather than upper pins. The lockfile and CI validate the exact baseline
+together, including a real `create_deep_agent(...)` graph adapted through ACP. DeepAgents 0.6 tool
+calls such as `read_file(file_path=...)`, `write_file(file_path=...)`, `glob(...)`, `grep(...)`,
+`ls(...)`, and `execute(command=...)` are covered by `DeepAgentsProjectionMap`.
+
 ## Quickstart
 
 ```python
@@ -232,6 +245,10 @@ root between unrelated users or untrusted processes.
 ## DeepAgents Compatibility
 
 DeepAgents graphs are supported as compiled LangGraph targets.
+
+On DeepAgents 0.6, filesystem state uses its newer LangGraph state channels and tool results may be
+structured `ToolMessage` values. `langchain-acp` deliberately treats graph state as upstream-owned
+and projects the stable tool-call contract instead of depending on DeepAgents internals.
 
 Use the compatibility helpers only when they add real value:
 

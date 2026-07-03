@@ -556,7 +556,11 @@ def test_hooks_slash_command_lists_registered_hooks(tmp_path: Path) -> None:
         del ctx, call, tool_def  # pragma: no cover
         return args  # pragma: no cover
 
-    agent = Agent(TestModel(custom_output_text="unused"), capabilities=[hooks])
+    agent = Agent(
+        TestModel(custom_output_text="unused"),
+        deps_type=type(None),
+        capabilities=[hooks],
+    )
 
     @agent.tool_plain
     def echo(text: str) -> str:

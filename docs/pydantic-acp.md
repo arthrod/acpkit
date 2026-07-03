@@ -289,14 +289,38 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.106.0`.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
+outside the supported range.
 
-That is not accidental. The adapter relies on a specific, tested Pydantic AI
-surface and should still be upgraded deliberately.
+Each supported minor is checked against the same adapter runtime suite and
+Pydantic-specific type-check scope. Run the matrix locally with:
+
+```bash
+make check-pydantic-ai-matrix
+```
 
 The current compatibility surface includes function-tool preparation,
 output-tool preparation, output validation/processing hooks,
 deferred-tool-call hooks, run metadata, and conversation IDs.
+
+Pydantic AI V2 defaults the agent dependency and output generic parameters to
+`object`. If your agent contract explicitly uses `RunContext[None]` or
+`Hooks[None]`, declare the dependency type instead of relying on the old V1
+default:
+
+```python
+from pydantic_ai import Agent
+
+agent: Agent[None, str] = Agent(
+    "openai:gpt-5",
+    deps_type=type(None),
+    name="typed-agent",
+)
+```
+
+The adapter consumes `run_stream_events()` as an async context manager across
+the supported range. Pydantic AI 2.4.0 starts that run lazily when event
+iteration begins; callers do not need a version branch.
 
 ACP Kit also no longer imports Pydantic AI private history-processor modules
 directly. History processor support is expressed through ACP Kit's own callable
@@ -306,5 +330,6 @@ aliases and wrapped as `ProcessHistory` capabilities inside
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- upgrades are still compatibility work, but Pydantic AI integration points stay
-  isolated behind ACP Kit bridge and runtime seams
+- Pydantic AI 2.0.0 through 2.4.0 share one public adapter contract
+- future Pydantic AI upgrades remain explicit compatibility work
+- integration points stay isolated behind ACP Kit bridge and runtime seams

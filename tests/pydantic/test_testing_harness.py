@@ -1,7 +1,5 @@
 from __future__ import annotations as _annotations
 
-import asyncio
-
 import pytest
 from acp import PROTOCOL_VERSION
 from pydantic_acp import AdapterConfig, BlackBoxHarness, ClientHostContext, FileSessionStore
@@ -22,7 +20,7 @@ from .support import (
 )
 
 
-def test_black_box_harness_can_drive_approval_write_and_reload(tmp_path: Path) -> None:
+async def test_black_box_harness_can_drive_approval_write_and_reload(tmp_path: Path) -> None:
     store = FileSessionStore(tmp_path / "sessions")
 
     def factory(session):
@@ -30,7 +28,10 @@ def test_black_box_harness_can_drive_approval_write_and_reload(tmp_path: Path) -
             client=session.client,
             session=session,
         )
-        agent = Agent(TestModel(call_tools=["write_workspace_note"], custom_output_text="done"))
+        agent = Agent(
+            TestModel(call_tools=["write_workspace_note"], custom_output_text="done"),
+            deps_type=type(None),
+        )
 
         @agent.tool
         async def write_workspace_note(ctx: RunContext[None], path: str, content: str) -> str:
@@ -45,13 +46,11 @@ def test_black_box_harness_can_drive_approval_write_and_reload(tmp_path: Path) -
         config=AdapterConfig(session_store=store),
     )
 
-    session = asyncio.run(harness.new_session(cwd=str(tmp_path)))
+    session = await harness.new_session(cwd=str(tmp_path))
     harness.queue_permission_selected("allow_once")
-    prompt_response = asyncio.run(
-        harness.prompt_text(
-            "Write the workspace note.",
-            session_id=session.session_id,
-        )
+    prompt_response = await harness.prompt_text(
+        "Write the workspace note.",
+        session_id=session.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -63,11 +62,9 @@ def test_black_box_harness_can_drive_approval_write_and_reload(tmp_path: Path) -
     assert harness.agent_messages(session_id=session.session_id) == ["done"]
 
     harness.clear_updates()
-    loaded = asyncio.run(
-        harness.load_session(
-            cwd=str(tmp_path),
-            session_id=session.session_id,
-        )
+    loaded = await harness.load_session(
+        cwd=str(tmp_path),
+        session_id=session.session_id,
     )
 
     assert loaded is not None
@@ -75,7 +72,7 @@ def test_black_box_harness_can_drive_approval_write_and_reload(tmp_path: Path) -
     assert replayed_messages == ["done"]
 
 
-def test_black_box_harness_covers_initialize_mode_model_and_default_filters(
+async def test_black_box_harness_covers_initialize_mode_model_and_default_filters(
     tmp_path: Path,
 ) -> None:
     harness = BlackBoxHarness.create(
@@ -89,7 +86,7 @@ def test_black_box_harness_covers_initialize_mode_model_and_default_filters(
         agent=Agent(TestModel(custom_output_text="unused"))
     )
 
-    initialize_response = asyncio.run(harness.initialize())
+    initialize_response = await harness.initialize()
     with pytest.raises(ValueError, match="No active session id"):
         missing_session_harness.require_session_id()
 
@@ -100,10 +97,10 @@ def test_black_box_harness_covers_initialize_mode_model_and_default_filters(
     assert isinstance(harness.client.permission_responses[0].outcome, DeniedOutcome)
     assert initialize_response.protocol_version == PROTOCOL_VERSION
 
-    session = asyncio.run(harness.new_session(cwd=str(tmp_path)))
-    mode_response = asyncio.run(harness.set_mode("review"))
-    model_response = asyncio.run(harness.set_model("provider-model-b"))
-    prompt_response = asyncio.run(harness.prompt_text("hello"))
+    session = await harness.new_session(cwd=str(tmp_path))
+    mode_response = await harness.set_mode("review")
+    model_response = await harness.set_model("provider-model-b")
+    prompt_response = await harness.prompt_text("hello")
 
     assert session.session_id == harness.last_session_id
     assert mode_response is not None
@@ -114,7 +111,7 @@ def test_black_box_harness_covers_initialize_mode_model_and_default_filters(
     assert harness.agent_messages() == ["provider:model-b"]
 
 
-def test_black_box_harness_exposes_compatibility_surface_updates(tmp_path: Path) -> None:
+async def test_black_box_harness_exposes_compatibility_surface_updates(tmp_path: Path) -> None:
     harness = BlackBoxHarness.create(
         agent=Agent(TestModel(custom_output_text="surface")),
         config=AdapterConfig(
@@ -124,9 +121,9 @@ def test_black_box_harness_exposes_compatibility_surface_updates(tmp_path: Path)
         ),
     )
 
-    session = asyncio.run(harness.new_session(cwd=str(tmp_path)))
-    config_response = asyncio.run(harness.set_config_option("stream_enabled", True))
-    mode_response = asyncio.run(harness.set_mode("review"))
+    session = await harness.new_session(cwd=str(tmp_path))
+    config_response = await harness.set_config_option("stream_enabled", True)
+    mode_response = await harness.set_mode("review")
 
     assert config_response is not None
     assert mode_response is not None
@@ -143,10 +140,10 @@ def test_black_box_harness_exposes_compatibility_surface_updates(tmp_path: Path)
     assert harness.usage_updates(session_id=session.session_id) == []
 
 
-def test_black_box_harness_exposes_available_commands_and_permission_requests(
+async def test_black_box_harness_exposes_available_commands_and_permission_requests(
     tmp_path: Path,
 ) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -158,10 +155,10 @@ def test_black_box_harness_exposes_available_commands_and_permission_requests(
         agent=agent,
         config=AdapterConfig(session_store=FileSessionStore(tmp_path / "sessions")),
     )
-    session = asyncio.run(harness.new_session(cwd=str(tmp_path)))
+    session = await harness.new_session(cwd=str(tmp_path))
     harness.queue_permission_cancelled()
 
-    response = asyncio.run(harness.prompt_text("Use the dangerous tool."))
+    response = await harness.prompt_text("Use the dangerous tool.")
 
     assert response.stop_reason == "cancelled"
     assert "tools" in harness.available_command_names(session_id=session.session_id)
@@ -176,31 +173,31 @@ def test_black_box_harness_exposes_available_commands_and_permission_requests(
     assert harness.last_permission_request(session_id=session.session_id) is not None
 
 
-def test_black_box_harness_load_session_returns_none_for_missing_state(
+async def test_black_box_harness_load_session_returns_none_for_missing_state(
     tmp_path: Path,
 ) -> None:
     harness = BlackBoxHarness.create(agent=Agent(TestModel(custom_output_text="missing-session")))
     harness.last_session_id = "missing"
 
-    response = asyncio.run(harness.load_session(cwd=str(tmp_path)))
+    response = await harness.load_session(cwd=str(tmp_path))
 
     assert response is None
     assert harness.last_session_id == "missing"
 
 
-def test_black_box_harness_wraps_session_lifecycle_methods(tmp_path: Path) -> None:
+async def test_black_box_harness_wraps_session_lifecycle_methods(tmp_path: Path) -> None:
     harness = BlackBoxHarness.create(
         agent=Agent(TestModel(custom_output_text="lifecycle")),
         config=AdapterConfig(session_store=FileSessionStore(tmp_path / "sessions")),
     )
 
-    session = asyncio.run(harness.new_session(cwd=str(tmp_path)))
-    listed = asyncio.run(harness.list_sessions(cwd=str(tmp_path)))
-    forked = asyncio.run(harness.fork_session(cwd=str(tmp_path), session_id=session.session_id))
+    session = await harness.new_session(cwd=str(tmp_path))
+    listed = await harness.list_sessions(cwd=str(tmp_path))
+    forked = await harness.fork_session(cwd=str(tmp_path), session_id=session.session_id)
     assert forked.session_id == harness.last_session_id
 
-    resumed = asyncio.run(harness.resume_session(cwd=str(tmp_path), session_id=session.session_id))
-    closed = asyncio.run(harness.close_session(session_id=forked.session_id))
+    resumed = await harness.resume_session(cwd=str(tmp_path), session_id=session.session_id)
+    closed = await harness.close_session(session_id=forked.session_id)
 
     assert any(item.session_id == session.session_id for item in listed.sessions)
     assert resumed is not None

@@ -76,7 +76,7 @@ ACP adapters for production Python agents Expose agents through ACP without lyin
 
 ACP Kit is the adapter toolkit and monorepo for exposing existing agent runtimes through ACP without inventing runtime behavior the source framework does not actually own.
 
-Today the repo ships two production-grade adapter families:
+Today the repo ships two maintained adapter families:
 
 - [`pydantic-acp`](pydantic-acp.md) for `pydantic_ai.Agent`
 - [`langchain-acp`](langchain-acp.md) for LangChain, LangGraph, and DeepAgents graphs
@@ -102,7 +102,7 @@ Three ideas drive the SDK:
 
 | Package | Purpose | Start here |
 |---|---|---|
-| [`pydantic-acp`](pydantic-acp.md) | production-grade ACP adapter for `pydantic_ai.Agent` | If your runtime starts from a `pydantic_ai.Agent` |
+| [`pydantic-acp`](pydantic-acp.md) | maintained ACP adapter for `pydantic_ai.Agent` | If your runtime starts from a `pydantic_ai.Agent` |
 | [`langchain-acp`](langchain-acp.md) | graph-centric ACP adapter for LangChain, LangGraph, and DeepAgents | If your runtime already produces a compiled graph |
 | [`acpkit`](cli.md) | CLI target resolution, launch helpers, adapter dispatch | If you want `acpkit run ...` or `acpkit launch ...` |
 | [`helpers`](helpers.md) | supporting packages such as `codex-auth-helper` and `acpremote` | If you need transport or model-construction helpers around an adapter |
@@ -264,7 +264,8 @@ uv pip install pydantic-acp
 pip install pydantic-acp
 ```
 
-`pydantic-acp` pins the ACP and Pydantic AI versions it integrates against, so it is the safest direct dependency when you are embedding the adapter inside another application.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0` and pins the ACP
+protocol version it integrates against. Pydantic AI V1 is not supported.
 
 For LangChain, LangGraph, or DeepAgents runtimes:
 
@@ -285,6 +286,10 @@ uv pip install "langchain-acp[deepagents]"
 ```bash
 pip install "langchain-acp[deepagents]"
 ```
+
+The current minimum versions are `langchain>=1.3.11`, `langgraph>=1.2.7`, and, when the optional
+extra is installed, `deepagents>=0.6.12`. ACP Kit's CI resolves and tests these three versions
+together rather than validating them in isolation.
 
 `langchain-acp` is the direct dependency when your app already owns a compiled LangGraph graph or a LangChain `create_agent(...)` graph and you want ACP Kit's adapter seams without the root CLI.
 
@@ -325,6 +330,13 @@ pip install acpremote
 ```
 
 `acpremote` is transport-only. It does not adapt a framework runtime into ACP; it exposes or mirrors an ACP boundary that already exists.
+
+It also installs the `acpremote` executable:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8080 -- npx @zed-industries/codex-acp
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
 
 ## Development Setup
 
@@ -1012,6 +1024,13 @@ With Toad ACP:
 toad acp "acpkit run --addr ws://remote.example.com:8080/acp/ws"
 ```
 
+If you installed the standalone transport package, the equivalent transport-only command is:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+toad acp "acpremote mirror ws://remote.example.com:8080/acp/ws"
+```
+
 ## CLI Versus Runtime API
 
 Use the root CLI when:
@@ -1095,7 +1114,7 @@ Source: `docs/pydantic-acp.md`
 
 # Pydantic ACP Overview
 
-`pydantic-acp` is the production ACP adapter in ACP Kit.
+`pydantic-acp` is the primary Pydantic AI adapter in ACP Kit.
 
 Its job is simple: keep your existing `pydantic_ai.Agent` surface intact, then expose it as an ACP server without inventing runtime state the underlying agent cannot actually honor.
 
@@ -1107,6 +1126,7 @@ Use it when you want ACP-native clients to see truthful:
 - approval workflows
 - cancellation behavior
 - MCP metadata and host-backed tools
+- harness-backed filesystem, shell, and optional CodeMode capability surfaces
 - prompt resources such as editor selections, branch diffs, file references, and multimodal input
 - persisted ACP sessions and replayable transcript state
 
@@ -1279,6 +1299,23 @@ Common bridges:
 
 The important rule is that bridges should describe real runtime behavior, not hypothetical UI affordances.
 
+Harness-backed capability bridges follow the same rule. Use:
+
+- `HarnessFileSystemBridge` for workspace-scoped file tools
+- `HarnessShellBridge` for bounded shell tools
+- `HarnessCodeModeBridge` only when the run should expose CodeMode execution tools
+
+When you use those bridges, pair them with:
+
+- `HarnessFileSystemProjectionMap`
+- `HarnessShellProjectionMap`
+- `HarnessCodeModeProjectionMap`
+
+That combination keeps ACP transcript updates readable and tool-family-specific. The maintained guide
+for this surface is:
+
+- [Harness-backed Capabilities](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md)
+
 ## Runtime Notes
 
 - `Agent(output_type=str | None)` is supported, but a successful `None` result ends the turn without emitting a synthetic `"null"` transcript message.
@@ -1345,10 +1382,11 @@ If you are integrating `pydantic-acp` in a real product:
 2. Read [AdapterConfig](pydantic-acp/adapter-config.md).
 3. Read [Models, Modes, and Slash Commands](pydantic-acp/runtime-controls.md).
 4. Read [Plans, Thinking, and Approvals](pydantic-acp/plans-thinking-approvals.md).
-5. Read [Prompt Resources and Context](pydantic-acp/prompt-resources.md) if your client attaches selections, diffs, file refs, or multimodal input.
-6. Read [Providers](providers.md) if the host already owns state.
-7. Read [Bridges](bridges.md) if you need ACP-visible runtime extensions.
-8. Read [Finance Agent](examples/finance.md) and [Travel Agent](examples/travel.md) for maintained end-to-end examples.
+5. Read [Harness-backed Capabilities](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md) if your agent should expose `pydantic-ai-harness` filesystem, shell, or CodeMode tools.
+6. Read [Prompt Resources and Context](pydantic-acp/prompt-resources.md) if your client attaches selections, diffs, file refs, or multimodal input.
+7. Read [Providers](providers.md) if the host already owns state.
+8. Read [Bridges](bridges.md) if you need ACP-visible runtime extensions.
+9. Read [Finance Agent](examples/finance.md) and [Travel Agent](examples/travel.md) for maintained end-to-end examples.
 
 ## Common Mistakes
 
@@ -1362,14 +1400,38 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.106.0`.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
+outside the supported range.
 
-That is not accidental. The adapter relies on a specific, tested Pydantic AI
-surface and should still be upgraded deliberately.
+Each supported minor is checked against the same adapter runtime suite and
+Pydantic-specific type-check scope. Run the matrix locally with:
+
+```bash
+make check-pydantic-ai-matrix
+```
 
 The current compatibility surface includes function-tool preparation,
 output-tool preparation, output validation/processing hooks,
 deferred-tool-call hooks, run metadata, and conversation IDs.
+
+Pydantic AI V2 defaults the agent dependency and output generic parameters to
+`object`. If your agent contract explicitly uses `RunContext[None]` or
+`Hooks[None]`, declare the dependency type instead of relying on the old V1
+default:
+
+```python
+from pydantic_ai import Agent
+
+agent: Agent[None, str] = Agent(
+    "openai:gpt-5",
+    deps_type=type(None),
+    name="typed-agent",
+)
+```
+
+The adapter consumes `run_stream_events()` as an async context manager across
+the supported range. Pydantic AI 2.4.0 starts that run lazily when event
+iteration begins; callers do not need a version branch.
 
 ACP Kit also no longer imports Pydantic AI private history-processor modules
 directly. History processor support is expressed through ACP Kit's own callable
@@ -1379,8 +1441,9 @@ aliases and wrapped as `ProcessHistory` capabilities inside
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- upgrades are still compatibility work, but Pydantic AI integration points stay
-  isolated behind ACP Kit bridge and runtime seams
+- Pydantic AI 2.0.0 through 2.4.0 share one public adapter contract
+- future Pydantic AI upgrades remain explicit compatibility work
+- integration points stay isolated behind ACP Kit bridge and runtime seams
 
 ### LangChain ACP Overview
 URL: https://vcoderun.github.io/acpkit/langchain-acp/
@@ -1395,6 +1458,19 @@ Source: `docs/langchain-acp.md`
 - DeepAgents graphs built with `create_deep_agent(...)`
 
 It is not a separate agent framework. The adapter takes a runtime that is already graph-shaped and exposes it through ACP without discarding the runtime's real semantics.
+
+## Framework Compatibility
+
+`langchain-acp` currently requires:
+
+| Framework | Supported baseline | Adapter contract |
+| --- | --- | --- |
+| LangChain | `>=1.3.11` | `create_agent(...)`, middleware, messages, and streaming |
+| LangGraph | `>=1.2.7` | compiled graph invocation, state, interrupts, and stream events |
+| DeepAgents | `>=0.6.12` | optional `deepagents` extra, built-in tool projection, and plan compatibility |
+
+The baseline is tested as one resolved stack in CI. The adapter does not cap future compatible
+minor releases, but the lockfile records the exact versions used by the repository.
 
 ## Core Construction Paths
 
@@ -1773,6 +1849,18 @@ acp_agent = create_acp_agent(
 
 That compatibility layer keeps `write_todos` plan extraction and familiar filesystem or shell projection behavior available without making DeepAgents policy the core adapter architecture.
 
+`DeepAgentsProjectionMap` follows the stable DeepAgents 0.6 built-in tool contracts:
+
+- `read_file(file_path=...)`
+- `write_file(file_path=..., content=...)`
+- `edit_file(file_path=..., old_string=..., new_string=...)`
+- `ls(path=...)`, `glob(pattern=..., path=...)`, and `grep(pattern=..., path=...)`
+- `execute(command=...)`
+
+DeepAgents 0.6 moved filesystem state onto newer LangGraph channel semantics. That state remains
+owned by the compiled graph; the ACP adapter observes public stream and tool-call events instead of
+reaching into DeepAgents state internals.
+
 ## Migration From `deepagents-acp`
 
 Use `langchain-acp` when you want ACP Kit's reusable seams instead of a bespoke ACP runtime:
@@ -2127,6 +2215,7 @@ This is the recommended default for local tools and editor integrations.
 Current behavior:
 
 - writes use a temp file, `fsync`, and atomic replace
+- session ids are restricted to ASCII letters, digits, `_`, and `-`, with a 128-character limit
 - the store takes a process-local lock and a filesystem advisory lock when available
 - malformed or partially-written session files are skipped by public load/list flows instead of crashing the whole operation
 - stale temp files from interrupted writes are cleaned up on startup
@@ -4335,6 +4424,10 @@ Stored session state includes:
 - session-local mode id
 - config values
 - plan state
+
+`FileSessionStore` persists those values as local JSON files. File-backed session ids are restricted
+to ASCII letters, digits, `_`, and `-`, with a 128-character limit, so a client-supplied session id
+cannot escape the configured store root.
 - MCP server definitions
 - transcript updates
 - metadata
@@ -5361,7 +5454,71 @@ If you already have an `acp.interfaces.Agent` or a stdio ACP command, `acpremote
 ACP surface across a WebSocket boundary.
 
 Use `acpremote` when the runtime already speaks ACP and you only need transport. Use `acpkit`
-when the runtime is still a Python target and should be resolved into the correct adapter first.
+when the runtime is a Pydantic AI, LangChain, or LangGraph target and should be resolved into the
+correct adapter first.
+
+## CLI
+
+`acpremote` installs an executable for direct transport operations.
+
+Start here if you already have a WebSocket URL:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
+
+That command connects to the remote WebSocket and presents it locally as stdio ACP. It is the
+`acpremote` equivalent of:
+
+```bash
+acpkit run --addr ws://remote.example.com:8080/acp/ws
+```
+
+Command map:
+
+| Situation | Command | Direction |
+|---|---|---|
+| WebSocket endpoint already exists | `acpremote mirror ws://host:8080/acp/ws` | remote WebSocket to local stdio ACP |
+| local command already speaks ACP over stdio | `acpremote expose -- <command>` | local stdio ACP to WebSocket |
+| Python object is already an ACP agent | `acpremote serve module:agent` | native ACP object to WebSocket |
+
+Expose a native ACP Python target:
+
+```bash
+acpremote serve my_app:agent --host 0.0.0.0 --port 8080
+```
+
+`serve` expects the target to already be an `acp.interfaces.Agent`. Use `acpkit serve ...` when a
+framework target still needs adapter dispatch:
+
+```bash
+acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+```
+
+Expose a stdio ACP command:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8080 -- npx @zed-industries/codex-acp
+```
+
+Command options belong after `--`:
+
+```bash
+acpremote expose --cwd /srv/workspace --env MODEL=gpt-5 -- python agent.py --stdio
+```
+
+Mirror a remote endpoint back into local stdio ACP:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
+
+Auth can use either a direct token or an environment variable:
+
+```bash
+acpremote expose --token-env ACPREMOTE_TOKEN -- npx @zed-industries/codex-acp
+acpremote mirror ws://remote.example.com:8080/acp/ws --bearer-token "$ACPREMOTE_TOKEN"
+```
 
 ## Core Construction Paths
 
@@ -5437,9 +5594,16 @@ Local mirror flow:
 
 ```bash
 acpkit run --addr ws://remote.example.com:8080/acp/ws
+acpremote mirror ws://remote.example.com:8080/acp/ws
 ```
 
 Direct ACP transport flow:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8080 -- fast-agent --server --transport acp
+```
+
+The same flow through Python:
 
 ```python
 from acpremote import serve_command
@@ -5455,7 +5619,7 @@ await server.serve_forever()
 When an editor or launcher wants to shell out, the same mirror path can be wrapped with Toad:
 
 ```bash
-toad acp "acpkit run --addr ws://remote.example.com:8080/acp/ws"
+toad acp "acpremote mirror ws://remote.example.com:8080/acp/ws"
 ```
 
 ## Default HTTP And WebSocket Surface
@@ -5536,8 +5700,8 @@ The documented flows cover both supported remote-host stories:
 
 1. adapt a Python runtime through `pydantic-acp` or `langchain-acp`
 2. expose the resulting ACP server through `acpkit serve ...` or `acpremote.serve_acp(...)`
-3. mirror it locally with `acpkit run --addr ...` or `connect_acp(...)`
-4. or skip adaptation entirely and expose a native ACP stdio command directly through `serve_command(...)`
+3. mirror it locally with `acpkit run --addr ...`, `acpremote mirror ...`, or `connect_acp(...)`
+4. or skip adaptation entirely and expose a native ACP stdio command directly through `acpremote expose ...` or `serve_command(...)`
 
 ### Examples Overview
 URL: https://vcoderun.github.io/acpkit/examples/
@@ -6453,6 +6617,26 @@ make tests
 make check
 ```
 
+Pydantic AI compatibility checks:
+
+```bash
+make check-pydantic-ai-matrix
+```
+
+This runs the Pydantic adapter runtime tests and type checks independently
+against Pydantic AI 2.0.0, 2.1.0, 2.2.0, 2.3.0, and 2.4.0. The same matrix runs
+in CI. Add a version only after both parts pass.
+
+LangChain stack compatibility checks:
+
+```bash
+make check-langchain-stack
+```
+
+This runs the LangChain adapter tests and type checks with LangChain 1.3.11, LangGraph 1.2.7, and
+DeepAgents 0.6.12 in one resolver environment. The suite constructs a real DeepAgents graph and
+checks its ACP lifecycle and built-in tool projections.
+
 Branch coverage for the adapter packages:
 
 ```bash
@@ -6565,9 +6749,9 @@ Today it ships:
 The repository currently contains two adapter packages, a root CLI package, and two helper packages:
 
 - `pydantic-acp`
-  production-grade ACP adapter for `pydantic_ai.Agent`
+  maintained ACP adapter for `pydantic_ai.Agent`
 - `langchain-acp`
-  production-grade ACP adapter for LangChain, LangGraph, and DeepAgents graphs
+  maintained ACP adapter for LangChain, LangGraph, and DeepAgents graphs
 - `acpkit`
   root CLI, target resolver, and launch helpers
 - `codex-auth-helper`

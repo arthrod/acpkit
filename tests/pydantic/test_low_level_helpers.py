@@ -533,7 +533,13 @@ def test_prepare_tools_bridge_covers_validation_none_and_require_mode(
 
     bridge = PrepareToolsBridge[None](
         default_mode_id="chat",
-        modes=[PrepareToolsMode(id="chat", name="Chat", prepare_func=lambda _c, _t: None)],
+        modes=[
+            PrepareToolsMode(
+                id="chat",
+                name="Chat",
+                prepare_func=cast(Any, lambda _c, _t: None),
+            )
+        ],
     )
     session = _session(tmp_path)
 

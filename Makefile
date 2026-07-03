@@ -2,8 +2,12 @@ BLUE := \033[1;34m
 GREEN := \033[1;32m
 RESET := \033[0m
 PYTHON_VERSIONS := 3.11.13 3.12.10 3.13.9
+PYDANTIC_AI_VERSIONS := 2.0.0 2.1.0 2.2.0 2.3.0 2.4.0
+LANGCHAIN_VERSION := 1.3.11
+LANGGRAPH_VERSION := 1.2.7
+DEEPAGENTS_VERSION := 0.6.12
 
-.PHONY: tests coverage-branch check-coverage save-coverage format check-formatted check check-matrix all prod rename serve
+.PHONY: tests coverage-branch check-coverage save-coverage format check-formatted check check-matrix check-pydantic-ai-matrix check-langchain-stack all prod rename serve
 
 # Hack to allow passing arguments to make commands (e.g. make rename my_project)
 ifeq (rename,$(firstword $(MAKECMDGOALS)))
@@ -51,6 +55,20 @@ check-matrix:
 	done
 	@printf "$(GREEN)✔ Matrix checking complete.$(RESET)\n"
 
+check-pydantic-ai-matrix:
+	@for version in $(PYDANTIC_AI_VERSIONS); do \
+		printf "$(BLUE)==>$(RESET) Checking Pydantic AI $$version compatibility...\n"; \
+		uv run --extra dev --with "pydantic-ai-slim==$$version" pytest tests/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py -q || exit $$?; \
+		uv run --extra dev --with "pydantic-ai-slim==$$version" ty check packages/adapters/pydantic-acp/src tests/pydantic examples/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py || exit $$?; \
+	done
+	@printf "$(GREEN)✔ Pydantic AI compatibility matrix complete.$(RESET)\n"
+
+check-langchain-stack:
+	@printf "$(BLUE)==>$(RESET) Checking LangChain $(LANGCHAIN_VERSION), LangGraph $(LANGGRAPH_VERSION), and DeepAgents $(DEEPAGENTS_VERSION)...\n"
+	@uv run --extra dev --with "langchain==$(LANGCHAIN_VERSION)" --with "langgraph==$(LANGGRAPH_VERSION)" --with "deepagents==$(DEEPAGENTS_VERSION)" pytest tests/langchain tests/test_native_langchain_agent.py -q
+	@uv run --extra dev --with "langchain==$(LANGCHAIN_VERSION)" --with "langgraph==$(LANGGRAPH_VERSION)" --with "deepagents==$(DEEPAGENTS_VERSION)" ty check packages/adapters/langchain-acp/src tests/langchain examples/langchain tests/test_native_langchain_agent.py
+	@printf "$(GREEN)✔ LangChain stack compatibility checks complete.$(RESET)\n"
+
 tests:
 	@printf "$(BLUE)==>$(RESET) Running tests with pytest...\n"
 	@uv run --extra dev pytest
@@ -83,7 +101,7 @@ serve:
 
 all: format check
 
-prod: tests format check-matrix
+prod: tests format check-matrix check-pydantic-ai-matrix check-langchain-stack
 
 pre-commit:
 	@printf "$(BLUE)==>$(RESET) Running pre-commit checks...\n"

@@ -341,6 +341,27 @@ Focused docs recipes:
 
 ## Compatibility Policy
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.106.0`.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
+no longer supported.
 
-That pin is deliberate. The adapter is tested against a specific Pydantic AI surface and should still be upgraded deliberately, but the hook-compatibility seam is isolated behind ACP Kit’s own compatibility layer instead of scattering private upstream imports through the runtime. The 1.92 surface includes function-tool preparation, output-tool preparation, output validation/processing hooks, deferred-tool-call hooks, run metadata, and conversation IDs.
+Every supported minor is exercised by the repository's runtime and type-check
+compatibility matrix. The adapter keeps upstream compatibility behind ACP Kit's
+bridge and runtime seams instead of scattering version checks through callers.
+
+Pydantic AI V2 defaults agent dependency and output generics to `object`. When
+your tools or hooks explicitly use `RunContext[None]` or `Hooks[None]`, also
+declare the dependency type on the agent:
+
+```python
+from pydantic_ai import Agent
+
+agent: Agent[None, str] = Agent(
+    "openai:gpt-5",
+    deps_type=type(None),
+    name="typed-agent",
+)
+```
+
+The supported surface includes tool and output-tool preparation, output
+validation and processing hooks, deferred tool-call hooks, run metadata,
+conversation IDs, and the `run_stream_events()` lifecycle used through 2.4.0.

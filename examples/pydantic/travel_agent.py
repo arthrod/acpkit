@@ -185,6 +185,7 @@ async def observe_write_result(
 agent = Agent(
     _default_model_name(),
     name="travel-agent",
+    deps_type=type(None),
     capabilities=[hooks],
     output_type=[str, DeferredToolRequests],
     system_prompt=(
