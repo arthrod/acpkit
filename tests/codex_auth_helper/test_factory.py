@@ -63,7 +63,10 @@ def test_create_codex_responses_model_merges_settings(tmp_path: Path) -> None:
         "gpt-5",
         config=_config(auth_path),
         instructions="Answer tersely.",
-        settings={"openai_reasoning_summary": "concise"},
+        settings={
+            "openai_reasoning_summary": "concise",
+            "openai_store": True,
+        },
     )
 
     assert model.settings == {

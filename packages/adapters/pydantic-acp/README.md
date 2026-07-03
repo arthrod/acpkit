@@ -2,11 +2,24 @@
 
 `pydantic-acp` adapts `pydantic_ai.Agent` instances to the ACP agent interface without rewriting the underlying agent.
 
+Install the stable v1 package with optional harness integration:
+
+```bash
+uv add "pydantic-acp[harness]>=1.0.0,<2.0.0"
+```
+
+```bash
+pip install "pydantic-acp[harness]>=1.0.0,<2.0.0"
+```
+
 The core contract is simple:
 
 1. keep the existing `pydantic_ai.Agent`
 2. expose it through ACP
 3. only publish ACP-visible state the runtime can actually honor
+
+The final v1 stability boundary is defined by the
+[ACP Kit versioning policy](https://vcoderun.github.io/acpkit/versioning/).
 
 ## Entry Points
 

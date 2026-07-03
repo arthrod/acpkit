@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import asyncio
 import json
 from collections.abc import Iterable
 from inspect import isawaitable
@@ -110,6 +111,7 @@ class LangChainAcpAgent(AcpAgent):
         self._tool_classifier: ToolClassifier = self._bridge_manager.tool_classifier
         self._client: AcpClient | None = None
         self._cancelled_sessions: set[str] = set()
+        self._active_prompt_tasks: dict[str, asyncio.Task[Any]] = {}
 
     async def initialize(
         self,
@@ -186,7 +188,7 @@ class LangChainAcpAgent(AcpAgent):
         if session is None:
             return None
         session.cwd = Path(cwd)
-        session.mcp_servers = self._serialize_mcp_servers(mcp_servers)
+        self._update_session_mcp_servers(session, mcp_servers)
         self._sync_bridge_metadata(session)
         await self._replay_transcript(session)
         await self._drain_bridge_updates(client=self._client, session=session)
@@ -305,6 +307,32 @@ class LangChainAcpAgent(AcpAgent):
         **kwargs: Any,
     ) -> PromptResponse:
         del kwargs
+        current_task = cast(asyncio.Task[Any], asyncio.current_task())
+        self._active_prompt_tasks[session_id] = current_task
+        try:
+            return await self._execute_prompt(
+                prompt=prompt,
+                session_id=session_id,
+                message_id=message_id,
+            )
+        except asyncio.CancelledError:
+            if session_id not in self._cancelled_sessions:
+                raise
+            current_task.uncancel()
+            self._cancelled_sessions.discard(session_id)
+            return PromptResponse(stop_reason="cancelled", user_message_id=message_id)
+        finally:
+            active_task = self._active_prompt_tasks.get(session_id)
+            if active_task is current_task:
+                self._active_prompt_tasks.pop(session_id, None)
+
+    async def _execute_prompt(
+        self,
+        *,
+        prompt: list[AgentPromptBlock],
+        session_id: str,
+        message_id: str | None,
+    ) -> PromptResponse:
         session = self._require_session(session_id)
         client = self._require_client()
         self._sync_bridge_metadata(session)
@@ -402,7 +430,7 @@ class LangChainAcpAgent(AcpAgent):
         forked = self._store.fork(session_id, new_session_id=new_session_id, cwd=Path(cwd))
         if forked is None:
             raise RequestError.resource_not_found(f"session:{session_id}")
-        forked.mcp_servers = self._serialize_mcp_servers(mcp_servers)
+        self._update_session_mcp_servers(forked, mcp_servers)
         self._sync_bridge_metadata(forked)
         self._store.save(forked)
         await self._emit_available_commands(session=forked)
@@ -423,7 +451,7 @@ class LangChainAcpAgent(AcpAgent):
         del kwargs
         session = self._require_session(session_id)
         session.cwd = Path(cwd)
-        session.mcp_servers = self._serialize_mcp_servers(mcp_servers)
+        self._update_session_mcp_servers(session, mcp_servers)
         self._sync_bridge_metadata(session)
         await self._replay_transcript(session)
         await self._drain_bridge_updates(client=self._client, session=session)
@@ -444,6 +472,9 @@ class LangChainAcpAgent(AcpAgent):
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         del kwargs
         self._cancelled_sessions.add(session_id)
+        active_task = self._active_prompt_tasks.get(session_id)
+        if active_task is not None:
+            active_task.cancel()
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> None:
         del method_id, kwargs
@@ -695,6 +726,7 @@ class LangChainAcpAgent(AcpAgent):
                 session=session,
                 message_chunk=message_chunk,
                 active_tool_calls=active_tool_calls,
+                tool_call_accumulator=tool_call_accumulator,
             )
             return
 
@@ -770,12 +802,56 @@ class LangChainAcpAgent(AcpAgent):
         session: AcpSessionContext,
         message_chunk: ToolMessage,
         active_tool_calls: dict[str, dict[str, Any]],
+        tool_call_accumulator: dict[int, dict[str, str | int | None]] | None = None,
     ) -> None:
         tool_call_id = getattr(message_chunk, "tool_call_id", None)
         if not isinstance(tool_call_id, str):
             return
-        active_tool = active_tool_calls.get(tool_call_id, {})
-        tool_name = cast(str, active_tool.get("tool_name", getattr(message_chunk, "name", "tool")))
+        active_tool = active_tool_calls.get(tool_call_id)
+        if active_tool is None:
+            pending_index: int | None = None
+            pending_state: dict[str, str | int | None] | None = None
+            for index, state in (tool_call_accumulator or {}).items():
+                if state["id"] == tool_call_id:
+                    pending_index = index
+                    pending_state = state
+                    break
+            pending_name = pending_state["name"] if pending_state is not None else None
+            message_name = getattr(message_chunk, "name", None)
+            tool_name = (
+                pending_name
+                if isinstance(pending_name, str) and pending_name
+                else message_name
+                if isinstance(message_name, str) and message_name
+                else "tool"
+            )
+            pending_args = pending_state["args"] if pending_state is not None else ""
+            raw_input = (
+                self._try_parse_json_object(pending_args)
+                if isinstance(pending_args, str) and pending_args
+                else {}
+            )
+            active_tool = {
+                "tool_name": tool_name,
+                "raw_input": raw_input,
+            }
+            active_tool_calls[tool_call_id] = active_tool
+            if pending_index is not None and tool_call_accumulator is not None:
+                tool_call_accumulator.pop(pending_index, None)
+            await self._emit_update(
+                client=client,
+                session=session,
+                update=build_tool_start_update(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    classifier=self._tool_classifier,
+                    raw_input=raw_input,
+                    cwd=session.cwd,
+                    projection_map=self._projection_map,
+                ),
+            )
+        tool_name_value = active_tool.get("tool_name")
+        tool_name = tool_name_value if isinstance(tool_name_value, str) else "tool"
         raw_input = active_tool.get("raw_input")
         raw_output = self._projectable_raw_output(message_chunk.content)
         serialized_output = self._config.output_serializer.serialize(raw_output)
@@ -1087,6 +1163,15 @@ class LangChainAcpAgent(AcpAgent):
             )
             for server in mcp_servers
         ]
+
+    def _update_session_mcp_servers(
+        self,
+        session: AcpSessionContext,
+        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None,
+    ) -> None:
+        if mcp_servers is None:
+            return
+        session.mcp_servers = self._serialize_mcp_servers(mcp_servers)
 
     def _derive_title(self, prompt: Iterable[AgentPromptBlock]) -> str | None:
         for block in prompt:

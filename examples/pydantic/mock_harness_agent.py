@@ -13,10 +13,10 @@ from pydantic_acp import (
     AgentBridgeBuilder,
     AgentFactory,
     CapabilityBridge,
+    FileSessionStore,
     HarnessCodeModeBridge,
     HarnessFileSystemBridge,
     HarnessShellBridge,
-    MemorySessionStore,
     create_acp_agent,
     run_acp,
 )
@@ -29,6 +29,10 @@ _AGENT_NAME: Final[str] = "harness-agent"
 _DEFAULT_MODEL_NAME: Final[str] = "openrouter:google/gemini-3-flash-preview"
 _DEFAULT_CODEX_MODEL: Final[str] = "gpt-5.4"
 _WORKSPACE_ROOT: Final[Path] = Path(__file__).resolve().parent / ".harness-agent"
+_SESSION_STORE_ROOT: Final[Path] = (
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    / "pydantic-harness"
+)
 _INSTRUCTIONS: Final[str] = (
     "You are an ACP Kit harness agent. Use the pydantic-ai-harness filesystem and shell "
     "tools for concrete workspace work. Keep all filesystem and shell work inside the "
@@ -116,7 +120,7 @@ def _build_config(*, include_code_mode: bool) -> AdapterConfig:
     return AdapterConfig(
         agent_name=_AGENT_NAME,
         agent_title="Harness Agent",
-        session_store=MemorySessionStore(),
+        session_store=FileSessionStore(_SESSION_STORE_ROOT),
         capability_bridges=_build_harness_bridges(
             _WORKSPACE_ROOT,
             include_code_mode=include_code_mode,

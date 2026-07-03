@@ -358,10 +358,14 @@ async def test_client_helper_paths_cover_metadata_edge_cases(
     )
 
     monkeypatch.setattr(
-        client_module, "HTTPConnection", lambda host, port: next(queued_connections)
+        client_module,
+        "HTTPConnection",
+        lambda host, port, *, timeout: next(queued_connections),
     )
     monkeypatch.setattr(
-        client_module, "HTTPSConnection", lambda host, port: next(queued_connections)
+        client_module,
+        "HTTPSConnection",
+        lambda host, port, *, timeout: next(queued_connections),
     )
 
     assert (
@@ -422,17 +426,173 @@ async def test_client_remote_connection_close_and_metadata_fetch_thread_path(
     await remote.close()
     assert closed == ["connection", "streams"]
 
-    async def fake_to_thread(func: Any, metadata_url: str, headers: Any) -> str:
+    async def fake_to_thread(
+        func: Any,
+        metadata_url: str,
+        headers: Any,
+        timeout: float,
+    ) -> str:
         assert metadata_url == "http://example.com/acp"
         assert headers == {"X-Test": "1"}
+        assert timeout == 0.25
         return "ok"
 
     monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
     result = await client_module.fetch_server_metadata(
         "ws://example.com/acp/ws",
         headers={"X-Test": "1"},
+        timeout=0.25,
     )
     assert result == "ok"
+
+
+@pytest.mark.asyncio
+async def test_remote_connection_closes_streams_when_connection_close_fails() -> None:
+    closed: list[str] = []
+
+    @dataclass(slots=True)
+    class _FailingConnection:
+        async def close(self) -> None:
+            closed.append("connection")
+            raise RuntimeError("connection close failed")
+
+    @dataclass(slots=True)
+    class _FakeStreams:
+        async def close(self) -> None:
+            closed.append("streams")
+
+    remote = RemoteClientConnection(
+        connection=cast(Any, _FailingConnection()),
+        websocket=cast(Any, object()),
+        streams=cast(Any, _FakeStreams()),
+    )
+
+    with pytest.raises(RuntimeError, match="connection close failed"):
+        await remote.close()
+
+    assert closed == ["connection", "streams"]
+
+
+@pytest.mark.asyncio
+async def test_connect_remote_agent_closes_websocket_when_stream_setup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[str] = []
+
+    @dataclass(slots=True)
+    class _FakeWebSocket:
+        async def close(self) -> None:
+            closed.append("websocket")
+
+        async def wait_closed(self) -> None:
+            closed.append("wait_closed")
+
+    async def fake_connect(*args: Any, **kwargs: Any) -> _FakeWebSocket:
+        del args, kwargs
+        return _FakeWebSocket()
+
+    async def fail_open_streams(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("stream setup failed")
+
+    monkeypatch.setattr(client_module, "connect", fake_connect)
+    monkeypatch.setattr(client_module, "open_websocket_stream_bridge", fail_open_streams)
+
+    with pytest.raises(RuntimeError, match="stream setup failed"):
+        await client_module.connect_remote_agent(
+            cast(Any, object()),
+            "ws://example.com/acp/ws",
+        )
+
+    assert closed == ["websocket", "wait_closed"]
+
+
+@pytest.mark.asyncio
+async def test_connect_remote_agent_closes_streams_when_acp_setup_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[str] = []
+
+    @dataclass(slots=True)
+    class _FakeStreams:
+        reader: object = field(default_factory=object)
+        writer: object = field(default_factory=object)
+
+        async def close(self) -> None:
+            closed.append("streams")
+
+    async def fake_connect(*args: Any, **kwargs: Any) -> object:
+        del args, kwargs
+        return object()
+
+    async def fake_open_streams(*args: Any, **kwargs: Any) -> _FakeStreams:
+        del args, kwargs
+        return _FakeStreams()
+
+    def fail_connect_to_agent(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("ACP setup failed")
+
+    monkeypatch.setattr(client_module, "connect", fake_connect)
+    monkeypatch.setattr(client_module, "open_websocket_stream_bridge", fake_open_streams)
+    monkeypatch.setattr(client_module, "connect_to_agent", fail_connect_to_agent)
+
+    with pytest.raises(RuntimeError, match="ACP setup failed"):
+        await client_module.connect_remote_agent(
+            cast(Any, object()),
+            "ws://example.com/acp/ws",
+        )
+
+    assert closed == ["streams"]
+
+
+@pytest.mark.asyncio
+async def test_connect_remote_agent_cleans_up_when_metadata_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[str] = []
+
+    @dataclass(slots=True)
+    class _FakeConnection:
+        async def close(self) -> None:
+            closed.append("connection")
+
+    @dataclass(slots=True)
+    class _FakeStreams:
+        reader: object = field(default_factory=object)
+        writer: object = field(default_factory=object)
+
+        async def close(self) -> None:
+            closed.append("streams")
+
+    async def fake_connect(*args: Any, **kwargs: Any) -> object:
+        del args, kwargs
+        return object()
+
+    async def fake_open_streams(*args: Any, **kwargs: Any) -> _FakeStreams:
+        del args, kwargs
+        return _FakeStreams()
+
+    async def fail_metadata(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("metadata failed")
+
+    monkeypatch.setattr(client_module, "connect", fake_connect)
+    monkeypatch.setattr(client_module, "open_websocket_stream_bridge", fake_open_streams)
+    monkeypatch.setattr(
+        client_module,
+        "connect_to_agent",
+        lambda *args, **kwargs: _FakeConnection(),
+    )
+    monkeypatch.setattr(client_module, "fetch_server_metadata", fail_metadata)
+
+    with pytest.raises(RuntimeError, match="metadata failed"):
+        await client_module.connect_remote_agent(
+            cast(Any, object()),
+            "ws://example.com/acp/ws",
+        )
+
+    assert closed == ["connection", "streams"]
 
 
 @pytest.mark.asyncio
@@ -831,22 +991,15 @@ async def test_proxy_agent_helper_paths_cover_delegate_and_metadata_edges(
     monkeypatch.setattr(asyncio, "get_running_loop", lambda: (_ for _ in ()).throw(RuntimeError()))
     proxy.on_connect(cast(Any, object()))
     assert proxy._remote is None
+    await proxy.close()
+    assert closers == ["closed"]
 
-    class _FakeLoop:
-        def __init__(self) -> None:
-            self.created = 0
-
-        def create_task(self, coro: Any) -> None:
-            self.created += 1
-            coro.close()
-
-    fake_loop = _FakeLoop()
     proxy._client = cast(Any, object())
     proxy._remote = cast(RemoteClientConnection, _ClosableRemote())
-    monkeypatch.setattr(asyncio, "get_running_loop", lambda: fake_loop)
     proxy.on_connect(cast(Any, object()))
-    assert fake_loop.created == 1
     assert proxy._remote is None
+    await proxy.close()
+    assert closers == ["closed", "closed"]
 
 
 @pytest.mark.asyncio

@@ -210,3 +210,14 @@ Stay in this skill when the main issue is:
 - Do not claim it supports generic Chat Completions if it does not.
 - Do not describe auth refresh logic that is not present in the package source.
 - If the task shifts into ACP adapter runtime behavior, move to `pydantic-acp`.
+
+## Production Baseline
+
+- Require explicit `instructions=` for Codex-backed Pydantic AI and LangChain factories.
+- Never log access tokens, refresh tokens, account ids, or the contents of `auth.json`.
+- Keep auth-file replacement atomic and private, and serialize sync and async refreshes that share
+  one auth store.
+- Preserve the enforced Responses settings, including disabled server-side storage and streaming
+  behavior.
+- Treat local Codex auth as machine-local user state; do not bake it into images, artifacts, CI
+  logs, or shared volumes.

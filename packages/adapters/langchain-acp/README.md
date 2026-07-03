@@ -34,6 +34,9 @@ Contributor setup from the monorepo root:
 uv sync --extra dev --extra langchain
 ```
 
+Public API and deprecation guarantees are documented in the
+[versioning policy](https://vcoderun.github.io/acpkit/versioning/).
+
 ## Supported Framework Versions
 
 The current compatibility baseline is:

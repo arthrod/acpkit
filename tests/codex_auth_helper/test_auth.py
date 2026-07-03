@@ -5,6 +5,7 @@ import json
 import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Event
 from typing import Any, cast
 
 import httpx
@@ -245,6 +246,110 @@ async def test_token_manager_helpers_cover_non_refresh_and_close_paths(
 
     await manager.close()
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_token_manager_serializes_async_and_sync_refreshes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(
+        auth_path,
+        access_expiry=datetime.now(tz=UTC) - timedelta(minutes=5),
+        refresh_token="refresh-before",
+    )
+    manager = CodexTokenManager(
+        config=CodexAuthConfig(auth_path=auth_path),
+        store=CodexAuthStore(auth_path),
+        http_client=httpx.AsyncClient(),
+    )
+    refresh_started = asyncio.Event()
+    allow_refresh = asyncio.Event()
+    calls: list[str] = []
+    refreshed_state = CodexAuthState(
+        access_token="refreshed-access",
+        refresh_token="refresh-after",
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+    )
+
+    async def async_refresh(self: CodexTokenManager) -> CodexAuthState:
+        del self
+        calls.append("async")
+        refresh_started.set()
+        await allow_refresh.wait()
+        return refreshed_state
+
+    monkeypatch.setattr(CodexTokenManager, "_refresh_locked", async_refresh)
+    monkeypatch.setattr(
+        CodexTokenManager,
+        "_refresh_locked_sync",
+        lambda self: pytest.fail("sync refresh must reuse the async result"),
+    )
+
+    async_token = asyncio.create_task(manager.get_access_token())
+    await refresh_started.wait()
+    sync_token = asyncio.create_task(asyncio.to_thread(manager.get_access_token_sync))
+    await asyncio.sleep(0.01)
+    assert calls == ["async"]
+
+    allow_refresh.set()
+    assert await async_token == "refreshed-access"
+    assert await sync_token == "refreshed-access"
+    assert calls == ["async"]
+    await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_token_manager_async_refresh_waits_for_sync_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(
+        auth_path,
+        access_expiry=datetime.now(tz=UTC) - timedelta(minutes=5),
+        refresh_token="refresh-before",
+    )
+    manager = CodexTokenManager(
+        config=CodexAuthConfig(auth_path=auth_path),
+        store=CodexAuthStore(auth_path),
+        http_client=httpx.AsyncClient(),
+    )
+    refresh_started = Event()
+    allow_refresh = Event()
+    calls: list[str] = []
+    refreshed_state = CodexAuthState(
+        access_token="refreshed-access",
+        refresh_token="refresh-after",
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+    )
+
+    def sync_refresh(self: CodexTokenManager) -> CodexAuthState:
+        del self
+        calls.append("sync")
+        refresh_started.set()
+        assert allow_refresh.wait(timeout=1)
+        return refreshed_state
+
+    monkeypatch.setattr(CodexTokenManager, "_refresh_locked_sync", sync_refresh)
+    monkeypatch.setattr(
+        CodexTokenManager,
+        "_refresh_locked",
+        lambda self: pytest.fail("async refresh must reuse the sync result"),
+    )
+
+    sync_token = asyncio.create_task(asyncio.to_thread(manager.get_access_token_sync))
+    assert await asyncio.to_thread(refresh_started.wait, 1)
+    async_token = asyncio.create_task(manager.get_access_token())
+    await asyncio.sleep(0.02)
+    assert calls == ["sync"]
+
+    allow_refresh.set()
+    assert await sync_token == "refreshed-access"
+    assert await async_token == "refreshed-access"
+    assert calls == ["sync"]
+    await manager.close()
 
 
 def test_token_manager_sync_refresh_path(

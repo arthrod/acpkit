@@ -394,3 +394,16 @@ Stay in this skill when the main issue is:
 - Treat `ExternalHookEventBridge.metadata_key=None` as the way to suppress bridge metadata
   publication.
 - If the task is really about remote transport, move to `acpremote`.
+
+## Production Baseline
+
+- Use `FileSessionStore` only for a single process. Multi-replica deployments need an
+  application-owned `SessionStore` with explicit concurrency semantics.
+- Keep filesystem, shell, and code-mode capabilities scoped to the smallest workspace and deny
+  secrets, VCS metadata, interactive commands, and unbounded output.
+- Approval-required tools must remain approval-required after mode-specific `PrepareToolsBridge`
+  filtering.
+- Export a configured `acp_agent = create_acp_agent(...)` when root CLI or remote hosting must
+  preserve custom bridges, projections, providers, and persistence.
+- Validate supported Pydantic AI versions with `make check-pydantic-ai-matrix`; dependency
+  resolution alone is not compatibility evidence.

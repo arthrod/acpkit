@@ -1,79 +1,98 @@
 # pydantic-acp Examples
 
-All maintained examples live under `examples/pydantic/`.
+These maintained examples are executable ACP agents, not isolated snippets.
+They use bounded workspaces, explicit projections, and persistent local session
+state.
 
-The repo now keeps three opinionated examples instead of a ladder of tiny one-off demos.
+## Setup
 
-- `finance_agent.py`
-  session-aware finance workspace with `ask/plan/trade` modes, structured ACP plans, approval-gated note writes, and file diff projection
-- `travel_agent.py`
-  travel-planning runtime with `Hooks` projection, approval-gated trip file writes, and prompt-model override behavior for image and audio prompts
-- `mock_harness_agent.py`
-  real model-backed harness agent using pydantic-ai-harness filesystem and shell capabilities, with optional code-mode support
+From the repository root:
 
-## Runnable Demos
+```bash
+uv sync --extra dev --extra pydantic
+```
 
-Finance agent:
+For the harness example:
+
+```bash
+uv sync --extra dev --extra pydantic --extra codex
+```
+
+## Finance Agent
+
+The finance example demonstrates mode-aware tool preparation, native structured
+plans, approval-gated writes, persisted plan snapshots, and file projections.
+
+Run offline with the deterministic Pydantic AI `TestModel`:
 
 ```bash
 uv run python -m examples.pydantic.finance_agent
 ```
 
-The default model is `TestModel`, so the example runs without credentials. Set
-`ACP_FINANCE_MODEL` when you want a live model.
-
-Travel agent:
+Use a real Pydantic AI model:
 
 ```bash
+ACP_FINANCE_MODEL="openai:gpt-5.4-mini" \
+uv run python -m examples.pydantic.finance_agent
+```
+
+The agent reads and writes only under `.finance-agent/` in the server working
+directory. The `trade` mode exposes the write tool, and every write still
+requires ACP approval.
+
+## Travel Agent
+
+The travel example projects Pydantic AI hooks, handles image/audio-aware model
+selection, and requires approval for trip-file writes:
+
+```bash
+ACP_TRAVEL_MODEL="openai:gpt-5.4-mini" \
+ACP_TRAVEL_MEDIA_MODEL="openai:gpt-5.4" \
 uv run python -m examples.pydantic.travel_agent
 ```
 
-The travel example defaults to a deterministic local router. Set `MODEL_NAME` when you want a live
-base model and `ACP_TRAVEL_MEDIA_MODEL` when you want a dedicated media fallback.
+Without `ACP_TRAVEL_MODEL`, the example uses `TestModel` for an offline startup
+check. Files stay inside `examples/pydantic/.travel-agent/`.
 
-Harness agent:
+## Harness Agent
 
-Install `pydantic-ai-harness` before running this example against a real ACP host. Install
-`pydantic-ai-harness[code-mode]` if you plan to pass `--codemode`. By default it uses the OpenRouter
-model string configured in the example. Set `ACP_HARNESS_MODEL` to any pydantic-ai model name when
-you want a different provider-backed model string, or set `ACP_HARNESS_CODEX_MODEL` to build a
-Codex-backed model through `codex-auth-helper`. Provider-backed model strings still require that
-provider's normal credentials, such as `OPENAI_API_KEY` for `openai:...`.
-
-For root-package dispatch, use the native ACP target:
+The harness example uses real `pydantic-ai-harness` filesystem and shell
+capabilities. Code mode is opt-in:
 
 ```bash
-uv run acpkit run examples.pydantic.mock_harness_agent:acp_agent
+ACP_HARNESS_MODEL="openrouter:google/gemini-3-flash-preview" \
+uv run python -m examples.pydantic.mock_harness_agent
 ```
 
-The native target defaults to filesystem and shell bridges only. To enable the CodeMode bridge for a
-script-launched run, pass `--codemode`:
-
 ```bash
+ACP_HARNESS_CODEX_MODEL="gpt-5.4" \
 uv run python -m examples.pydantic.mock_harness_agent --codemode
 ```
 
-Detailed harness bridge and projection guide:
+The shell bridge blocks destructive and network-oriented commands, disables
+interactive processes, bounds runtime and output, and confines work to
+`examples/pydantic/.harness-agent/`. `--codemode` is the only path that enables
+the code-mode bridge.
 
-- [Harness-backed Capabilities](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md)
+## Session Storage
 
-## Projection Highlights
+All examples use `FileSessionStore` under `.acp-sessions/`. Override the parent
+directory when needed:
 
-`finance_agent.py` demonstrates:
+```bash
+ACP_EXAMPLE_SESSION_DIR="/var/lib/acpkit/sessions" \
+uv run python -m examples.pydantic.finance_agent
+```
 
-- `FileSystemProjectionMap` read previews and write diffs
-- structured native plan generation in ACP plan mode
-- remembered approvals for mutating finance note writes
+This file store is suitable for one process. Replace it with an
+application-owned store before running multiple replicas.
 
-`travel_agent.py` demonstrates:
+## Production Boundaries
 
-- `HookProjectionMap` with custom labels and hidden events
-- file read/write diffs inside a generated trip workspace
-- prompt-model override behavior for image and audio prompts
+- Keep model credentials in environment variables or a secret manager.
+- Treat approval callbacks as authorization boundaries, not UI decoration.
+- Place remote ACP hosting behind TLS and authentication.
+- Narrow filesystem and shell policies further for the deployed workload.
 
-`mock_harness_agent.py` demonstrates:
-
-- `HarnessFileSystemBridge` for pydantic-ai-harness file tools
-- `HarnessShellBridge` for bounded shell command tools
-- opt-in `HarnessCodeModeBridge` for code-mode execution tools when `--codemode` is passed
-- real model construction with `ACP_HARNESS_MODEL` and optional Codex-backed construction through `ACP_HARNESS_CODEX_MODEL`
+Detailed walkthroughs are available in the
+[examples documentation](https://vcoderun.github.io/acpkit/examples/).

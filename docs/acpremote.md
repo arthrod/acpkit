@@ -50,7 +50,7 @@ acpremote serve my_app:agent --host 0.0.0.0 --port 8080
 framework target still needs adapter dispatch:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+acpkit serve examples.pydantic.finance_agent:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 Expose a stdio ACP command:
@@ -145,7 +145,7 @@ agent = connect_acp(
 Remote-host flow:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 Local mirror flow:
@@ -189,7 +189,10 @@ By default `acpremote` exposes three routes:
 - websocket: `ws://127.0.0.1:8080/acp/ws`
 
 `mount_path=` can move the ACP metadata and WebSocket routes together while `/healthz` remains a
-top-level liveness probe.
+top-level liveness probe. `/healthz` is therefore reserved and cannot be used as the mount path.
+
+Remote metadata discovery uses `TransportOptions.open_timeout`. A timeout leaves metadata
+unavailable without blocking the WebSocket proxy indefinitely.
 
 ## Command Mirroring
 

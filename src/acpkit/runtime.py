@@ -251,8 +251,10 @@ def _import_target_module(
         missing_adapter = _missing_adapter_from_import_error(exc)
         if missing_adapter is not None:
             raise MissingAdapterError.for_adapter(missing_adapter) from exc
+        import_error = str(exc).strip()
+        detail = f" Import error: {import_error}" if import_error else ""
         raise TargetResolutionError(
-            f"Could not import module `{reference.module_name}` from target `{target}`."
+            f"Could not import module `{reference.module_name}` from target `{target}`.{detail}"
         ) from exc
 
 

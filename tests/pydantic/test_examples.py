@@ -666,7 +666,7 @@ def test_travel_prompt_model_provider_covers_media_override_paths(
 def test_travel_model_helpers_cover_env_and_config_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MODEL_NAME", "openai:gpt-4.1-mini")
+    monkeypatch.setenv("ACP_TRAVEL_MODEL", "openai:gpt-4.1-mini")
     monkeypatch.delenv("ACP_TRAVEL_MEDIA_MODEL", raising=False)
     monkeypatch.delenv("TRAVEL_MEDIA_MODEL", raising=False)
     assert travel_agent._default_model_name() == "openai:gpt-4.1-mini"

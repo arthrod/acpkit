@@ -14,7 +14,7 @@ Docs:
 
 - <https://vcoderun.github.io/acpkit/acpremote/>
 
-Install:
+Latest stable install:
 
 ```bash
 uv add acpremote
@@ -53,7 +53,7 @@ acpremote serve my_app:agent --host 0.0.0.0 --port 8080
 LangChain, or LangGraph targets, use the root CLI so adapter dispatch stays explicit:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 Expose a stdio ACP command:
@@ -137,7 +137,7 @@ to `kill` after `terminate_timeout`. The timeout must be a positive finite numbe
 Typical remote-host flow:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
 acpremote expose --host 0.0.0.0 --port 8081 -- npx @zed-industries/codex-acp
 ```
 
@@ -153,6 +153,8 @@ Default routes:
 - metadata: `http://127.0.0.1:8080/acp`
 - health: `http://127.0.0.1:8080/healthz`
 - websocket: `ws://127.0.0.1:8080/acp/ws`
+
+Custom mount paths must not use `/healthz`, which is reserved for the health endpoint.
 
 ## Client Proxy
 
@@ -177,6 +179,8 @@ toad acp "acpremote mirror ws://remote.example.com:8080/acp/ws"
 When the remote server advertises a `remote_cwd` in its metadata, `connect_acp(...)` treats that
 directory as authoritative for session lifecycle calls. This keeps a mirrored local ACP server from
 accidentally sending the local machine's spawn directory back to the remote host.
+Metadata discovery uses `TransportOptions.open_timeout`; a timeout leaves metadata unavailable
+without blocking the WebSocket proxy indefinitely.
 
 By default `connect_acp(...)` also treats host-backed capabilities as remote-owned. Local client
 filesystem and terminal capabilities aren't forwarded unless `TransportOptions(host_ownership="client_passthrough")`

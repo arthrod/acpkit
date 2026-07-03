@@ -3431,6 +3431,31 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
         asyncio.run(adapter.fork_session(cwd=str(tmp_path), session_id="missing", mcp_servers=[]))
 
 
+def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(tmp_path: Path) -> None:
+    adapter = _make_adapter()
+    server = McpServerStdio(name="stdio", command="python", args=["server.py"], env=[])
+    created = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[server]))
+
+    asyncio.run(
+        adapter.resume_session(
+            cwd=str(tmp_path),
+            session_id=created.session_id,
+            mcp_servers=None,
+        )
+    )
+    resumed = adapter._require_session(created.session_id)
+    assert resumed.mcp_servers[0]["name"] == "stdio"
+
+    forked = asyncio.run(
+        adapter.fork_session(
+            cwd=str(tmp_path),
+            session_id=created.session_id,
+            mcp_servers=None,
+        )
+    )
+    assert adapter._require_session(forked.session_id).mcp_servers[0]["name"] == "stdio"
+
+
 def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     adapter = _make_adapter()
     client = RecordingACPClient()
@@ -3964,6 +3989,81 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
     assert [update.title for update in starts] == ["Read `proof.txt`", "Read `next.txt`"]
 
 
+def test_streamed_tool_start_accepts_empty_arguments(tmp_path: Path) -> None:
+    adapter = _make_adapter()
+    client = RecordingACPClient()
+    session = _make_session(cwd=tmp_path)
+    active_tool_calls: dict[str, dict[str, Any]] = {}
+
+    tool_call_accumulator: dict[int, dict[str, str | int | None]] = {
+        99: {"args": "{}", "id": "other-call", "name": "other"}
+    }
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=AIMessageChunk(
+                content="",
+                tool_call_chunks=[
+                    {
+                        "id": "call-no-args",
+                        "name": "ping",
+                        "args": "",
+                        "index": 0,
+                    }
+                ],
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+    asyncio.run(
+        adapter._handle_tool_message(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=ToolMessage(
+                content="pong",
+                tool_call_id="call-no-args",
+                name="ping",
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
+    progress = next(update for _, update in client.updates if isinstance(update, ToolCallProgress))
+    assert start.tool_call_id == "call-no-args"
+    assert start.raw_input == {}
+    assert progress.raw_input == {}
+    assert active_tool_calls == {}
+    assert tool_call_accumulator == {99: {"args": "{}", "id": "other-call", "name": "other"}}
+
+
+def test_tool_result_without_start_uses_a_string_tool_name(tmp_path: Path) -> None:
+    adapter = _make_adapter()
+    client = RecordingACPClient()
+    session = _make_session(cwd=tmp_path)
+
+    asyncio.run(
+        adapter._handle_tool_message(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=ToolMessage(
+                content="done",
+                tool_call_id="orphan-call",
+                name=None,
+            ),
+            active_tool_calls={},
+        )
+    )
+
+    start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
+    progress = next(update for _, update in client.updates if isinstance(update, ToolCallProgress))
+    assert start.title == "tool"
+    assert progress.tool_call_id == "orphan-call"
+
+
 def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_paths(
     tmp_path: Path,
 ) -> None:
@@ -4250,6 +4350,90 @@ def test_langchain_adapter_prompt_cancels_mid_stream(tmp_path: Path) -> None:
     )
 
     assert response.stop_reason == "cancelled"
+
+
+def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(tmp_path: Path) -> None:
+    async def run_scenario() -> None:
+        started = asyncio.Event()
+
+        @dataclass(slots=True)
+        class _BlockingGraph:
+            async def astream(
+                self,
+                stream_input: Any,
+                *,
+                config: Any,
+                stream_mode: Any,
+                subgraphs: bool,
+            ):
+                del stream_input, config, stream_mode, subgraphs
+                started.set()
+                await asyncio.Event().wait()
+                yield  # pragma: no cover
+
+        adapter = cast(
+            LangChainAcpAgent,
+            create_acp_agent(graph=cast(Any, _BlockingGraph()), config=AdapterConfig()),
+        )
+        client = RecordingACPClient()
+        adapter.on_connect(cast(AcpClient, client))
+        session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+        prompt_task = asyncio.create_task(
+            adapter.prompt(
+                prompt=[TextContentBlock(type="text", text="wait forever")],
+                session_id=session.session_id,
+                message_id="blocking-message",
+            )
+        )
+        await started.wait()
+
+        await adapter.cancel(session_id=session.session_id)
+        response = await asyncio.wait_for(prompt_task, timeout=0.1)
+
+        assert response.stop_reason == "cancelled"
+        assert response.user_message_id == "blocking-message"
+
+    asyncio.run(run_scenario())
+
+
+def test_langchain_adapter_does_not_swallow_external_task_cancellation(tmp_path: Path) -> None:
+    async def run_scenario() -> None:
+        started = asyncio.Event()
+
+        @dataclass(slots=True)
+        class _BlockingGraph:
+            async def astream(
+                self,
+                stream_input: Any,
+                *,
+                config: Any,
+                stream_mode: Any,
+                subgraphs: bool,
+            ):
+                del stream_input, config, stream_mode, subgraphs
+                started.set()
+                await asyncio.Event().wait()
+                yield  # pragma: no cover
+
+        adapter = cast(
+            LangChainAcpAgent,
+            create_acp_agent(graph=cast(Any, _BlockingGraph()), config=AdapterConfig()),
+        )
+        adapter.on_connect(cast(AcpClient, RecordingACPClient()))
+        session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+        prompt_task = asyncio.create_task(
+            adapter.prompt(
+                prompt=[TextContentBlock(type="text", text="wait")],
+                session_id=session.session_id,
+            )
+        )
+        await started.wait()
+
+        prompt_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await prompt_task
+
+    asyncio.run(run_scenario())
 
 
 def test_langchain_adapter_cancelled_prompt_returns_cancelled(tmp_path: Path) -> None:

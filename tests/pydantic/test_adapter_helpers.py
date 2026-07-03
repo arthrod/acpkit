@@ -66,6 +66,7 @@ from .support import (
     PrepareToolsMode,
     RecordingClient,
     SessionConfigOptionBoolean,
+    SessionInfoUpdate,
     SessionMode,
     TestModel,
     agent_message_texts,
@@ -1012,6 +1013,7 @@ def test_cancel_stops_active_prompt_and_persists_terminal_history(
             adapter.prompt(
                 prompt=[text_block("Long running task")],
                 session_id=response.session_id,
+                message_id="cancelled-user-message",
             )
         )
         await started.wait()
@@ -1021,6 +1023,7 @@ def test_cancel_stops_active_prompt_and_persists_terminal_history(
 
         assert cancelled.is_set() is True
         assert prompt_response.stop_reason == "cancelled"
+        assert prompt_response.user_message_id == "cancelled-user-message"
 
         stored_session = _stored_session(adapter, response.session_id)
         assert stored_session.message_history_json is not None
@@ -1033,6 +1036,31 @@ def test_cancel_stops_active_prompt_and_persists_terminal_history(
         assert agent_message_texts(client)[-1].startswith("User stopped the run.")
 
     asyncio.run(run_scenario())
+
+
+def test_prompt_emits_derived_title_without_session_metadata(tmp_path: Path) -> None:
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="ok")),
+        config=AdapterConfig(session_store=MemorySessionStore()),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+
+    asyncio.run(
+        adapter.prompt(
+            prompt=[text_block("Explain TCP slow start")],
+            session_id=session.session_id,
+            message_id="title-message",
+        )
+    )
+
+    title_updates = [
+        update for _, update in client.updates if isinstance(update, SessionInfoUpdate)
+    ]
+    assert title_updates
+    assert title_updates[-1].title == "Explain TCP slow start"
+    assert title_updates[-1].field_meta is None
 
 
 def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(

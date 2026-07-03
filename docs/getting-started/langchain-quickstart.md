@@ -196,7 +196,7 @@ If you installed the root package:
 ```bash
 acpkit run my_graph_module
 acpkit run my_graph_module:graph
-acpkit run examples.langchain.workspace_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
 ```
 
 `acpkit` resolves the target, detects the last defined supported graph target when needed, and dispatches it to `langchain-acp`.

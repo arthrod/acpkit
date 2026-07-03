@@ -13,7 +13,7 @@ It demonstrates:
 - `DeepAgentsCompatibilityBridge`
 - `DeepAgentsProjectionMap`
 - tool-based plan compatibility through `write_todos`
-- approval-gated file writes
+- approval handling around a deterministic mock write tool
 
 Install the optional dependency first:
 
@@ -37,10 +37,12 @@ Required local state:
 ~/.codex/auth.json
 ```
 
-If you want the module-level compiled graph directly, the example exports `graph` when `deepagents` is installed:
+Use the configured native ACP target when launching through the root CLI. This
+preserves the example's session store, modes, native plans, compatibility
+bridge, and projections:
 
 ```bash
-acpkit run examples.langchain.deepagents_graph:graph
+acpkit run examples.langchain.deepagents_graph:acp_agent
 ```
 
-If `deepagents` is not installed, use the module as a recipe and keep `main()` or `graph_from_session(...)` as the entrypoint instead.
+`deepagents` must be installed before this target handles a session.

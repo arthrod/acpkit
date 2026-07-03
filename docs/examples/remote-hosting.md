@@ -19,7 +19,7 @@ without shipping another example package surface.
 Remote host:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+acpkit serve examples.pydantic.finance_agent:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 Local mirror:
@@ -36,7 +36,7 @@ This path uses the maintained finance example from
 Remote host:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8081
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8081
 ```
 
 Local mirror:
@@ -53,8 +53,8 @@ This path uses the maintained plain-LangChain example from
 ACP Kit already exposes the remote-host boundary through the root CLI:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8081
+acpkit serve examples.pydantic.finance_agent:acp_agent --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8081
 acpkit run --addr ws://127.0.0.1:8080/acp/ws
 ```
 

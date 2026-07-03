@@ -8,6 +8,23 @@ ACP Kit ships as a workspace, but most users usually start from one of five inst
 4. the standalone `acpremote` transport helper
 5. the standalone `codex-auth-helper` package
 
+## Install Stable v1
+
+Install every maintained integration:
+
+```bash
+uv add "acpkit[all]>=1.0.0,<2.0.0"
+```
+
+```bash
+pip install "acpkit[all]>=1.0.0,<2.0.0"
+```
+
+The root extras require matching v1-generation adapter, helper, and transport
+packages. See the
+[release notes](https://vcoderun.github.io/acpkit/releases/acpkit-1.0.0/) and
+[versioning policy](https://vcoderun.github.io/acpkit/versioning/).
+
 ## Install The Root CLI
 
 Use this path when you want `acpkit run ...` and `acpkit launch ...`.
@@ -15,7 +32,7 @@ Use this path when you want `acpkit run ...` and `acpkit launch ...`.
 For `pydantic_ai.Agent` targets:
 
 ```bash
-uv pip install "acpkit[pydantic]"
+uv add "acpkit[pydantic]"
 ```
 
 ```bash
@@ -25,7 +42,7 @@ pip install "acpkit[pydantic]"
 For LangChain, LangGraph, or DeepAgents targets:
 
 ```bash
-uv pip install "acpkit[langchain]"
+uv add "acpkit[langchain]"
 ```
 
 ```bash
@@ -35,7 +52,7 @@ pip install "acpkit[langchain]"
 Add the launch helper when you want to boot agents through Toad ACP:
 
 ```bash
-uv pip install "acpkit[pydantic,launch]"
+uv add "acpkit[pydantic,launch]"
 ```
 
 ```bash
@@ -49,7 +66,7 @@ Use this when you only need the Python adapter API and do not care about the roo
 For `pydantic_ai.Agent` runtimes:
 
 ```bash
-uv pip install pydantic-acp
+uv add pydantic-acp
 ```
 
 ```bash
@@ -62,7 +79,7 @@ protocol version it integrates against. Pydantic AI V1 is not supported.
 For LangChain, LangGraph, or DeepAgents runtimes:
 
 ```bash
-uv pip install langchain-acp
+uv add langchain-acp
 ```
 
 ```bash
@@ -72,7 +89,7 @@ pip install langchain-acp
 Add the optional DeepAgents helpers when needed:
 
 ```bash
-uv pip install "langchain-acp[deepagents]"
+uv add "langchain-acp[deepagents]"
 ```
 
 ```bash
@@ -90,7 +107,7 @@ together rather than validating them in isolation.
 Use this when you want a Codex-backed helper for Pydantic AI or LangChain:
 
 ```bash
-uv pip install codex-auth-helper
+uv add codex-auth-helper
 ```
 
 ```bash
@@ -100,7 +117,7 @@ pip install codex-auth-helper
 For LangChain usage, install the optional extra:
 
 ```bash
-uv pip install "codex-auth-helper[langchain]"
+uv add "codex-auth-helper[langchain]"
 ```
 
 ```bash
@@ -114,7 +131,7 @@ This helper expects an existing local Codex login and reads `~/.codex/auth.json`
 Use this when you already have an ACP agent or stdio ACP command and only need remote transport:
 
 ```bash
-uv pip install acpremote
+uv add acpremote
 ```
 
 ```bash

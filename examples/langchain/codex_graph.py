@@ -2,16 +2,25 @@ from __future__ import annotations as _annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 
 from acp.schema import ModelInfo, SessionMode
 from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, AdapterConfig, CompiledAgentGraph, run_acp
+from langchain_acp import (
+    AcpSessionContext,
+    AdapterConfig,
+    CompiledAgentGraph,
+    FileSessionStore,
+    create_acp_agent,
+    run_acp,
+)
 
 __all__ = (
     "AVAILABLE_MODELS",
     "AVAILABLE_MODES",
     "MODEL_NAME",
+    "acp_agent",
     "build_graph",
     "config",
     "describe_codex_surface",
@@ -22,6 +31,10 @@ __all__ = (
 )
 
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
+_SESSION_STORE_ROOT = (
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    / "langchain-codex"
+)
 AVAILABLE_MODELS = (
     ModelInfo(model_id="gpt-5.4-mini", name="GPT-5.4 Mini"),
     ModelInfo(model_id=MODEL_NAME, name=f"Codex {MODEL_NAME}"),
@@ -111,7 +124,9 @@ config = AdapterConfig(
     available_modes=list(AVAILABLE_MODES),
     default_model_id=AVAILABLE_MODELS[0].model_id,
     default_mode_id=AVAILABLE_MODES[0].id,
+    session_store=FileSessionStore(_SESSION_STORE_ROOT),
 )
+acp_agent = create_acp_agent(graph_factory=graph_from_session, config=config)
 
 
 def main() -> None:

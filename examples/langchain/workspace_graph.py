@@ -11,8 +11,9 @@ from langchain_acp import (
     AcpSessionContext,
     AdapterConfig,
     CompiledAgentGraph,
+    FileSessionStore,
     FileSystemProjectionMap,
-    MemorySessionStore,
+    create_acp_agent,
     run_acp,
 )
 
@@ -21,6 +22,7 @@ __all__ = (
     "AVAILABLE_MODES",
     "MODEL_NAME",
     "WORKSPACE_ROOT",
+    "acp_agent",
     "config",
     "codex_instructions",
     "describe_workspace_surface",
@@ -37,6 +39,10 @@ _READ_TOOL = "read_workspace_note"
 _WRITE_TOOL = "write_workspace_note"
 _SESSION_ROOT_NAME = ".workspace-graph"
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
+_SESSION_STORE_ROOT = (
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    / "langchain-workspace"
+)
 AVAILABLE_MODELS = (
     ModelInfo(model_id="gpt-5.4-mini", name="GPT-5.4 Mini"),
     ModelInfo(model_id=MODEL_NAME, name=f"Codex {MODEL_NAME}"),
@@ -223,7 +229,7 @@ config = AdapterConfig(
     available_modes=list(AVAILABLE_MODES),
     default_model_id=AVAILABLE_MODELS[0].model_id,
     default_mode_id=AVAILABLE_MODES[0].id,
-    session_store=MemorySessionStore(),
+    session_store=FileSessionStore(_SESSION_STORE_ROOT),
     projection_maps=[
         FileSystemProjectionMap(
             read_tool_names=frozenset({_READ_TOOL}),
@@ -231,6 +237,7 @@ config = AdapterConfig(
         ),
     ],
 )
+acp_agent = create_acp_agent(graph_factory=graph_from_session, config=config)
 
 
 def main() -> None:

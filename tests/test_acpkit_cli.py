@@ -948,7 +948,10 @@ def test_target_resolution_reports_import_and_attribute_errors(
 
     monkeypatch.setattr("acpkit.runtime.importlib.import_module", fake_import_module)
 
-    with pytest.raises(AcpKitError, match="Could not import module `sample_import_broken`"):
+    with pytest.raises(
+        AcpKitError,
+        match="Could not import module `sample_import_broken`.*broken import",
+    ):
         load_target("sample_import_broken:agent")
 
     with pytest.raises(AcpKitError, match="missing attribute `missing`"):

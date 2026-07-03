@@ -33,6 +33,8 @@ The helper enforces two backend-specific behaviors for you:
 
 ## Install
 
+For the latest stable release:
+
 ```bash
 uv add codex-auth-helper
 ```

@@ -33,7 +33,7 @@ def create_codex_responses_model(
     model_settings: OpenAIResponsesModelSettings = {"openai_store": False}
     if settings is not None:
         model_settings.update(settings)
-        model_settings.setdefault("openai_store", False)
+    model_settings["openai_store"] = False
     return CodexResponsesModel(
         model_name,
         default_instructions=instructions,

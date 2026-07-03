@@ -88,7 +88,7 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         client = self._runtime._owner._client
         if client is None:
             return
-        if emit_session_info and session.metadata:
+        if emit_session_info and (session.title is not None or session.metadata):
             await client.session_update(
                 session_id=session.session_id,
                 update=SessionInfoUpdate(

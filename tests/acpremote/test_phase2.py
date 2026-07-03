@@ -149,6 +149,8 @@ def test_phase2_server_path_and_metadata_helpers() -> None:
     assert normalize_mount_path("/") == "/"
     with pytest.raises(ValueError, match="mount_path must not be empty"):
         normalize_mount_path("   ")
+    with pytest.raises(ValueError, match="health endpoint"):
+        build_server_paths("/healthz")
 
     assert build_server_paths("/acp/").metadata_path == "/acp"
     assert build_server_paths("/acp/").websocket_path == "/acp/ws"

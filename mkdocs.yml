@@ -119,6 +119,7 @@ nav:
       - Compatibility Matrix Template: compatibility-matrix-template.md
       - Projection Cookbook: projection-cookbook.md
       - Integration Readiness: integration-readiness.md
+      - Production Deployment: production-deployment.md
       - Security Guidance: security.md
   - Examples:
       - Overview: examples/index.md
@@ -136,6 +137,9 @@ nav:
       - pydantic_acp: api/pydantic_acp.md
       - codex_auth_helper: api/codex_auth_helper.md
   - Release Notes:
+      - ACP Kit 1.0.0: releases/acpkit-1.0.0.md
       - pydantic-acp 0.9.7 Harness: releases/pydantic-acp-0.9.7-harness.md
+  - Versioning: versioning.md
+  - Release Process: release-process.md
   - Testing: testing.md
   - About: about/index.md

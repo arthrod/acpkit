@@ -34,6 +34,7 @@ from .support import (
     PrepareToolsBridge,
     PrepareToolsMode,
     RecordingClient,
+    SessionInfoUpdate,
     StaticAgentSource,
     TerminalBackend,
     TestModel,
@@ -125,10 +126,14 @@ def test_prompt_and_load_session_replay_history(tmp_path: Path) -> None:
     replayed_update_types = [
         type(update)
         for _, update in client.updates
-        if not isinstance(update, AvailableCommandsUpdate)
+        if not isinstance(update, AvailableCommandsUpdate | SessionInfoUpdate)
     ]
     assert replayed_update_types[0] is UserMessageChunk
     assert replayed_update_types[1:] == [AgentMessageChunk] * (len(replayed_update_types) - 1)
+    session_info = next(
+        update for _, update in client.updates if isinstance(update, SessionInfoUpdate)
+    )
+    assert session_info.title == "Summarize the change."
 
     user_update = client.updates[0][1]
     assert isinstance(user_update, UserMessageChunk)

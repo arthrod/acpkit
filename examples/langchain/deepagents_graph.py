@@ -13,6 +13,8 @@ from langchain_acp import (
     AdapterConfig,
     DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
+    FileSessionStore,
+    create_acp_agent,
     native_plan_tools,
     run_acp,
 )
@@ -29,6 +31,7 @@ __all__ = (
     "AVAILABLE_MODES",
     "MODEL_NAME",
     "WORKSPACE_ROOT",
+    "acp_agent",
     "config",
     "codex_instructions",
     "graph",
@@ -42,6 +45,10 @@ __all__ = (
 WORKSPACE_ROOT = Path.cwd() / ".deepagents-graph"
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
 _SESSION_ROOT_NAME = ".deepagents-graph"
+_SESSION_STORE_ROOT = (
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    / "langchain-deepagents"
+)
 MOCK_WORKSPACE_FILES = {
     "brief.md": (
         "# DeepAgents Demo\n\nThis is a mocked workspace file used by the DeepAgents example.\n"
@@ -243,6 +250,7 @@ graph = graph_from_session(_seed_session()) if _deepagents_available() else None
 config = AdapterConfig(
     available_models=list(AVAILABLE_MODELS),
     available_modes=list(AVAILABLE_MODES),
+    session_store=FileSessionStore(_SESSION_STORE_ROOT),
     capability_bridges=[DeepAgentsCompatibilityBridge()],
     default_model_id=DEFAULT_MODEL_ID,
     default_mode_id=DEFAULT_MODE_ID,
@@ -251,6 +259,7 @@ config = AdapterConfig(
     plan_mode_id="plan",
     projection_maps=[DeepAgentsProjectionMap()],
 )
+acp_agent = create_acp_agent(graph_factory=graph_from_session, config=config)
 
 
 def main() -> None:

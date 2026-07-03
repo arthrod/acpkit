@@ -279,3 +279,16 @@ Stay in this skill when:
 - When the question is about adapter truthfulness, plans, approvals, prompt capabilities, custom
   slash commands, projections, external hook events, host ownership, or provider behavior, move to
   the narrower package skill.
+
+## v1 Release Discipline
+
+- The workspace packages use one synchronized version. Root extras require the matching major
+  generation of adapter, helper, and transport packages.
+- Prefer an example's exported `acp_agent` target over its raw `agent` or `graph` when custom
+  `AdapterConfig` state must survive root CLI dispatch.
+- Run `make release RELEASE_TAG=vX.Y.Z` before a release tag. This includes compatibility,
+  documentation, coverage, artifact metadata, and clean-install smoke checks.
+- A release tag must exactly match every package `_version.py` and the corresponding
+  `CHANGELOG.md` heading.
+- Public v1 compatibility applies to top-level `__all__`, documented CLI behavior, and documented
+  configuration contracts. Do not promote private helpers into that contract accidentally.

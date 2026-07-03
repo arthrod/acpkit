@@ -7,9 +7,10 @@ from typing import Any, Final
 
 from pydantic_acp import (
     AdapterConfig,
+    FileSessionStore,
     FileSystemProjectionMap,
     HookProjectionMap,
-    MemorySessionStore,
+    create_acp_agent,
     run_acp,
 )
 from pydantic_acp.models import ModelOverride
@@ -26,11 +27,15 @@ from pydantic_ai.capabilities import Hooks
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import DeferredToolRequests
 
-__all__ = ("TravelPromptModelProvider", "agent", "config", "main")
+__all__ = ("TravelPromptModelProvider", "acp_agent", "agent", "config", "main")
 
 _TRAVEL_ROOT: Final[Path] = Path(__file__).resolve().parent / ".travel-agent"
 _READ_TOOL: Final[str] = "read_trip_file"
 _WRITE_TOOL: Final[str] = "write_trip_file"
+_SESSION_STORE_ROOT: Final[Path] = (
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    / "pydantic-travel"
+)
 _MEDIA_MODEL_ENV_NAMES: Final[tuple[str, ...]] = (
     "ACP_TRAVEL_MEDIA_MODEL",
     "TRAVEL_MEDIA_MODEL",
@@ -52,7 +57,7 @@ _DEFAULT_FILES: Final[dict[str, str]] = {
 
 
 def _default_model_name() -> str | TestModel:
-    configured_model = os.getenv("MODEL_NAME", "").strip()
+    configured_model = os.getenv("ACP_TRAVEL_MODEL", "").strip()
     if configured_model:
         return configured_model
     return TestModel()
@@ -242,7 +247,7 @@ def write_trip_file(path: str, content: str) -> str:
 
 
 config = AdapterConfig(
-    session_store=MemorySessionStore(),
+    session_store=FileSessionStore(_SESSION_STORE_ROOT),
     prompt_model_override_provider=TravelPromptModelProvider(),
     hook_projection_map=HookProjectionMap(
         hidden_event_ids=frozenset({"after_model_request"}),
@@ -259,8 +264,13 @@ config = AdapterConfig(
         )
     ],
 )
+acp_agent = create_acp_agent(agent=agent, config=config)
 
 
 def main() -> None:
     _ensure_travel_workspace()
     run_acp(agent=agent, config=config)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
