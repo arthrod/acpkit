@@ -2191,6 +2191,9 @@ def test_projection_maps_cover_negative_and_default_paths() -> None:
     )
 
     command_projection_map = CommandProjectionMap()
+    fallback_start = command_projection_map.project_start("terminal", raw_input={})
+    assert fallback_start is not None
+    assert fallback_start.title == "Run shell command"
     fallback_progress = command_projection_map.project_progress(
         "terminal",
         raw_input={},
@@ -3868,6 +3871,97 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
         assert option_ids == ["mode", "model"]
     finally:
         monkeypatch.undo()
+
+
+def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -> None:
+    adapter = _make_adapter(
+        config=AdapterConfig(
+            projection_maps=[CommunityFileManagementProjectionMap()],
+        )
+    )
+    client = RecordingACPClient()
+    session = _make_session(cwd=tmp_path)
+    active_tool_calls: dict[str, dict[str, Any]] = {}
+    tool_call_accumulator: dict[int, dict[str, str | int | None]] = {}
+
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=cast(
+                AIMessageChunk,
+                SimpleNamespace(
+                    tool_call_chunks=[
+                        {
+                            "id": "call-streamed",
+                            "name": "read_file",
+                            "args": '{"file_path":',
+                            "index": 0,
+                        }
+                    ]
+                ),
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    assert active_tool_calls == {}
+    assert not any(isinstance(update, ToolCallStart) for _, update in client.updates)
+
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=cast(
+                AIMessageChunk,
+                SimpleNamespace(
+                    tool_call_chunks=[
+                        {
+                            "id": None,
+                            "name": None,
+                            "args": '"proof.txt"}',
+                            "index": 0,
+                        }
+                    ]
+                ),
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    assert active_tool_calls["call-streamed"]["raw_input"] == {"file_path": "proof.txt"}
+    assert tool_call_accumulator == {}
+    start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
+    assert start.title == "Read `proof.txt`"
+    assert start.raw_input == {"file_path": "proof.txt"}
+
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=cast(
+                AIMessageChunk,
+                SimpleNamespace(
+                    tool_call_chunks=[
+                        {
+                            "id": "call-next-round",
+                            "name": "read_file",
+                            "args": '{"file_path":"next.txt"}',
+                            "index": 0,
+                        }
+                    ]
+                ),
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    assert active_tool_calls["call-next-round"]["raw_input"] == {"file_path": "next.txt"}
+    starts = [update for _, update in client.updates if isinstance(update, ToolCallStart)]
+    assert [update.title for update in starts] == ["Read `proof.txt`", "Read `next.txt`"]
 
 
 def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_paths(

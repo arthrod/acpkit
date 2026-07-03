@@ -417,7 +417,7 @@ def test_langchain_acp_projects_browser_and_terminal_updates_at_runtime(
     assert [update.title for update in starts] == [
         "Navigate https://example.com/docs",
         "Extract hyperlinks",
-        "Run shell command",
+        "pwd ls",
     ]
     assert len(progresses) == 3
     assert progresses[0].content is not None

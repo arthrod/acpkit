@@ -745,7 +745,9 @@ class LangChainAcpAgent(AcpAgent):
             resolved_name = cast(str | None, state["name"])
             if resolved_id is None or resolved_name is None or resolved_id in active_tool_calls:
                 continue
-            raw_input = self._parse_json_object(cast(str, state["args"]))
+            raw_input = self._try_parse_json_object(cast(str, state["args"]))
+            if raw_input is None:
+                continue
             update = build_tool_start_update(
                 tool_call_id=resolved_id,
                 tool_name=resolved_name,
@@ -758,6 +760,7 @@ class LangChainAcpAgent(AcpAgent):
                 "tool_name": resolved_name,
                 "raw_input": raw_input,
             }
+            tool_call_accumulator.pop(index, None)
             await self._emit_update(client=client, session=session, update=update)
 
     async def _handle_tool_message(
@@ -960,13 +963,16 @@ class LangChainAcpAgent(AcpAgent):
             )
 
     def _parse_json_object(self, value: str) -> dict[str, Any]:
+        return self._try_parse_json_object(value) or {}
+
+    def _try_parse_json_object(self, value: str) -> dict[str, Any] | None:
         if not value:
-            return {}
+            return None
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
+            return None
+        return parsed if isinstance(parsed, dict) else None
 
     def _projectable_raw_output(self, value: Any) -> Any:
         if not isinstance(value, str):
