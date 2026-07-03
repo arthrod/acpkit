@@ -37,6 +37,29 @@ Use plain `CapabilityBridge` when you only need to:
 
 Use `BufferedCapabilityBridge` when the bridge also needs to emit ACP transcript updates over time.
 
+## External Hook Events
+
+Use `ExternalHookEventBridge` when an integration already knows about lifecycle events and wants to project them into ACP without installing Pydantic AI hooks or writing directly to the ACP client.
+
+```python
+from pydantic_acp import ExternalHookEventBridge, HookEvent
+
+bridge = ExternalHookEventBridge()
+bridge.record_event(
+    session,
+    HookEvent(
+        event_id="before_run",
+        hook_name="before_run",
+        tool_name=None,
+        tool_filters=(),
+        raw_output="completed",
+        status="completed",
+    ),
+)
+```
+
+The bridge buffers updates and the adapter drains them through the normal bridge manager. Its session metadata appears under `external_hooks` by default and includes emission mode, pending event count, hidden event ids, and projection title prefix.
+
 ### Override Matrix
 
 | Method | Override it when | Return value |
@@ -84,7 +107,6 @@ contributions = builder.build()
 agent = Agent(
     model,
     capabilities=contributions.capabilities,
-    history_processors=contributions.history_processors,
 )
 ```
 
@@ -101,15 +123,14 @@ That is the intended seam for:
 ## Compatibility Note: History Processor Types
 
 `HistoryProcessorBridge` depends on Pydantic AI history-processor callable types.
-ACP Kit models those callable shapes locally and passes them through the public
-`Agent(..., history_processors=...)` interface.
+ACP Kit models those callable shapes locally and wraps them as
+`ProcessHistory` capabilities inside `contributions.capabilities`.
 
 That means:
 
-- bridge extension code should import history-processor aliases from
-  `pydantic_acp`, not from `pydantic_ai._history_processor`
 - the adapter is no longer directly coupled to upstream private
   history-processor imports
+- pass only `capabilities=contributions.capabilities` when constructing the agent
 
 ## Example: Custom Hook Introspection + MCP Metadata Classification
 
@@ -239,6 +260,19 @@ Use it for:
 
 It is the bridge most real coding-agent setups start with.
 
+### `PrepareOutputToolsBridge`
+
+Shapes output-tool availability per mode.
+
+Use it when:
+
+- structured-output tools should be filtered separately from normal function tools
+- ACP session metadata should expose the active output-tool mode
+- output-tool preparation should emit ACP-visible progress and failure updates
+
+This mirrors `PrepareToolsBridge`, but targets Pydantic AI's
+`PrepareOutputTools` capability.
+
 ### `ThinkingBridge`
 
 Exposes Pydantic AI’s `Thinking` capability through ACP session config.
@@ -253,6 +287,10 @@ Use it when:
 Adds a `Hooks` capability into the active agent.
 
 Useful when you want ACP-visible hook updates that come from bridge-owned hooks rather than only from hooks already attached to the source agent.
+
+The bridge covers the current Pydantic AI hook surface, including tool
+preparation, output-tool preparation, output validation, output processing, and
+deferred tool-call observation.
 
 You can also suppress noisy default hook rendering with:
 
@@ -530,8 +568,7 @@ contributions = builder.build()
 
 It returns:
 
-- `capabilities`
-- `history_processors`
+- `capabilities` (including `ProcessHistory` wrappers for configured history processors)
 
 That makes it a natural fit inside `agent_factory` or `AgentSource.get_agent(...)`.
 

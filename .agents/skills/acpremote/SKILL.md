@@ -245,3 +245,13 @@ Common end-to-end references:
 - Do not blur ACP adaptation with ACP transport.
 - If the task is really about `acpkit run ...` or `acpkit serve ...`, pair this skill with
   `acpkit-sdk`.
+
+## Production Baseline
+
+- Bind to loopback unless an authenticated reverse proxy owns public TLS termination.
+- Require bearer authentication or an equivalent trusted edge for non-loopback exposure.
+- Bound metadata requests, WebSocket frames, stream buffers, command runtime, and command output.
+- Every connection setup failure, reconnect, cancellation, and shutdown path must close the ACP
+  connection, stream bridge, WebSocket, and child process it owns.
+- Use configured native `acp_agent` exports when exposing adapter-backed examples; serving a raw
+  framework target can discard custom adapter state.

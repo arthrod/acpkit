@@ -2,6 +2,7 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import contextlib
+import math
 import os
 import sys
 from collections.abc import Mapping
@@ -22,10 +23,13 @@ class CommandOptions:
     cwd: str | None = None
     env: Mapping[str, str] | None = None
     stderr_mode: Literal["inherit", "discard"] = "inherit"
+    terminate_timeout: float = 5.0
 
     def __post_init__(self) -> None:
         if not self.command:
             raise ValueError("command must not be empty")
+        if not math.isfinite(self.terminate_timeout) or self.terminate_timeout <= 0:
+            raise ValueError("terminate_timeout must be a positive finite number")
 
 
 async def run_remote_command_connection(
@@ -65,11 +69,15 @@ async def run_remote_command_connection(
         if process_wait in done or stdout_to_websocket in done:
             await _close_websocket(websocket)
         if websocket_to_stdin in done and process.returncode is None:
-            process.terminate()
+            await _terminate_process(process, timeout=command_options.terminate_timeout)
 
         await _close_stdin(process.stdin)
         if pending:
-            done, pending = await asyncio.wait(pending, return_when=asyncio.ALL_COMPLETED)
+            done, pending = await asyncio.wait(
+                pending,
+                timeout=command_options.terminate_timeout,
+                return_when=asyncio.ALL_COMPLETED,
+            )
             for task in done:
                 _raise_if_needed(task)
     finally:
@@ -81,9 +89,7 @@ async def run_remote_command_connection(
                 await task
         await _close_stdin(process.stdin)
         if process.returncode is None:
-            process.terminate()
-            with contextlib.suppress(ProcessLookupError):
-                await process.wait()
+            await _terminate_process(process, timeout=command_options.terminate_timeout)
         await _close_websocket(websocket)
 
 
@@ -152,6 +158,39 @@ async def _close_stdin(stdin: asyncio.StreamWriter) -> None:
 async def _close_websocket(websocket: ServerConnection) -> None:
     with contextlib.suppress(ConnectionClosed):
         await websocket.close()
+
+
+async def _terminate_process(process: asyncio.subprocess.Process, *, timeout: float) -> None:
+    try:
+        if process.returncode is not None:
+            return
+
+        with contextlib.suppress(ProcessLookupError):
+            process.terminate()
+
+        try:
+            await asyncio.wait_for(process.wait(), timeout=timeout)
+            return
+        except TimeoutError:
+            pass
+        except ProcessLookupError:
+            return
+
+        if process.returncode is not None:
+            return
+
+        with contextlib.suppress(ProcessLookupError):
+            process.kill()
+
+        with contextlib.suppress(ProcessLookupError, TimeoutError):
+            await asyncio.wait_for(process.wait(), timeout=timeout)
+    except asyncio.CancelledError:
+        if process.returncode is None:
+            with contextlib.suppress(ProcessLookupError):
+                process.kill()
+            with contextlib.suppress(ProcessLookupError, asyncio.CancelledError, TimeoutError):
+                await asyncio.wait_for(asyncio.shield(process.wait()), timeout=timeout)
+        raise
 
 
 def _raise_if_needed(task: asyncio.Task[object]) -> None:

@@ -1,12 +1,26 @@
 from __future__ import annotations as _annotations
 
 from ._version import __version__
-from .approvals import ApprovalBridge, ApprovalDecision, NativeApprovalBridge
+from .approval_store import (
+    ApprovalPolicy,
+    ApprovalPolicyStore,
+    PermissionOptionSet,
+    SessionMetadataApprovalPolicyStore,
+)
+from .approvals import (
+    ApprovalBridge,
+    ApprovalDecision,
+    NativeApprovalBridge,
+    ProjectionAwareApprovalBridge,
+    supports_projection_aware_approval_bridge,
+)
 from .bridges import (
     BufferedCapabilityBridge,
     CapabilityBridge,
     ConfigOptionsBridge,
     DeepAgentsCompatibilityBridge,
+    EventEmissionMode,
+    ExternalHookEventBridge,
     ModelSelectionBridge,
     ModeSelectionBridge,
     ToolSurfaceBridge,
@@ -25,6 +39,12 @@ from .graph_source import (
     GraphFactory,
     GraphSource,
     StaticGraphSource,
+)
+from .hook_projection import HookEvent, HookProjectionMap
+from .permission_presentation import (
+    DefaultPermissionToolCallBuilder,
+    PermissionRequestContext,
+    PermissionToolCallBuilder,
 )
 from .plan import (
     NativePlanGeneration,
@@ -46,6 +66,7 @@ from .projection import (
     FileSystemProjectionMap,
     FinanceProjectionMap,
     HttpRequestProjectionMap,
+    ProjectionAwareToolClassifier,
     ProjectionMap,
     ToolClassifier,
     WebFetchProjectionMap,
@@ -55,6 +76,7 @@ from .projection import (
     compose_projection_maps,
     extract_tool_call_locations,
 )
+from .prompt_capabilities import AdapterPromptCapabilities
 from .providers import (
     ConfigOption,
     ConfigOptionsProvider,
@@ -72,6 +94,14 @@ from .session import (
     JsonValue,
     MemorySessionStore,
     SessionStore,
+)
+from .slash import (
+    SlashCommandHandler,
+    SlashCommandProvider,
+    SlashCommandRequest,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
 )
 from .types import (
     AcpAgent,
@@ -94,8 +124,11 @@ __all__ = (
     "AcpAgent",
     "AcpSessionContext",
     "AdapterConfig",
+    "AdapterPromptCapabilities",
     "AgentPromptBlock",
     "ApprovalBridge",
+    "ApprovalPolicy",
+    "ApprovalPolicyStore",
     "CompositeEventProjectionMap",
     "ApprovalDecision",
     "AudioContentBlock",
@@ -117,7 +150,9 @@ __all__ = (
     "DeepAgentsProjectionMap",
     "DeepAgentsCompatibilityBridge",
     "EmbeddedResourceContentBlock",
+    "EventEmissionMode",
     "EventProjectionMap",
+    "ExternalHookEventBridge",
     "FactoryGraphSource",
     "FileSessionStore",
     "FileSystemProjectionMap",
@@ -126,6 +161,8 @@ __all__ = (
     "GraphBridgeBuilder",
     "GraphBuildContributions",
     "GraphSource",
+    "HookEvent",
+    "HookProjectionMap",
     "HttpRequestProjectionMap",
     "HttpMcpServer",
     "ImageContentBlock",
@@ -143,14 +180,27 @@ __all__ = (
     "PlanEntry",
     "PlanGenerationType",
     "PlanProvider",
+    "ProjectionAwareApprovalBridge",
+    "ProjectionAwareToolClassifier",
     "ProjectionMap",
+    "PermissionOptionSet",
+    "PermissionRequestContext",
+    "PermissionToolCallBuilder",
+    "DefaultPermissionToolCallBuilder",
     "ResourceContentBlock",
+    "SessionMetadataApprovalPolicyStore",
     "SessionModelsProvider",
     "SessionModesProvider",
     "SessionStore",
     "StaticGraphSource",
     "StructuredEventProjectionMap",
     "SseMcpServer",
+    "SlashCommandHandler",
+    "SlashCommandProvider",
+    "SlashCommandRequest",
+    "SlashCommandResult",
+    "StaticSlashCommand",
+    "StaticSlashCommandProvider",
     "TaskPlan",
     "TextContentBlock",
     "TextResourceContents",
@@ -170,4 +220,5 @@ __all__ = (
     "extract_tool_call_locations",
     "native_plan_tools",
     "run_acp",
+    "supports_projection_aware_approval_bridge",
 )

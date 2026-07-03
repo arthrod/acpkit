@@ -42,6 +42,26 @@ make tests
 make check
 ```
 
+Pydantic AI compatibility checks:
+
+```bash
+make check-pydantic-ai-matrix
+```
+
+This runs the Pydantic adapter runtime tests and type checks independently
+against Pydantic AI 2.0.0, 2.1.0, 2.2.0, 2.3.0, and 2.4.0. The same matrix runs
+in CI. Add a version only after both parts pass.
+
+LangChain stack compatibility checks:
+
+```bash
+make check-langchain-stack
+```
+
+This runs the LangChain adapter tests and type checks with LangChain 1.3.11, LangGraph 1.2.7, and
+DeepAgents 0.6.12 in one resolver environment. The suite constructs a real DeepAgents graph and
+checks its ACP lifecycle and built-in tool projections.
+
 Branch coverage for the adapter packages:
 
 ```bash

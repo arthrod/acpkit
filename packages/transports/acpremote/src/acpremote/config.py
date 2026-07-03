@@ -71,6 +71,8 @@ def normalize_mount_path(mount_path: str) -> str:
 
 def build_server_paths(mount_path: str) -> ServerPaths:
     normalized_mount = normalize_mount_path(mount_path)
+    if normalized_mount == DEFAULT_HEALTH_PATH:
+        raise ValueError(f"mount_path must not overlap the health endpoint `{DEFAULT_HEALTH_PATH}`")
     websocket_path = f"{normalized_mount}/ws" if normalized_mount != "/" else "/ws"
     return ServerPaths(
         metadata_path=normalized_mount,

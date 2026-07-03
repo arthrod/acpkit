@@ -3,11 +3,27 @@ from __future__ import annotations as _annotations
 from ._version import __version__
 from .agent_source import AgentFactory, AgentSource, FactoryAgentSource, StaticAgentSource
 from .agent_types import RuntimeAgent
-from .approvals import ApprovalBridge, NativeApprovalBridge
+from .approval_store import (
+    ApprovalPolicy,
+    ApprovalPolicyStore,
+    PermissionOptionSet,
+    SessionMetadataApprovalPolicyStore,
+)
+from .approvals import (
+    ApprovalBridge,
+    NativeApprovalBridge,
+    ProjectionAwareApprovalBridge,
+    supports_projection_aware_approval_bridge,
+)
 from .bridges import (
     AnthropicCompactionBridge,
     BufferedCapabilityBridge,
     CapabilityBridge,
+    EventEmissionMode,
+    ExternalHookEventBridge,
+    HarnessCodeModeBridge,
+    HarnessFileSystemBridge,
+    HarnessShellBridge,
     HistoryProcessorBridge,
     HistoryProcessorCallable,
     HistoryProcessorContextual,
@@ -24,6 +40,8 @@ from .bridges import (
     OpenAICompactionBridge,
     PlanGenerationType,
     PrefixToolsBridge,
+    PrepareOutputToolsBridge,
+    PrepareOutputToolsMode,
     PrepareToolsBridge,
     PrepareToolsMode,
     SetToolMetadataBridge,
@@ -49,10 +67,19 @@ from .host import (
     TerminalBackend,
 )
 from .models import AdapterModel
+from .permission_presentation import (
+    DefaultPermissionToolCallBuilder,
+    PermissionRequestContext,
+    PermissionToolCallBuilder,
+)
 from .projection import (
     BuiltinToolProjectionMap,
     CompositeProjectionMap,
     FileSystemProjectionMap,
+    HarnessCodeModeProjectionMap,
+    HarnessFileSystemProjectionMap,
+    HarnessShellProjectionMap,
+    ProjectionAwareToolClassifier,
     ProjectionMap,
     WebToolProjectionMap,
     compose_projection_maps,
@@ -68,6 +95,7 @@ from .projection_helpers import (
     truncate_lines,
     truncate_text,
 )
+from .prompt_capabilities import AdapterPromptCapabilities
 from .providers import (
     ApprovalStateProvider,
     ConfigOption,
@@ -84,6 +112,14 @@ from .runtime.hook_introspection import RegisteredHookInfo, list_agent_hooks
 from .runtime.server import create_acp_agent, run_acp
 from .session.state import AcpSessionContext, JsonValue
 from .session.store import FileSessionStore, MemorySessionStore, SessionStore
+from .slash import (
+    SlashCommandHandler,
+    SlashCommandProvider,
+    SlashCommandRequest,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
+)
 from .testing import BlackBoxHarness, RecordingACPClient, UpdateRecord, agent_message_texts
 from .types import (
     AcpAgent,
@@ -130,7 +166,10 @@ __all__ = (
     "caution_for_command",
     "caution_for_path",
     "DEFAULT_TEXT_TRUNCATION_MARKER",
+    "DefaultPermissionToolCallBuilder",
     "EmbeddedResourceContentBlock",
+    "EventEmissionMode",
+    "ExternalHookEventBridge",
     "FileSessionStore",
     "FileSystemProjectionMap",
     "FactoryAgentSource",
@@ -141,6 +180,12 @@ __all__ = (
     "HostPathEvaluation",
     "HostRisk",
     "HistoryProcessorCallable",
+    "HarnessCodeModeBridge",
+    "HarnessCodeModeProjectionMap",
+    "HarnessFileSystemBridge",
+    "HarnessFileSystemProjectionMap",
+    "HarnessShellBridge",
+    "HarnessShellProjectionMap",
     "HistoryProcessorBridge",
     "HistoryProcessorContextual",
     "HistoryProcessorPlain",
@@ -166,16 +211,26 @@ __all__ = (
     "NativeApprovalBridge",
     "NativePlanPersistenceProvider",
     "OpenAICompactionBridge",
+    "AdapterPromptCapabilities",
     "PlanEntry",
     "PlanGenerationType",
     "PlanProvider",
     "PrefixToolsBridge",
+    "ApprovalPolicy",
+    "ApprovalPolicyStore",
     "ProjectionMap",
+    "ProjectionAwareApprovalBridge",
+    "ProjectionAwareToolClassifier",
     "PromptModelOverrideProvider",
+    "PermissionOptionSet",
+    "PermissionRequestContext",
+    "PermissionToolCallBuilder",
     "ResourceContentBlock",
     "format_code_block",
     "format_diff_preview",
     "format_terminal_status",
+    "PrepareOutputToolsBridge",
+    "PrepareOutputToolsMode",
     "PrepareToolsBridge",
     "PrepareToolsMode",
     "RegisteredHookInfo",
@@ -189,9 +244,16 @@ __all__ = (
     "WebSearchBridge",
     "WebToolProjectionMap",
     "SessionStore",
+    "SessionMetadataApprovalPolicyStore",
     "SessionModelsProvider",
     "SessionModesProvider",
+    "SlashCommandHandler",
+    "SlashCommandProvider",
+    "SlashCommandRequest",
+    "SlashCommandResult",
     "StaticAgentSource",
+    "StaticSlashCommand",
+    "StaticSlashCommandProvider",
     "SseMcpServer",
     "single_line_summary",
     "TerminalBackend",
@@ -204,4 +266,5 @@ __all__ = (
     "agent_message_texts",
     "create_acp_agent",
     "run_acp",
+    "supports_projection_aware_approval_bridge",
 )

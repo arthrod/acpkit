@@ -29,7 +29,10 @@ from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="Answer directly and keep responses short.",
+    ),
     tools=[],
     name="codex-graph",
 )
@@ -37,6 +40,9 @@ graph = create_agent(
 
 That path keeps the model on the OpenAI Responses API while reusing
 `~/.codex/auth.json` and the helper's refresh flow.
+
+`create_codex_chat_openai(...)` requires `instructions=`. Pass them at model
+construction time, including inside `graph_factory=` flows.
 
 ## 2. Expose The Graph Through ACP
 
@@ -190,7 +196,7 @@ If you installed the root package:
 ```bash
 acpkit run my_graph_module
 acpkit run my_graph_module:graph
-acpkit run examples.langchain.workspace_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
 ```
 
 `acpkit` resolves the target, detects the last defined supported graph target when needed, and dispatches it to `langchain-acp`.

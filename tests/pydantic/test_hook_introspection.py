@@ -86,6 +86,7 @@ def test_existing_before_model_request_hook_emits_acp_updates(tmp_path) -> None:
         agent=Agent(
             TestModel(custom_output_text="hooked"),
             name="hooked-agent",
+            deps_type=type(None),
             capabilities=[hooks],
         ),
         config=AdapterConfig(session_store=MemorySessionStore()),
@@ -181,6 +182,7 @@ def test_multiple_registered_hook_callbacks_each_emit_updates(tmp_path) -> None:
     adapter = create_acp_agent(
         agent=Agent(
             TestModel(custom_output_text="hooked"),
+            deps_type=type(None),
             capabilities=[hooks],
         ),
         config=AdapterConfig(session_store=MemorySessionStore()),
@@ -219,6 +221,7 @@ def test_tool_filtered_hook_preserves_tool_metadata(tmp_path) -> None:
 
     agent = Agent(
         TestModel(call_tools=["echo"], custom_output_text="tool-hooked"),
+        deps_type=type(None),
         capabilities=[hooks],
     )
 
@@ -278,6 +281,7 @@ def test_custom_hook_projection_map_can_hide_and_relabel_events(tmp_path) -> Non
     adapter = create_acp_agent(
         agent=Agent(
             TestModel(custom_output_text="hooked"),
+            deps_type=type(None),
             capabilities=[hooks],
         ),
         config=AdapterConfig(session_store=MemorySessionStore()),
@@ -368,6 +372,14 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
         del ctx, call, tool_def  # pragma: no cover
         return args  # pragma: no cover
 
+    async def gamma(ctx, *, output_context, output, handler):
+        del ctx, output_context  # pragma: no cover
+        return await handler(output)  # pragma: no cover
+
+    async def delta(ctx, *, requests):
+        del ctx, requests  # pragma: no cover
+        return None  # pragma: no cover
+
     skipped = _TestHookEntry(skipped_alpha)
     skipped.func.__module__ = "pydantic_acp.bridges.hooks"
     tool_entry = _TestHookEntry(beta, tools=frozenset({"z", "a"}))
@@ -377,12 +389,16 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
         1: [],
         "before_model_request": ["bad", broken_entry, skipped, _TestHookEntry(alpha)],
         "before_tool_execute": [tool_entry],
+        "handle_deferred_tool_calls": [_TestHookEntry(delta)],
+        "wrap_output_validate": [_TestHookEntry(gamma)],
     }
 
     listed = list_agent_hooks(Agent(TestModel(custom_output_text="hooked"), capabilities=[hooks]))
     assert [(info.event_id, info.hook_name, info.tool_filters) for info in listed] == [
         ("before_model_request", "alpha", ()),
         ("before_tool_execute", "beta", ("a", "z")),
+        ("deferred_tool_calls", "delta", ()),
+        ("output_validate", "gamma", ()),
     ]
     assert _tool_filters(cast(Any, SimpleNamespace(tools=None))) == ()
     assert _tool_name({"call": _INVALID_HOOK_VALUE}) is None
@@ -473,7 +489,11 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
     with pytest.raises(HookTimeoutError):
         asyncio.run(_call_hook_func(slow, timeout=0, hook_name="before_run"))
 
-    real_agent = Agent(TestModel(custom_output_text="observed"), capabilities=[Hooks[None]()])
+    real_agent = Agent(
+        TestModel(custom_output_text="observed"),
+        deps_type=type(None),
+        capabilities=[Hooks[None]()],
+    )
     override_var = ContextVar("_override_root_capability", default=None)
     cast(Any, real_agent)._override_root_capability = override_var
     cast(Any, real_agent)._root_capability = CombinedCapability(capabilities=[])

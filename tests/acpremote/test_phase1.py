@@ -237,7 +237,7 @@ async def test_phase1_round_trip_supports_initialize_prompt_and_session_update()
     agent = _EchoAgent()
     server = await serve_remote_agent(cast(Agent, agent))
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     client = _RecordingClient()
     remote = await connect_remote_agent(cast(Client, client), f"ws://127.0.0.1:{port}/acp/ws")
     try:

@@ -7,14 +7,14 @@ back into a local ACP agent proxy. It can also mirror any stdio ACP command by s
 child process.
 
 This package is transport-only. Use it when the runtime already speaks ACP and you want to move
-that ACP surface across a WebSocket boundary. If the runtime is still a Python target that needs to
-be resolved first, use `acpkit` instead.
+that ACP surface across a WebSocket boundary. If the runtime is still a Pydantic AI or LangChain
+target that needs adapter dispatch, use `acpkit` instead.
 
 Docs:
 
 - <https://vcoderun.github.io/acpkit/acpremote/>
 
-Install:
+Latest stable install:
 
 ```bash
 uv add acpremote
@@ -22,6 +22,69 @@ uv add acpremote
 
 ```bash
 pip install acpremote
+```
+
+## CLI
+
+The `acpremote` executable exposes the same transport jobs as the Python API.
+
+Use this mapping:
+
+| You have... | Run... | Meaning |
+|---|---|---|
+| an exposed remote WebSocket endpoint | `acpremote mirror ws://host:8080/acp/ws` | connect to the remote endpoint and expose it locally as stdio ACP |
+| a local stdio ACP command | `acpremote expose -- <command>` | spawn the command and expose it over WebSocket |
+| a native Python `acp.interfaces.Agent` | `acpremote serve module:agent` | load the ACP agent and expose it over WebSocket |
+
+If a client such as Toad asks for an ACP command for an already exposed WebSocket, give it the
+mirror command:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
+
+Expose a native ACP Python target:
+
+```bash
+acpremote serve my_app:agent --host 0.0.0.0 --port 8080
+```
+
+`serve` expects `my_app:agent` to resolve to an existing `acp.interfaces.Agent`. For Pydantic AI,
+LangChain, or LangGraph targets, use the root CLI so adapter dispatch stays explicit:
+
+```bash
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
+```
+
+Expose a stdio ACP command:
+
+```bash
+acpremote expose --host 0.0.0.0 --port 8080 -- npx @zed-industries/codex-acp
+```
+
+Pass command-specific flags after `--`:
+
+```bash
+acpremote expose --cwd /srv/agent --env MODEL=gpt-5 -- python agent.py --stdio
+```
+
+Mirror a remote WebSocket endpoint back to local stdio ACP:
+
+```bash
+acpremote mirror ws://remote.example.com:8080/acp/ws
+```
+
+That is the direct `acpremote` equivalent of:
+
+```bash
+acpkit run --addr ws://remote.example.com:8080/acp/ws
+```
+
+Bearer tokens can be passed directly or read from an environment variable:
+
+```bash
+acpremote expose --token-env ACPREMOTE_TOKEN -- npx @zed-industries/codex-acp
+acpremote mirror ws://remote.example.com:8080/acp/ws --bearer-token "$ACPREMOTE_TOKEN"
 ```
 
 ## Server
@@ -52,16 +115,37 @@ await server.serve_forever()
 keeps command lookup through `PATH` intact while still letting the caller inject tokens or runtime
 flags.
 
+If you need command cleanup tuning, pass `CommandOptions` to `serve_stdio_command(...)`:
+
+```python
+from acpremote import CommandOptions, serve_stdio_command
+
+server = await serve_stdio_command(
+    CommandOptions(
+        command=('npx', '@zed-industries/codex-acp'),
+        terminate_timeout=2.0,
+    ),
+    host='127.0.0.1',
+    port=8080,
+)
+await server.serve_forever()
+```
+
+When a command-backed WebSocket flow ends, `acpremote` terminates the child process and falls back
+to `kill` after `terminate_timeout`. The timeout must be a positive finite number.
+
 Typical remote-host flow:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
+acpremote expose --host 0.0.0.0 --port 8081 -- npx @zed-industries/codex-acp
 ```
 
 Typical local mirror flow:
 
 ```bash
 acpkit run --addr ws://remote.example.com:8080/acp/ws
+acpremote mirror ws://remote.example.com:8081/acp/ws
 ```
 
 Default routes:
@@ -69,6 +153,8 @@ Default routes:
 - metadata: `http://127.0.0.1:8080/acp`
 - health: `http://127.0.0.1:8080/healthz`
 - websocket: `ws://127.0.0.1:8080/acp/ws`
+
+Custom mount paths must not use `/healthz`, which is reserved for the health endpoint.
 
 ## Client Proxy
 
@@ -87,12 +173,14 @@ That pattern is what powers a local stdio ACP facade in front of a remote ACP se
 If you want a launcher to open that local facade, wrap the same mirror command with Toad:
 
 ```bash
-toad acp "acpkit run --addr ws://remote.example.com:8080/acp/ws"
+toad acp "acpremote mirror ws://remote.example.com:8080/acp/ws"
 ```
 
 When the remote server advertises a `remote_cwd` in its metadata, `connect_acp(...)` treats that
 directory as authoritative for session lifecycle calls. This keeps a mirrored local ACP server from
 accidentally sending the local machine's spawn directory back to the remote host.
+Metadata discovery uses `TransportOptions.open_timeout`; a timeout leaves metadata unavailable
+without blocking the WebSocket proxy indefinitely.
 
 By default `connect_acp(...)` also treats host-backed capabilities as remote-owned. Local client
 filesystem and terminal capabilities aren't forwarded unless `TransportOptions(host_ownership="client_passthrough")`
@@ -134,7 +222,15 @@ Current transport behavior:
 - binary frames are rejected
 - bearer-token auth is supported
 - stdio ACP commands can be mirrored with `serve_command(...)`
+- custom command cleanup timeouts are available through `CommandOptions`
 - transport limits are configurable through `TransportOptions`
 
 This package is transport-focused. It doesn't assume ACP Kit adapters or ACP Kit-owned runtime
 semantics.
+
+Security guidance:
+
+- bind to loopback unless a reverse proxy owns TLS and authentication
+- allowlist command-backed servers instead of accepting arbitrary command strings
+- keep environment overrides minimal and avoid forwarding unnecessary secrets
+- see <https://vcoderun.github.io/acpkit/security/>

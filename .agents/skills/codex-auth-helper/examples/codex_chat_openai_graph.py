@@ -19,7 +19,13 @@ def describe_codex_surface() -> str:
 
 
 graph = create_agent(
-    model=create_codex_chat_openai(MODEL_NAME),
+    model=create_codex_chat_openai(
+        MODEL_NAME,
+        instructions=(
+            "You are a helpful coding assistant. "
+            "Explain concrete workspace observations and use tools when helpful."
+        ),
+    ),
     tools=[describe_codex_surface],
     name="codex-chat-openai-graph",
 )

@@ -67,6 +67,7 @@ What it owns:
 What it does not own:
 
 - Pydantic plan/approval/projection details
+- Pydantic prompt capability, custom slash command, and external hook event details
 - LangChain graph/provider/projection details
 - WebSocket transport behavior
 - Codex auth parsing
@@ -258,7 +259,7 @@ Remote pairing examples:
 Switch to a narrower skill when:
 
 - the bug is clearly inside adapter runtime behavior
-- the task is about approvals, plans, projections, or host policy
+- the task is about approvals, plans, prompt capabilities, custom slash commands, projections, external hook events, or host policy
 - the task is about transport or remote ownership rather than CLI or dispatch
 - the task is about Codex auth refresh or `auth.json`
 
@@ -275,5 +276,19 @@ Stay in this skill when:
 - Do not describe `acpremote` as an adapter.
 - Do not describe `codex-auth-helper` as part of target resolution.
 - Do not document a root CLI feature that is not present in the [CLI module](https://github.com/vcoderun/acpkit/blob/main/src/acpkit/cli.py).
-- When the question is about adapter truthfulness, plans, approvals, projections, host ownership,
-  or provider behavior, move to the narrower package skill.
+- When the question is about adapter truthfulness, plans, approvals, prompt capabilities, custom
+  slash commands, projections, external hook events, host ownership, or provider behavior, move to
+  the narrower package skill.
+
+## v1 Release Discipline
+
+- The workspace packages use one synchronized version. Root extras require the matching major
+  generation of adapter, helper, and transport packages.
+- Prefer an example's exported `acp_agent` target over its raw `agent` or `graph` when custom
+  `AdapterConfig` state must survive root CLI dispatch.
+- Run `make release RELEASE_TAG=vX.Y.Z` before a release tag. This includes compatibility,
+  documentation, coverage, artifact metadata, and clean-install smoke checks.
+- A release tag must exactly match every package `_version.py` and the corresponding
+  `CHANGELOG.md` heading.
+- Public v1 compatibility applies to top-level `__all__`, documented CLI behavior, and documented
+  configuration contracts. Do not promote private helpers into that contract accidentally.

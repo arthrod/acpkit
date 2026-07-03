@@ -154,7 +154,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             standalone_mode=False,
         )
     except click.ClickException as exc:
-        exc.show(file=sys.stderr)
+        click.echo(f"Error: {exc.format_message()}", file=sys.stderr, err=True)
         return exc.exit_code
     except click.exceptions.Exit as exc:
         return exc.exit_code

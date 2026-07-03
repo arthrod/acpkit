@@ -15,6 +15,7 @@ from acp.schema import (
     AgentMessageChunk,
     AgentPlanUpdate,
     AudioContentBlock,
+    AvailableCommand,
     BlobResourceContents,
     ContentToolCallContent,
     EmbeddedResourceContentBlock,
@@ -28,6 +29,8 @@ from acp.schema import (
     SessionConfigOptionBoolean,
     SessionInfoUpdate,
     SessionMode,
+    SessionModelState,
+    SessionModeState,
     SseMcpServer,
     TerminalToolCallContent,
     TextContentBlock,
@@ -40,6 +43,7 @@ from acp.schema import (
 )
 from langchain_acp import (
     AdapterConfig,
+    ApprovalPolicy,
     BrowserProjectionMap,
     BufferedCapabilityBridge,
     CapabilityBridge,
@@ -50,6 +54,7 @@ from langchain_acp import (
     DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     DefaultToolClassifier,
+    ExternalHookEventBridge,
     FactoryGraphSource,
     FileSessionStore,
     FileSystemProjectionMap,
@@ -61,6 +66,8 @@ from langchain_acp import (
     ModelSelectionBridge,
     ModeSelectionBridge,
     NativeApprovalBridge,
+    ProjectionAwareToolClassifier,
+    SessionMetadataApprovalPolicyStore,
     StaticGraphSource,
     StructuredEventProjectionMap,
     TaskPlan,
@@ -77,6 +84,7 @@ from langchain_acp import (
     create_acp_agent,
     extract_tool_call_locations,
 )
+from langchain_acp._slash_commands import validate_mode_command_ids
 from langchain_acp.approvals import ApprovalDecision
 from langchain_acp.event_projection import (
     _event_payload_to_update,
@@ -84,6 +92,7 @@ from langchain_acp.event_projection import (
     _normalize_text_content,
     _resolve_session_update_kind,
 )
+from langchain_acp.hook_projection import HookEvent
 from langchain_acp.plan import _bind_native_plan_context
 from langchain_acp.projection import (
     ToolProjection,
@@ -111,6 +120,7 @@ from langchain_acp.projection import (
     _normalized_search_results,
     _output_text,
     _parse_structured_value,
+    _render_path_tree,
     _search_result_rows,
     _search_title,
     _terminal_id,
@@ -128,6 +138,19 @@ from langchain_acp.runtime._prompt_conversion import (
 )
 from langchain_acp.runtime.adapter import LangChainAcpAgent
 from langchain_acp.runtime.server import _resolve_config, _resolve_graph_source, run_acp
+from langchain_acp.runtime.slash_commands import (
+    McpServerInfo,
+    ToolInfo,
+    build_available_commands,
+    extract_session_mcp_servers,
+    list_graph_tools,
+    parse_slash_command,
+    render_mcp_server_listing,
+    render_mode_message,
+    render_model_message,
+    render_tool_listing,
+    validate_custom_commands,
+)
 from langchain_acp.serialization import DefaultOutputSerializer, _json_compatible
 from langchain_acp.session.state import (
     AcpSessionContext,
@@ -136,7 +159,13 @@ from langchain_acp.session.state import (
     _coerce_json_value,
     utc_now,
 )
-from langchain_acp.session.store import _store_lock
+from langchain_acp.session.store import _store_child_path, _store_lock
+from langchain_acp.slash import (
+    SlashCommandRequest,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
+)
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langgraph.types import Command
 from pydantic import BaseModel
@@ -506,6 +535,52 @@ def test_native_approval_bridge_handles_success_cancel_and_invalid_paths() -> No
             )
         )
 
+
+def test_native_approval_bridge_supports_persistent_choices_and_projection_builder() -> None:
+    bridge = NativeApprovalBridge(enable_persistent_choices=True)
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=DefaultToolClassifier(),
+        projection_maps=[
+            FileSystemProjectionMap(read_tool_names=frozenset({"read_file"})),
+        ],
+    )
+    client = RecordingACPClient()
+    client.queue_permission_selected("allow_always")
+    session = _make_session()
+
+    first_decision = asyncio.run(
+        bridge.resolve_action_requests(
+            client=cast(AcpClient, client),
+            session=session,
+            action_requests=[{"name": "read_file", "args": {"path": "notes.txt"}}],
+            review_configs=[{"action_name": "read_file", "allowed_decisions": ["approve"]}],
+            classifier=classifier,
+            projection_map=FileSystemProjectionMap(read_tool_names=frozenset({"read_file"})),
+        )
+    )
+    second_decision = asyncio.run(
+        bridge.resolve_action_requests(
+            client=cast(AcpClient, client),
+            session=session,
+            action_requests=[{"name": "read_file", "args": {"path": "notes.txt"}}],
+            review_configs=[{"action_name": "read_file", "allowed_decisions": ["approve"]}],
+            classifier=classifier,
+            projection_map=FileSystemProjectionMap(read_tool_names=frozenset({"read_file"})),
+        )
+    )
+
+    assert first_decision.decisions == [{"type": "approve"}]
+    assert second_decision.decisions == [{"type": "approve"}]
+    assert len(client.permission_requests) == 1
+    assert client.permission_requests[0][1] == [
+        "allow_once",
+        "reject_once",
+        "allow_always",
+        "reject_always",
+    ]
+    assert client.permission_requests[0][2].title == "Read `notes.txt`"
+    assert client.permission_requests[0][2].kind == "read"
+
     with pytest.raises(RequestError):
         asyncio.run(
             bridge.resolve_action_requests(
@@ -519,11 +594,12 @@ def test_native_approval_bridge_handles_success_cancel_and_invalid_paths() -> No
 
     client = RecordingACPClient()
     client.queue_permission_selected("unexpected")
+    unexpected_bridge = NativeApprovalBridge()
     with pytest.raises(RequestError):
         asyncio.run(
-            bridge.resolve_action_requests(
+            unexpected_bridge.resolve_action_requests(
                 client=cast(AcpClient, client),
-                session=session,
+                session=_make_session(),
                 action_requests=[{"name": "read_file", "args": {"path": "notes.txt"}}],
                 review_configs=[],
                 classifier=classifier,
@@ -551,6 +627,549 @@ def test_native_approval_bridge_handles_success_cancel_and_invalid_paths() -> No
                 classifier=classifier,
             )
         )
+
+
+def test_approval_store_and_support_shims_cover_empty_and_reject_paths() -> None:
+    store = SessionMetadataApprovalPolicyStore()
+    session = _make_session()
+
+    assert store.export_state(session) is None
+    assert store.get_policy(session, "missing") is None
+
+    session.metadata[store.metadata_key] = {"bad": "maybe"}
+    assert store.get_policy(session, "bad") is None
+
+    store.set_policy(session, "dangerous", cast(ApprovalPolicy, "reject"))
+    assert store.export_state(session) == {"bad": "maybe", "dangerous": "reject"}
+
+    bridge = NativeApprovalBridge(enable_persistent_choices=True)
+    client = RecordingACPClient()
+    client.queue_permission_selected("reject_always")
+    classifier = DefaultToolClassifier()
+    decision = asyncio.run(
+        bridge.resolve_action_requests(
+            client=cast(AcpClient, client),
+            session=_make_session(session_id="reject-always"),
+            action_requests=[{"id": "action-1", "name": "terminal", "args": {"command": "pwd"}}],
+            review_configs=[],
+            classifier=classifier,
+        )
+    )
+    assert decision.decisions == [{"type": "reject"}]
+    assert client.permission_requests[0][2].tool_call_id == "action-1"
+
+    rejecting_session = _make_session(session_id="reject-remembered")
+    bridge.policy_store.set_policy(rejecting_session, "terminal", "reject")
+    remembered = asyncio.run(
+        bridge.resolve_action_requests(
+            client=cast(AcpClient, RecordingACPClient()),
+            session=rejecting_session,
+            action_requests=[{"name": "terminal", "args": {"command": "pwd"}}],
+            review_configs=[],
+            classifier=classifier,
+        )
+    )
+    assert remembered.decisions == [{"type": "reject"}]
+
+    non_persistent_bridge = NativeApprovalBridge(enable_persistent_choices=False)
+    session_without_persist = _make_session(session_id="non-persistent")
+    non_persistent_bridge._remember_policy(session_without_persist, "terminal", "allow")
+    assert non_persistent_bridge.policy_store.export_state(session_without_persist) is None
+
+    from langchain_acp.approvals import supports_projection_aware_approval_bridge
+
+    assert supports_projection_aware_approval_bridge(None) is False
+    assert supports_projection_aware_approval_bridge(NativeApprovalBridge()) is True
+    assert supports_projection_aware_approval_bridge(cast(Any, object())) is False
+
+
+def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
+    mode_state = SessionModeState(
+        current_mode_id="ask",
+        available_modes=[
+            SessionMode(id="ask", name="Ask"),
+            SessionMode(id="review", name="Review"),
+        ],
+    )
+    model_state = SessionModelState(
+        current_model_id="openai:gpt-5-mini",
+        available_models=[ModelInfo(model_id="openai:gpt-5-mini", name="GPT-5 Mini")],
+    )
+    commands = build_available_commands(mode_state=mode_state, model_state=model_state)
+    assert [command.name for command in commands] == [
+        "ask",
+        "review",
+        "model",
+        "tools",
+        "mcp-servers",
+    ]
+
+    with pytest.raises(ValueError, match="non-empty"):
+        validate_mode_command_ids(["   "])
+    with pytest.raises(ValueError, match="whitespace"):
+        validate_mode_command_ids(["code review"])
+    with pytest.raises(ValueError, match="Duplicate ids: ask"):
+        validate_mode_command_ids(["ask", " ASK "])
+    with pytest.raises(ValueError, match="reserved slash command names"):
+        validate_mode_command_ids(["model"])
+
+    with pytest.raises(ValueError, match="already be normalized"):
+        validate_custom_commands(
+            [AvailableCommand(name=" Ping ", description="x")], mode_state=None
+        )
+    with pytest.raises(ValueError, match=r"\^\[a-z\]\[a-z0-9-\]\*\$"):
+        validate_custom_commands([AvailableCommand(name="9ping", description="x")], mode_state=None)
+    with pytest.raises(ValueError, match="Duplicate ids: ping"):
+        validate_custom_commands(
+            [
+                AvailableCommand(name="ping", description="x"),
+                AvailableCommand(name="ping", description="y"),
+            ],
+            mode_state=None,
+        )
+    with pytest.raises(ValueError, match="reserved slash command names"):
+        validate_custom_commands([AvailableCommand(name="tools", description="x")], mode_state=None)
+    with pytest.raises(ValueError, match="active mode ids"):
+        validate_custom_commands(
+            [AvailableCommand(name="ask", description="x")], mode_state=mode_state
+        )
+    validate_custom_commands([AvailableCommand(name="ping", description="x")], mode_state=None)
+
+    parsed = parse_slash_command(" /MODEL openai:gpt-5 ")
+    assert parsed is not None
+    assert parsed.name == "model"
+    assert parsed.argument == "openai:gpt-5"
+    assert parse_slash_command("hello") is None
+    assert parse_slash_command("/") is None
+    assert parse_slash_command("/   ") is None
+    assert parse_slash_command("/   model") is None
+
+    assert render_mode_message(None) == "Current mode: unavailable"
+    assert render_model_message(None) == "Current model: unavailable"
+    assert render_tool_listing([]) == "No tools are currently registered."
+    assert (
+        render_tool_listing([ToolInfo(name="tool", description=None)]) == "Available tools:\n- tool"
+    )
+    assert render_mcp_server_listing([]) == "No MCP servers are currently attached."
+    assert (
+        render_mcp_server_listing(
+            [McpServerInfo(name="repo", transport="http", target="https://repo", source="session")]
+        )
+        == "MCP servers:\n- repo (http, session): https://repo"
+    )
+
+
+def test_slash_command_helpers_cover_graph_tool_and_mcp_server_edge_paths() -> None:
+    graph = SimpleNamespace(
+        get_graph=lambda: SimpleNamespace(
+            nodes={
+                "tools": SimpleNamespace(
+                    data=SimpleNamespace(
+                        _tools_by_name={
+                            "read": SimpleNamespace(description="Read file"),
+                            1: object(),
+                        }
+                    )
+                ),
+                "other": SimpleNamespace(data=object()),
+            }
+        )
+    )
+    assert list_graph_tools(graph) == [ToolInfo(name="read", description="Read file")]
+    assert list_graph_tools(SimpleNamespace(get_graph=lambda: SimpleNamespace(nodes=None))) == []
+    assert list_graph_tools(SimpleNamespace()) == []
+
+    session = _make_session()
+    session.mcp_servers = [
+        {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
+        {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
+        {"name": "repo-stdio", "type": "stdio", "command": "python", "args": ["server.py"]},
+        {"name": "stdio-no-args", "type": "stdio", "command": "python"},
+        {"name": "bad-transport"},
+        {"transport": "http"},
+    ]
+    session.metadata["mcp"] = {
+        "servers": [
+            {"name": "bridge", "transport": "sse", "description": "docs"},
+            {"name": "bridge", "transport": "sse", "description": "docs"},
+            {"name": "bad-bridge", "transport": 1},
+            "bad",
+            cast(Any, {1: "bad"}),
+        ]
+    }
+    infos = extract_session_mcp_servers(session)
+    assert [(info.name, info.transport, info.source) for info in infos] == [
+        ("repo-http", "http", "session"),
+        ("repo-stdio", "stdio", "session"),
+        ("stdio-no-args", "stdio", "session"),
+        ("bridge", "sse", "bridge"),
+    ]
+    assert next(info for info in infos if info.name == "stdio-no-args").target == "python"
+    session.metadata["mcp"] = {"servers": "bad"}  # type: ignore[dict-item]
+    infos = extract_session_mcp_servers(session)
+    assert len(infos) == 3
+
+
+def test_static_slash_command_provider_handles_match_and_miss() -> None:
+    provider = StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="ping", description="Return pong."),
+                handler=lambda request: SlashCommandResult(text=request.name),
+            )
+        ]
+    )
+    request = SlashCommandRequest(
+        name="ping",
+        argument=None,
+        raw_prompt="/ping",
+        session=_make_session(),
+        graph=object(),
+    )
+    miss_request = SlashCommandRequest(
+        name="miss",
+        argument=None,
+        raw_prompt="/miss",
+        session=_make_session(),
+        graph=object(),
+    )
+    assert provider.available_commands(_make_session(), object())[0].name == "ping"
+    result = provider.handle_command(request)
+    assert isinstance(result, SlashCommandResult)
+    assert result.text == "ping"
+    assert provider.handle_command(miss_request) is None
+
+
+def test_hook_projection_and_external_hook_bridge_cover_hidden_and_start_only_paths() -> None:
+    hidden_event = HookEvent(
+        event_id="hidden",
+        hook_name="before_tool",
+        summary="hidden summary",
+        hidden=True,
+    )
+    hidden_bridge = ExternalHookEventBridge()
+    hidden_session = _make_session(session_id="hidden-hooks")
+    hidden_bridge.record_event(hidden_session, hidden_event)
+    assert hidden_bridge.drain_updates(hidden_session) is None
+
+    projection_map = cast(Any, ExternalHookEventBridge()).projection_map
+    assert projection_map.build_start_update(tool_call_id="x", event=hidden_event) is None
+    assert projection_map.build_progress_update(tool_call_id="x", event=hidden_event) is None
+
+    class _StartOnlyProjectionMap:
+        hidden_event_ids: set[str] = set()
+        title_prefix = "Hook"
+
+        def build_start_update(self, *, tool_call_id: str, event: HookEvent) -> ToolCallStart:
+            return ToolCallStart(
+                session_update="tool_call",
+                tool_call_id=tool_call_id,
+                title=event.hook_name,
+                kind="execute",
+                status="in_progress",
+            )
+
+        def build_progress_update(self, *, tool_call_id: str, event: HookEvent) -> None:
+            del tool_call_id, event
+            return None
+
+    bridge = ExternalHookEventBridge(
+        emission_mode="start_only",
+        projection_map=cast(Any, _StartOnlyProjectionMap()),
+    )
+    session = _make_session(session_id="external-hooks")
+    bridge.record_event(
+        session,
+        HookEvent(
+            event_id="start-only",
+            hook_name="after_tool",
+            summary="done",
+            status="completed",
+        ),
+    )
+    updates = bridge.drain_updates(session)
+    assert updates is not None
+    assert len(updates) == 1
+    assert getattr(updates[0], "status", None) == "completed"
+    bridge.record_event(
+        session,
+        HookEvent(event_id="start-only-no-status", hook_name="after_tool", summary="pending"),
+    )
+    no_status_updates = bridge.drain_updates(session)
+    assert no_status_updates is not None
+    assert len(no_status_updates) == 1
+
+    fallback_bridge = ExternalHookEventBridge(
+        projection_map=cast(Any, _StartOnlyProjectionMap()),
+    )
+    fallback_bridge.record_event(
+        session,
+        HookEvent(event_id="paired-no-progress", hook_name="after_tool", summary="done"),
+    )
+    fallback_updates = fallback_bridge.drain_updates(session)
+    assert fallback_updates is not None
+    assert len(fallback_updates) == 1
+
+
+def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> None:
+    @dataclass(slots=True)
+    class _NullGraphSource:
+        graph: Any = field(default_factory=object)
+
+        async def get_graph(self, session: AcpSessionContext) -> Any:
+            del session
+            return self.graph
+
+    @dataclass(slots=True)
+    class _EmptyClient:
+        updates: list[Any] = field(default_factory=list)
+
+        async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
+            del session_id, kwargs
+            self.updates.append(update)
+
+    class _CustomProvider:
+        def __init__(self, result: SlashCommandResult | None) -> None:
+            self.result = result
+
+        def available_commands(
+            self, session: AcpSessionContext, graph: Any
+        ) -> list[AvailableCommand]:
+            del session, graph
+            return [AvailableCommand(name="ping", description="pong")]
+
+        def handle_command(self, request: SlashCommandRequest) -> SlashCommandResult | None:
+            del request
+            return self.result
+
+    adapter = LangChainAcpAgent(
+        cast(Any, _NullGraphSource()),
+        config=AdapterConfig(),
+    )
+    client = _EmptyClient()
+    adapter.on_connect(cast(AcpClient, client))
+    session = _make_session()
+    null_graph_source = _NullGraphSource()
+    assert asyncio.run(null_graph_source.get_graph(session)) is null_graph_source.graph
+    custom_provider = _CustomProvider(None)
+    assert [command.name for command in custom_provider.available_commands(session, object())] == [
+        "ping"
+    ]
+    assert (
+        asyncio.run(
+            adapter._maybe_handle_slash_prompt(
+                session=session,
+                graph=object(),
+                prompt=[],
+                acknowledged_message_id=None,
+            )
+        )
+        is None
+    )
+    assert (
+        asyncio.run(
+            adapter._maybe_handle_slash_prompt(
+                session=session,
+                graph=object(),
+                prompt=[cast(Any, object())],
+                acknowledged_message_id=None,
+            )
+        )
+        is None
+    )
+    assert (
+        asyncio.run(
+            adapter._maybe_handle_slash_prompt(
+                session=session,
+                graph=object(),
+                prompt=[TextContentBlock(type="text", text="/unknown")],
+                acknowledged_message_id=None,
+            )
+        )
+        is None
+    )
+
+    provider_adapter = LangChainAcpAgent(
+        cast(Any, _NullGraphSource()),
+        config=AdapterConfig(slash_command_provider=cast(Any, custom_provider)),
+    )
+    provider_adapter.on_connect(cast(AcpClient, client))
+    assert (
+        asyncio.run(
+            provider_adapter._maybe_handle_slash_prompt(
+                session=session,
+                graph=object(),
+                prompt=[TextContentBlock(type="text", text="/ping")],
+                acknowledged_message_id="msg-1",
+            )
+        )
+        is None
+    )
+
+    handled_false_adapter = LangChainAcpAgent(
+        cast(Any, _NullGraphSource()),
+        config=AdapterConfig(
+            slash_command_provider=cast(
+                Any, _CustomProvider(SlashCommandResult(handled=False, text="ignored"))
+            )
+        ),
+    )
+    handled_false_adapter.on_connect(cast(AcpClient, client))
+    assert (
+        asyncio.run(
+            handled_false_adapter._maybe_handle_slash_prompt(
+                session=session,
+                graph=object(),
+                prompt=[TextContentBlock(type="text", text="/ping")],
+                acknowledged_message_id="msg-2",
+            )
+        )
+        is None
+    )
+
+    no_text_result = SlashCommandResult(
+        text=None,
+        updates=[
+            AgentMessageChunk(
+                session_update="agent_message_chunk",
+                content=TextContentBlock(type="text", text="update-only"),
+            )
+        ],
+        refresh_session_surface=False,
+    )
+    no_text_adapter = LangChainAcpAgent(
+        cast(Any, _NullGraphSource()),
+        config=AdapterConfig(slash_command_provider=cast(Any, _CustomProvider(no_text_result))),
+    )
+    no_text_adapter.on_connect(cast(AcpClient, client))
+    response = asyncio.run(
+        no_text_adapter._maybe_handle_slash_prompt(
+            session=session,
+            graph=object(),
+            prompt=[TextContentBlock(type="text", text="/ping")],
+            acknowledged_message_id="msg-3",
+        )
+    )
+    assert response is not None
+    assert response.stop_reason == "end_turn"
+
+    class _ModeBridge(CapabilityBridge):
+        def get_mode_state(self, session: AcpSessionContext) -> ModeState:
+            del session
+            return ModeState(
+                modes=[SessionMode(id="review", name="Review")],
+                current_mode_id="review",
+                enable_config_option=False,
+            )
+
+        def set_mode(self, session: AcpSessionContext, mode_id: str) -> ModeState | None:
+            del session
+            if mode_id == "review":
+                return None
+            return ModeState(modes=[], current_mode_id=None, enable_config_option=False)
+
+    unavailable_mode_state = _ModeBridge().set_mode(session, "other")
+    assert unavailable_mode_state is not None
+    assert unavailable_mode_state.current_mode_id is None
+
+    mode_adapter = LangChainAcpAgent(
+        cast(Any, _NullGraphSource()),
+        config=AdapterConfig(capability_bridges=[_ModeBridge()]),
+    )
+    mode_adapter.on_connect(cast(AcpClient, client))
+    assert (
+        asyncio.run(
+            mode_adapter._handle_builtin_slash_command(
+                session=session,
+                graph=object(),
+                command_name="review",
+                argument=None,
+            )
+        )
+        == "Mode is unavailable or invalid"
+    )
+
+    class _NoneModeBridge(_ModeBridge):
+        def set_mode(self, session: AcpSessionContext, mode_id: str) -> ModeState | None:
+            del session, mode_id
+            return ModeState(
+                modes=[SessionMode(id="review", name="Review")],
+                current_mode_id=None,
+                enable_config_option=False,
+            )
+
+    none_mode_state = _NoneModeBridge().set_mode(session, "review")
+    assert none_mode_state is not None
+    assert none_mode_state.current_mode_id is None
+
+    none_mode_adapter = LangChainAcpAgent(
+        cast(Any, _NullGraphSource()),
+        config=AdapterConfig(capability_bridges=[_NoneModeBridge()]),
+    )
+    none_mode_adapter.on_connect(cast(AcpClient, client))
+
+    async def _return_none_mode(
+        _session: AcpSessionContext,
+        _mode_id: str,
+    ) -> ModeState | None:
+        return ModeState(
+            modes=[SessionMode(id="review", name="Review")],
+            current_mode_id=None,
+            enable_config_option=False,
+        )
+
+    cast(Any, none_mode_adapter)._set_mode = _return_none_mode
+    assert (
+        asyncio.run(
+            none_mode_adapter._handle_builtin_slash_command(
+                session=session,
+                graph=object(),
+                command_name="review",
+                argument=None,
+            )
+        )
+        == "Mode is unavailable or invalid"
+    )
+
+    class _ModelBridge(CapabilityBridge):
+        def get_model_state(self, session: AcpSessionContext) -> ModelSelectionState:
+            del session
+            return ModelSelectionState(
+                current_model_id=None,
+                available_models=[ModelInfo(model_id="base", name="Base")],
+                enable_config_option=False,
+            )
+
+    model_state = _ModelBridge().get_model_state(session)
+    assert model_state.current_model_id is None
+
+    model_adapter = LangChainAcpAgent(
+        cast(Any, _NullGraphSource()),
+        config=AdapterConfig(capability_bridges=[_ModelBridge()]),
+    )
+    model_adapter.on_connect(cast(AcpClient, client))
+    assert (
+        asyncio.run(
+            model_adapter._handle_builtin_slash_command(
+                session=session,
+                graph=object(),
+                command_name="model",
+                argument=None,
+            )
+        )
+        == "Current model: unavailable"
+    )
+    assert (
+        asyncio.run(
+            model_adapter._handle_builtin_slash_command(
+                session=session,
+                graph=object(),
+                command_name="model",
+                argument="bad-model",
+            )
+        )
+        == "Model is unavailable or invalid"
+    )
 
 
 def test_phase5_builtin_bridges_cover_direct_paths(tmp_path: Path) -> None:
@@ -905,11 +1524,45 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
     assert classifier.classify("terminal") == "execute"
     assert classifier.classify("unknown_tool") == "other"
     assert classifier.approval_policy_key("read_file") == "read_file"
+    projection_classifier = ProjectionAwareToolClassifier(
+        base_classifier=classifier,
+        projection_maps=[
+            FileSystemProjectionMap(search_tool_names=frozenset({"glob"})),
+        ],
+    )
+    assert projection_classifier.classify("glob", {"path": "."}) == "search"
+    assert projection_classifier.classify("unknown_tool", {"path": "."}) == "other"
+    nested_classifier = ProjectionAwareToolClassifier(
+        base_classifier=classifier,
+        projection_maps=[
+            CompositeProjectionMap(
+                maps=(
+                    FileSystemProjectionMap(
+                        write_tool_names=frozenset({"write_file"}),
+                        execute_tool_names=frozenset({"execute_shell"}),
+                    ),
+                )
+            )
+        ],
+    )
+    assert nested_classifier.classify("write_file") == "edit"
+    assert nested_classifier.classify("execute_shell") == "execute"
+    fallback_nested_classifier = ProjectionAwareToolClassifier(
+        base_classifier=classifier,
+        projection_maps=[
+            CompositeProjectionMap(maps=(_StaticProjectionMap(),)),
+            FileSystemProjectionMap(search_tool_names=frozenset({"grep"})),
+        ],
+    )
+    assert fallback_nested_classifier.classify("grep") == "search"
 
     projection_map = FileSystemProjectionMap(
         write_tool_names=frozenset({"write_file"}),
         read_tool_names=frozenset({"read_file"}),
+        search_tool_names=frozenset({"glob"}),
         execute_tool_names=frozenset({"execute_shell"}),
+        render_search_results_as_tree=True,
+        hide_dot_directories_in_tree=True,
     )
 
     execute_start = projection_map.project_start(
@@ -949,6 +1602,11 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
     )
     assert search_start is not None
     assert search_start.title == "Glob `*.py`"
+    search_projection_with_default = FileSystemProjectionMap(
+        search_tool_names=frozenset({"glob"}),
+        default_search_tool="file_search",
+    )
+    assert "file_search" in search_projection_with_default._search_tool_names()
     assert projection_map.project_start("other_tool", raw_input={}) is None
     assert projection_map.project_start("read_file", raw_input="bad") is None
     assert projection_map.project_start("execute_shell", raw_input={"path": "notes.txt"}) is None
@@ -967,6 +1625,50 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
     )
     assert read_progress is not None
     assert read_progress.locations == [ToolCallLocation(path="notes.txt")]
+    search_progress = projection_map.project_progress(
+        "glob",
+        raw_input={"path": ".", "pattern": "*.py"},
+        raw_output="./src/main.py\n./.venv/ignored.py\n./tests/test_app.py\n...",
+        serialized_output="./src/main.py\n./.venv/ignored.py\n./tests/test_app.py\n...",
+        status="completed",
+    )
+    assert search_progress is not None
+    assert search_progress.content is not None
+    assert isinstance(search_progress.content[0], ContentToolCallContent)
+    assert "Tree: ." in search_progress.content[0].content.text
+    assert ".venv" not in search_progress.content[0].content.text
+    assert _render_path_tree("\n", root_label=".", hide_dot_directories=False) == "\n"
+    assert _render_path_tree("./", root_label=".", hide_dot_directories=False) == "./"
+    assert _render_path_tree("...\n", root_label=".", hide_dot_directories=False) == "...\n"
+    assert "Tree: ." in _render_path_tree(
+        "src/\nsrc/main.py\n",
+        root_label=".",
+        hide_dot_directories=False,
+    )
+    assert _render_path_tree(
+        ".hidden/file.py\n", root_label=".", hide_dot_directories=False
+    ).startswith("Tree: .")
+    assert _render_path_tree("/", root_label=".", hide_dot_directories=False).startswith("Tree: .")
+    flat_search_progress = search_projection_with_default.project_progress(
+        "file_search",
+        raw_input={"path": "src", "pattern": "*.py"},
+        raw_output="a.py\nb.py",
+        serialized_output="a.py\nb.py",
+        status="completed",
+    )
+    assert flat_search_progress is not None
+    assert flat_search_progress.content is not None
+    assert flat_search_progress.content[0].content.text == "a.py\nb.py"
+    assert (
+        search_projection_with_default.project_progress(
+            "file_search",
+            raw_input="bad",
+            raw_output="ignored",
+            serialized_output="ignored",
+            status="completed",
+        )
+        is None
+    )
     assert (
         projection_map.project_progress(
             "read_file",
@@ -1112,6 +1814,37 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
     )
     assert deepagents_progress is not None
     assert deepagents_progress.content is None
+    assert (
+        deepagents_map.project_progress(
+            "glob",
+            raw_input={"path": "", "pattern": "*.py"},
+            raw_output="",
+            serialized_output="",
+            status="completed",
+        )
+        is not None
+    )
+
+
+def test_external_hook_event_bridge_emits_buffered_updates_and_metadata() -> None:
+    bridge = ExternalHookEventBridge()
+    session = _make_session()
+    bridge.record_event(
+        session,
+        HookEvent(
+            event_id="before-tool",
+            hook_name="before_tool",
+            summary="Before tool hook fired.",
+            detail="Before tool hook completed.",
+        ),
+    )
+
+    metadata = bridge.get_session_metadata(session)
+    updates = bridge.drain_updates(session)
+
+    assert metadata["emission_mode"] == "paired"
+    assert updates is not None
+    assert len(updates) == 2
 
 
 def test_web_projection_maps_render_search_and_fetch_results() -> None:
@@ -1458,6 +2191,9 @@ def test_projection_maps_cover_negative_and_default_paths() -> None:
     )
 
     command_projection_map = CommandProjectionMap()
+    fallback_start = command_projection_map.project_start("terminal", raw_input={})
+    assert fallback_start is not None
+    assert fallback_start.title == "Run shell command"
     fallback_progress = command_projection_map.project_progress(
         "terminal",
         raw_input={},
@@ -2093,8 +2829,24 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
     stale_path.write_text("stale", encoding="utf-8")
     file_store = FileSessionStore(tmp_path)
     assert not stale_path.exists()
+    assert file_store._session_path("safe_1-2").parent == file_store.root
+    assert file_store._temp_session_path("safe_1-2").parent == file_store.root
+    with pytest.raises(ValueError, match="session path"):
+        _store_child_path(file_store.root, "../escape.json")
+
+    unsafe_session_ids = ["", "../escape", "nested/session", ".hidden", "two words", "x" * 129]
+    for unsafe_session_id in unsafe_session_ids:
+        with pytest.raises(ValueError, match="session_id"):
+            file_store._session_path(unsafe_session_id)
+
+    with pytest.raises(ValueError, match="session_id"):
+        file_store.save(_make_session(session_id="../escape", cwd=tmp_path))
+    with pytest.raises(ValueError, match="session_id"):
+        file_store.get("../escape")
 
     file_store.save(session)
+    with pytest.raises(ValueError, match="session_id"):
+        file_store.fork("session-1", new_session_id="../escape", cwd=tmp_path)
     file_loaded = file_store.get(session.session_id)
     assert file_loaded is not None
     assert file_loaded.transcript[0].to_update().message_id == "u1"
@@ -2146,6 +2898,8 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
 
     invalid_session_path = tmp_path / "invalid.json"
     invalid_session_path.write_text("[]", encoding="utf-8")
+    invalid_name_path = tmp_path / "bad name.json"
+    invalid_name_path.write_text("{}", encoding="utf-8")
     assert all(item.session_id != "invalid" for item in file_store.list_sessions())
 
 
@@ -2677,6 +3431,31 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
         asyncio.run(adapter.fork_session(cwd=str(tmp_path), session_id="missing", mcp_servers=[]))
 
 
+def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(tmp_path: Path) -> None:
+    adapter = _make_adapter()
+    server = McpServerStdio(name="stdio", command="python", args=["server.py"], env=[])
+    created = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[server]))
+
+    asyncio.run(
+        adapter.resume_session(
+            cwd=str(tmp_path),
+            session_id=created.session_id,
+            mcp_servers=None,
+        )
+    )
+    resumed = adapter._require_session(created.session_id)
+    assert resumed.mcp_servers[0]["name"] == "stdio"
+
+    forked = asyncio.run(
+        adapter.fork_session(
+            cwd=str(tmp_path),
+            session_id=created.session_id,
+            mcp_servers=None,
+        )
+    )
+    assert adapter._require_session(forked.session_id).mcp_servers[0]["name"] == "stdio"
+
+
 def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     adapter = _make_adapter()
     client = RecordingACPClient()
@@ -3119,6 +3898,172 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
         monkeypatch.undo()
 
 
+def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -> None:
+    adapter = _make_adapter(
+        config=AdapterConfig(
+            projection_maps=[CommunityFileManagementProjectionMap()],
+        )
+    )
+    client = RecordingACPClient()
+    session = _make_session(cwd=tmp_path)
+    active_tool_calls: dict[str, dict[str, Any]] = {}
+    tool_call_accumulator: dict[int, dict[str, str | int | None]] = {}
+
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=cast(
+                AIMessageChunk,
+                SimpleNamespace(
+                    tool_call_chunks=[
+                        {
+                            "id": "call-streamed",
+                            "name": "read_file",
+                            "args": '{"file_path":',
+                            "index": 0,
+                        }
+                    ]
+                ),
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    assert active_tool_calls == {}
+    assert not any(isinstance(update, ToolCallStart) for _, update in client.updates)
+
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=cast(
+                AIMessageChunk,
+                SimpleNamespace(
+                    tool_call_chunks=[
+                        {
+                            "id": None,
+                            "name": None,
+                            "args": '"proof.txt"}',
+                            "index": 0,
+                        }
+                    ]
+                ),
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    assert active_tool_calls["call-streamed"]["raw_input"] == {"file_path": "proof.txt"}
+    assert tool_call_accumulator == {}
+    start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
+    assert start.title == "Read `proof.txt`"
+    assert start.raw_input == {"file_path": "proof.txt"}
+
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=cast(
+                AIMessageChunk,
+                SimpleNamespace(
+                    tool_call_chunks=[
+                        {
+                            "id": "call-next-round",
+                            "name": "read_file",
+                            "args": '{"file_path":"next.txt"}',
+                            "index": 0,
+                        }
+                    ]
+                ),
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    assert active_tool_calls["call-next-round"]["raw_input"] == {"file_path": "next.txt"}
+    starts = [update for _, update in client.updates if isinstance(update, ToolCallStart)]
+    assert [update.title for update in starts] == ["Read `proof.txt`", "Read `next.txt`"]
+
+
+def test_streamed_tool_start_accepts_empty_arguments(tmp_path: Path) -> None:
+    adapter = _make_adapter()
+    client = RecordingACPClient()
+    session = _make_session(cwd=tmp_path)
+    active_tool_calls: dict[str, dict[str, Any]] = {}
+
+    tool_call_accumulator: dict[int, dict[str, str | int | None]] = {
+        99: {"args": "{}", "id": "other-call", "name": "other"}
+    }
+    asyncio.run(
+        adapter._process_tool_call_chunks(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=AIMessageChunk(
+                content="",
+                tool_call_chunks=[
+                    {
+                        "id": "call-no-args",
+                        "name": "ping",
+                        "args": "",
+                        "index": 0,
+                    }
+                ],
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+    asyncio.run(
+        adapter._handle_tool_message(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=ToolMessage(
+                content="pong",
+                tool_call_id="call-no-args",
+                name="ping",
+            ),
+            active_tool_calls=active_tool_calls,
+            tool_call_accumulator=tool_call_accumulator,
+        )
+    )
+
+    start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
+    progress = next(update for _, update in client.updates if isinstance(update, ToolCallProgress))
+    assert start.tool_call_id == "call-no-args"
+    assert start.raw_input == {}
+    assert progress.raw_input == {}
+    assert active_tool_calls == {}
+    assert tool_call_accumulator == {99: {"args": "{}", "id": "other-call", "name": "other"}}
+
+
+def test_tool_result_without_start_uses_a_string_tool_name(tmp_path: Path) -> None:
+    adapter = _make_adapter()
+    client = RecordingACPClient()
+    session = _make_session(cwd=tmp_path)
+
+    asyncio.run(
+        adapter._handle_tool_message(
+            client=cast(AcpClient, client),
+            session=session,
+            message_chunk=ToolMessage(
+                content="done",
+                tool_call_id="orphan-call",
+                name=None,
+            ),
+            active_tool_calls={},
+        )
+    )
+
+    start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
+    progress = next(update for _, update in client.updates if isinstance(update, ToolCallProgress))
+    assert start.title == "tool"
+    assert progress.tool_call_id == "orphan-call"
+
+
 def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_paths(
     tmp_path: Path,
 ) -> None:
@@ -3405,6 +4350,90 @@ def test_langchain_adapter_prompt_cancels_mid_stream(tmp_path: Path) -> None:
     )
 
     assert response.stop_reason == "cancelled"
+
+
+def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(tmp_path: Path) -> None:
+    async def run_scenario() -> None:
+        started = asyncio.Event()
+
+        @dataclass(slots=True)
+        class _BlockingGraph:
+            async def astream(
+                self,
+                stream_input: Any,
+                *,
+                config: Any,
+                stream_mode: Any,
+                subgraphs: bool,
+            ):
+                del stream_input, config, stream_mode, subgraphs
+                started.set()
+                await asyncio.Event().wait()
+                yield  # pragma: no cover
+
+        adapter = cast(
+            LangChainAcpAgent,
+            create_acp_agent(graph=cast(Any, _BlockingGraph()), config=AdapterConfig()),
+        )
+        client = RecordingACPClient()
+        adapter.on_connect(cast(AcpClient, client))
+        session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+        prompt_task = asyncio.create_task(
+            adapter.prompt(
+                prompt=[TextContentBlock(type="text", text="wait forever")],
+                session_id=session.session_id,
+                message_id="blocking-message",
+            )
+        )
+        await started.wait()
+
+        await adapter.cancel(session_id=session.session_id)
+        response = await asyncio.wait_for(prompt_task, timeout=0.1)
+
+        assert response.stop_reason == "cancelled"
+        assert response.user_message_id == "blocking-message"
+
+    asyncio.run(run_scenario())
+
+
+def test_langchain_adapter_does_not_swallow_external_task_cancellation(tmp_path: Path) -> None:
+    async def run_scenario() -> None:
+        started = asyncio.Event()
+
+        @dataclass(slots=True)
+        class _BlockingGraph:
+            async def astream(
+                self,
+                stream_input: Any,
+                *,
+                config: Any,
+                stream_mode: Any,
+                subgraphs: bool,
+            ):
+                del stream_input, config, stream_mode, subgraphs
+                started.set()
+                await asyncio.Event().wait()
+                yield  # pragma: no cover
+
+        adapter = cast(
+            LangChainAcpAgent,
+            create_acp_agent(graph=cast(Any, _BlockingGraph()), config=AdapterConfig()),
+        )
+        adapter.on_connect(cast(AcpClient, RecordingACPClient()))
+        session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+        prompt_task = asyncio.create_task(
+            adapter.prompt(
+                prompt=[TextContentBlock(type="text", text="wait")],
+                session_id=session.session_id,
+            )
+        )
+        await started.wait()
+
+        prompt_task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await prompt_task
+
+    asyncio.run(run_scenario())
 
 
 def test_langchain_adapter_cancelled_prompt_returns_cancelled(tmp_path: Path) -> None:

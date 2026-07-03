@@ -18,15 +18,13 @@ from acp.schema import (
     ToolKind,
 )
 from pydantic_ai import (
-    BuiltinToolCallPart,
-    BuiltinToolReturnPart,
     ModelMessage,
     ModelResponse,
     RetryPromptPart,
     ToolCallPart,
     ToolReturnPart,
 )
-from pydantic_ai.messages import CompactionPart
+from pydantic_ai.messages import CompactionPart, NativeToolCallPart, NativeToolReturnPart
 from typing_extensions import TypeIs
 
 from ._projection_text import format_code_block, single_line_summary, truncate_text
@@ -38,7 +36,11 @@ __all__ = (
     "CompositeProjectionMap",
     "DefaultToolClassifier",
     "FileSystemProjectionMap",
+    "HarnessCodeModeProjectionMap",
+    "HarnessFileSystemProjectionMap",
+    "HarnessShellProjectionMap",
     "ProjectionMap",
+    "ProjectionAwareToolClassifier",
     "ToolClassifier",
     "WebToolProjectionMap",
     "build_tool_progress_update",
@@ -60,9 +62,11 @@ _PATH_KEYS = (
 _CONTENT_KEYS = ("content", "text", "new_text")
 _OLD_TEXT_KEYS = ("old_text", "oldText", "previous_content", "previous_text")
 _COMMAND_KEYS = ("command", "cmd", "script", "bash")
+_SEARCH_PATTERN_KEYS = ("pattern", "query", "q", "glob", "search")
 _TERMINAL_ID_KEYS = ("terminal_id", "terminalId")
 _MAX_COMMAND_PREVIEW_CHARS = 4000
 _MAX_COMMAND_TITLE_CHARS = 80
+_MAX_FILE_READ_PREVIEW_CHARS = 12000
 _MAX_WEB_PREVIEW_CHARS = 2000
 _DEFAULT_SEARCH_TOOL_NAMES = frozenset(
     {"duckduckgo_search", "exa_search", "tavily_search", "web_search"}
@@ -70,6 +74,14 @@ _DEFAULT_SEARCH_TOOL_NAMES = frozenset(
 _DEFAULT_FETCH_TOOL_NAMES = frozenset({"web_fetch"})
 _DEFAULT_IMAGE_GENERATION_TOOL_NAMES = frozenset({"generate_image", "image_generation"})
 _DEFAULT_MCP_TOOL_NAME_PREFIXES = frozenset({"mcp_server:"})
+_HARNESS_READ_TOOL_NAMES = frozenset({"read_file"})
+_HARNESS_WRITE_TOOL_NAMES = frozenset({"write_file", "create_directory"})
+_HARNESS_EDIT_TOOL_NAMES = frozenset({"edit_file"})
+_HARNESS_SEARCH_TOOL_NAMES = frozenset({"list_directory", "search_files"})
+_HARNESS_SHELL_TOOL_NAMES = frozenset(
+    {"run_command", "start_command", "check_command", "stop_command"}
+)
+_HARNESS_CODE_MODE_TOOL_NAMES = frozenset({"run_code"})
 
 
 def _is_string_keyed_object_dict(value: Any) -> TypeIs[dict[str, Any]]:
@@ -169,14 +181,21 @@ class FileSystemProjectionMap:
     write_tool_names: frozenset[str] = frozenset()
     read_tool_names: frozenset[str] = frozenset()
     bash_tool_names: frozenset[str] = frozenset()
+    search_tool_names: frozenset[str] = frozenset()
     default_write_tool: str | None = None
     default_read_tool: str | None = None
     default_bash_tool: str | None = None
+    default_search_tool: str | None = None
     path_arg: str | None = None
     content_arg: str | None = None
     old_text_arg: str | None = None
     command_arg: str | None = None
     terminal_id_arg: str | None = None
+    search_path_arg: str | None = None
+    search_pattern_arg: str | None = None
+    render_search_results_as_tree: bool = False
+    hide_dot_directories_in_tree: bool = True
+    tree_root_label: str | None = None
 
     def project_start(
         self,
@@ -185,6 +204,15 @@ class FileSystemProjectionMap:
         cwd: Path | None = None,
         raw_input: Any = None,
     ) -> ToolProjection | None:
+        if tool_name in self._search_tool_names():
+            if not _is_string_keyed_object_dict(raw_input):
+                return None
+            search_text = self._format_search_start(raw_input)
+            return ToolProjection(
+                content=[ContentToolCallContent(type="content", content=_text_block(search_text))],
+                locations=self._search_locations_from_input(raw_input),
+                title=self._format_search_title(raw_input),
+            )
         if tool_name in self._bash_tool_names():
             if not _is_string_keyed_object_dict(raw_input):
                 return None
@@ -246,6 +274,32 @@ class FileSystemProjectionMap:
                 ),
                 status=status_override,
             )
+        if tool_name in self._search_tool_names():
+            if not _is_string_keyed_object_dict(raw_input):
+                return None
+            output_text = _stringify_value(raw_output, serialized_output)
+            if (
+                status == "completed"
+                and self.render_search_results_as_tree
+                and not _looks_like_status_or_error_output(output_text)
+            ):
+                rendered_output = _render_path_tree(
+                    output_text,
+                    root_label=self._tree_root_label(raw_input),
+                    hide_dot_directories=self.hide_dot_directories_in_tree,
+                )
+            else:
+                rendered_output = output_text
+            return ToolProjection(
+                content=[
+                    ContentToolCallContent(
+                        type="content",
+                        content=_text_block(rendered_output),
+                    )
+                ],
+                locations=self._search_locations_from_input(raw_input),
+                status=status,
+            )
         if status != "completed":
             return None
         if tool_name in self._write_tool_names():
@@ -292,6 +346,12 @@ class FileSystemProjectionMap:
             names.add(self.default_bash_tool)
         return frozenset(names)
 
+    def _search_tool_names(self) -> frozenset[str]:
+        names = set(self.search_tool_names)
+        if self.default_search_tool is not None:
+            names.add(self.default_search_tool)
+        return frozenset(names)
+
     def _path_from_input(self, raw_input: dict[str, Any]) -> str | None:
         for key in _candidate_keys(self.path_arg, _PATH_KEYS):
             value = raw_input.get(key)
@@ -312,6 +372,54 @@ class FileSystemProjectionMap:
             if isinstance(value, str) and value:
                 return value
         return None
+
+    def _search_path_from_input(self, raw_input: dict[str, Any]) -> str | None:
+        for key in _candidate_keys(self.search_path_arg, _PATH_KEYS):
+            value = raw_input.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _search_pattern_from_input(self, raw_input: dict[str, Any]) -> str | None:
+        for key in _candidate_keys(self.search_pattern_arg, _SEARCH_PATTERN_KEYS):
+            value = raw_input.get(key)
+            if isinstance(value, str) and value:
+                return value
+        return None
+
+    def _search_locations_from_input(
+        self, raw_input: dict[str, Any]
+    ) -> list[ToolCallLocation] | None:
+        path = self._search_path_from_input(raw_input)
+        return [ToolCallLocation(path=path)] if path is not None else None
+
+    def _format_search_title(self, raw_input: dict[str, Any]) -> str:
+        pattern = self._search_pattern_from_input(raw_input)
+        path = self._search_path_from_input(raw_input)
+        if pattern is not None and path is not None:
+            return (
+                f"Search {path} for {_single_line_preview(pattern, limit=_MAX_COMMAND_TITLE_CHARS)}"
+            )
+        if pattern is not None:
+            return f"Search for {_single_line_preview(pattern, limit=_MAX_COMMAND_TITLE_CHARS)}"
+        if path is not None:
+            return f"List {path}"
+        return "Search files"
+
+    def _format_search_start(self, raw_input: dict[str, Any]) -> str:
+        lines: list[str] = []
+        path = self._search_path_from_input(raw_input)
+        pattern = self._search_pattern_from_input(raw_input)
+        if path is not None:
+            lines.append(f"Path: {path}")
+        if pattern is not None:
+            lines.append(f"Pattern: {pattern}")
+        return "\n".join(lines) if lines else "Searching files."
+
+    def _tree_root_label(self, raw_input: dict[str, Any]) -> str:
+        if self.tree_root_label is not None:
+            return self.tree_root_label
+        return self._search_path_from_input(raw_input) or "."
 
     def _old_text_from_input(
         self,
@@ -334,6 +442,21 @@ class FileSystemProjectionMap:
             if isinstance(terminal_id, str) and terminal_id:
                 return terminal_id
         return None
+
+
+def _iter_filesystem_projection_maps(
+    projection_map: ProjectionMap,
+) -> Iterable[FileSystemProjectionMap]:
+    if isinstance(projection_map, FileSystemProjectionMap):
+        yield projection_map
+        return
+    filesystem_projection = getattr(projection_map, "_filesystem_projection", None)
+    if isinstance(filesystem_projection, FileSystemProjectionMap):
+        yield filesystem_projection
+        return
+    if isinstance(projection_map, CompositeProjectionMap):
+        for nested_map in projection_map.maps:
+            yield from _iter_filesystem_projection_maps(nested_map)
 
 
 @dataclass(slots=True, frozen=True, kw_only=True)
@@ -509,6 +632,221 @@ class BuiltinToolProjectionMap:
         )
 
 
+@dataclass(slots=True, frozen=True, kw_only=True)
+class HarnessFileSystemProjectionMap:
+    read_tool_names: frozenset[str] = _HARNESS_READ_TOOL_NAMES
+    write_tool_names: frozenset[str] = _HARNESS_WRITE_TOOL_NAMES
+    edit_tool_names: frozenset[str] = _HARNESS_EDIT_TOOL_NAMES
+    search_tool_names: frozenset[str] = _HARNESS_SEARCH_TOOL_NAMES
+
+    @property
+    def _filesystem_projection(self) -> FileSystemProjectionMap:
+        return FileSystemProjectionMap(
+            read_tool_names=self.read_tool_names,
+            write_tool_names=self.write_tool_names | self.edit_tool_names,
+            search_tool_names=self.search_tool_names,
+            path_arg="path",
+            content_arg="content",
+            old_text_arg="old_text",
+            search_pattern_arg="pattern",
+            search_path_arg="path",
+            render_search_results_as_tree=True,
+        )
+
+    def project_start(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+    ) -> ToolProjection | None:
+        if tool_name in self.read_tool_names:
+            return self._project_read_start(raw_input)
+        return self._filesystem_projection.project_start(tool_name, cwd=cwd, raw_input=raw_input)
+
+    def project_progress(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+        raw_output: Any = None,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        if tool_name in self.read_tool_names:
+            return self._project_read_progress(
+                raw_input=raw_input,
+                raw_output=raw_output,
+                serialized_output=serialized_output,
+                status=status,
+            )
+        return self._filesystem_projection.project_progress(
+            tool_name,
+            cwd=cwd,
+            raw_input=raw_input,
+            raw_output=raw_output,
+            serialized_output=serialized_output,
+            status=status,
+        )
+
+    def _project_read_start(self, raw_input: Any) -> ToolProjection | None:
+        if not _is_string_keyed_object_dict(raw_input):
+            return None
+        path = self._read_path_from_input(raw_input)
+        if path is None:
+            return None
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(f"Read file: `{path}`"),
+                )
+            ],
+            locations=[ToolCallLocation(path=path)],
+            title=f"Read {_single_line_preview(path, limit=_MAX_COMMAND_TITLE_CHARS)}",
+        )
+
+    def _project_read_progress(
+        self,
+        *,
+        raw_input: Any,
+        raw_output: Any,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        if not _is_string_keyed_object_dict(raw_input):
+            return None
+        path = self._read_path_from_input(raw_input)
+        if path is None:
+            return None
+        output_text = _stringify_value(raw_output, serialized_output)
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(_format_harness_read_progress(path, output_text)),
+                )
+            ],
+            locations=[ToolCallLocation(path=path)],
+            status=status,
+        )
+
+    def _read_path_from_input(self, raw_input: dict[str, Any]) -> str | None:
+        return self._filesystem_projection._path_from_input(raw_input)
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class HarnessShellProjectionMap:
+    tool_names: frozenset[str] = _HARNESS_SHELL_TOOL_NAMES
+
+    @property
+    def _filesystem_projection(self) -> FileSystemProjectionMap:
+        return FileSystemProjectionMap(
+            bash_tool_names=self.tool_names,
+            command_arg="command",
+            terminal_id_arg="command_id",
+        )
+
+    def project_start(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+    ) -> ToolProjection | None:
+        if tool_name in {"run_command", "start_command"}:
+            return self._filesystem_projection.project_start(
+                tool_name,
+                cwd=cwd,
+                raw_input=raw_input,
+            )
+        if tool_name not in self.tool_names or not _is_string_keyed_object_dict(raw_input):
+            return None
+        command_id = _first_string(raw_input, "command_id", "terminal_id", "terminalId")
+        action = "Check" if tool_name == "check_command" else "Stop"
+        if command_id is None:
+            return ToolProjection(title=f"{action} command")
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(f"Command ID: {command_id}"),
+                )
+            ],
+            title=f"{action} command {command_id}",
+        )
+
+    def project_progress(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+        raw_output: Any = None,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        return self._filesystem_projection.project_progress(
+            tool_name,
+            cwd=cwd,
+            raw_input=raw_input,
+            raw_output=raw_output,
+            serialized_output=serialized_output,
+            status=status,
+        )
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class HarnessCodeModeProjectionMap:
+    tool_names: frozenset[str] = _HARNESS_CODE_MODE_TOOL_NAMES
+
+    def project_start(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+    ) -> ToolProjection | None:
+        del cwd
+        if tool_name not in self.tool_names or not _is_string_keyed_object_dict(raw_input):
+            return None
+        code = _first_string(raw_input, "code", "script", "python")
+        if code is None:
+            return ToolProjection(title="Run code")
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(format_code_block(code, language="python")),
+                )
+            ],
+            title=f"Run code: {_single_line_preview(code, limit=_MAX_COMMAND_TITLE_CHARS)}",
+        )
+
+    def project_progress(
+        self,
+        tool_name: str,
+        *,
+        cwd: Path | None = None,
+        raw_input: Any = None,
+        raw_output: Any = None,
+        serialized_output: str,
+        status: ToolCallStatus,
+    ) -> ToolProjection | None:
+        del cwd, raw_input
+        if tool_name not in self.tool_names or status != "completed":
+            return None
+        return ToolProjection(
+            content=[
+                ContentToolCallContent(
+                    type="content",
+                    content=_text_block(_stringify_value(raw_output, serialized_output)),
+                )
+            ]
+        )
+
+
 class DefaultToolClassifier:
     def classify(self, tool_name: str, raw_input: Any = None) -> ToolKind:
         del raw_input
@@ -542,6 +880,39 @@ class DefaultToolClassifier:
         return tool_name
 
 
+@dataclass(slots=True, frozen=True, kw_only=True)
+class ProjectionAwareToolClassifier:
+    base_classifier: ToolClassifier
+    projection_maps: Sequence[ProjectionMap]
+
+    def classify(self, tool_name: str, raw_input: Any = None) -> ToolKind:
+        projection_kind = self._projection_kind(tool_name)
+        if projection_kind is not None:
+            return projection_kind
+        return self.base_classifier.classify(tool_name, raw_input)
+
+    def approval_policy_key(self, tool_name: str, raw_input: Any = None) -> str:
+        return self.base_classifier.approval_policy_key(tool_name, raw_input)
+
+    def _projection_kind(self, tool_name: str) -> ToolKind | None:
+        for projection_map in self.projection_maps:
+            if (
+                isinstance(projection_map, HarnessCodeModeProjectionMap)
+                and tool_name in projection_map.tool_names
+            ):
+                return "execute"
+            for filesystem_map in _iter_filesystem_projection_maps(projection_map):
+                if tool_name in filesystem_map._read_tool_names():
+                    return "read"
+                if tool_name in filesystem_map._write_tool_names():
+                    return "edit"
+                if tool_name in filesystem_map._bash_tool_names():
+                    return "execute"
+                if tool_name in filesystem_map._search_tool_names():
+                    return "search"
+        return None
+
+
 def _is_output_tool(tool_name: str) -> bool:
     return tool_name == "final_result"
 
@@ -555,6 +926,97 @@ def extract_tool_call_locations(raw_input: Any) -> list[ToolCallLocation] | None
         if isinstance(value, str) and value:
             return [ToolCallLocation(path=value)]
     return None
+
+
+@dataclass(slots=True)
+class _PathTreeNode:
+    directories: dict[str, _PathTreeNode] = field(default_factory=dict)
+    files: set[str] = field(default_factory=set)
+
+
+def _looks_like_status_or_error_output(text: str) -> bool:
+    stripped = text.strip().lower()
+    if not stripped:
+        return True
+    return stripped.startswith(("error:", "failed:", "status:", "traceback"))
+
+
+def _render_path_tree(
+    text: str,
+    *,
+    root_label: str,
+    hide_dot_directories: bool,
+) -> str:
+    root = _PathTreeNode()
+    has_path = False
+    truncated = False
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if line == "...":
+            truncated = True
+            continue
+        normalized = line.removeprefix("./")
+        if not normalized:
+            continue
+        if _path_has_hidden_directory(normalized, hide_dot_directories=hide_dot_directories):
+            continue
+        _insert_tree_path(root, normalized)
+        has_path = True
+    if not has_path:
+        return text
+    lines = [f"Tree: {root_label}", ""]
+    entries = _render_tree_node(root, prefix="")
+    lines.extend(entries)
+    if truncated:
+        lines.append("...")
+    return "\n".join(lines).rstrip()
+
+
+def _path_has_hidden_directory(path: str, *, hide_dot_directories: bool) -> bool:
+    if not hide_dot_directories:
+        return False
+    parts = [part for part in path.strip("/").split("/") if part]
+    directory_parts = parts[:-1] if not path.endswith("/") else parts
+    return any(part.startswith(".") for part in directory_parts)
+
+
+def _insert_tree_path(root: _PathTreeNode, path: str) -> None:
+    is_directory = path.endswith("/")
+    parts = [part for part in path.strip("/").split("/") if part]
+    if not parts:
+        return
+    current = root
+    for directory in parts[:-1]:
+        current = current.directories.setdefault(directory, _PathTreeNode())
+    leaf = parts[-1]
+    if is_directory:
+        current.directories.setdefault(leaf, _PathTreeNode())
+    else:
+        current.files.add(leaf)
+
+
+def _render_tree_node(node: _PathTreeNode, *, prefix: str) -> list[str]:
+    rendered: list[str] = []
+    entries: list[tuple[str, str]] = [("directory", name) for name in sorted(node.directories)] + [
+        ("file", name) for name in sorted(node.files)
+    ]
+    for index, (entry_type, name) in enumerate(entries):
+        is_last = index == len(entries) - 1
+        connector = "└── " if is_last else "├── "
+        child_prefix = "    " if is_last else "│   "
+        if entry_type == "directory":
+            rendered.append(f"{prefix}{connector}{name}/")
+            rendered.extend(
+                _render_tree_node(
+                    node.directories[name],
+                    prefix=f"{prefix}{child_prefix}",
+                )
+            )
+        else:
+            rendered.append(f"{prefix}{connector}{name}")
+    return rendered
 
 
 def _candidate_keys(explicit_key: str | None, fallback_keys: tuple[str, ...]) -> tuple[str, ...]:
@@ -655,6 +1117,15 @@ def _format_command_preview(command: str) -> str:
         language="bash",
         limit=_MAX_COMMAND_PREVIEW_CHARS,
     )
+
+
+def _format_harness_read_progress(path: str, output_text: str) -> str:
+    preview = format_code_block(
+        output_text,
+        language="text",
+        limit=_MAX_FILE_READ_PREVIEW_CHARS,
+    )
+    return f"Read `{path}`:\n\n{preview}"
 
 
 def _bash_status(raw_output: Any = None, *, fallback: ToolCallStatus) -> ToolCallStatus:
@@ -985,16 +1456,16 @@ def _text_block(text: str) -> TextContentBlock:
     return TextContentBlock(type="text", text=text)
 
 
-def _is_tool_call_part(value: Any) -> TypeIs[ToolCallPart | BuiltinToolCallPart]:
-    return isinstance(value, (ToolCallPart, BuiltinToolCallPart))
+def _is_tool_call_part(value: Any) -> TypeIs[ToolCallPart | NativeToolCallPart]:
+    return isinstance(value, (ToolCallPart, NativeToolCallPart))
 
 
-def _is_tool_return_part(value: Any) -> TypeIs[ToolReturnPart | BuiltinToolReturnPart]:
-    return isinstance(value, (ToolReturnPart, BuiltinToolReturnPart))
+def _is_tool_return_part(value: Any) -> TypeIs[ToolReturnPart | NativeToolReturnPart]:
+    return isinstance(value, (ToolReturnPart, NativeToolReturnPart))
 
 
 def _build_tool_start_projection(
-    part: ToolCallPart | BuiltinToolCallPart,
+    part: ToolCallPart | NativeToolCallPart,
     *,
     cwd: Path | None,
     projection_map: ProjectionMap | None,
@@ -1037,7 +1508,7 @@ def _build_tool_locations(
 
 
 def build_tool_start_update(
-    part: ToolCallPart | BuiltinToolCallPart,
+    part: ToolCallPart | NativeToolCallPart,
     *,
     classifier: ToolClassifier,
     cwd: Path | None = None,
@@ -1070,7 +1541,7 @@ def build_tool_start_update(
 
 
 def build_tool_progress_update(
-    part: ToolReturnPart | BuiltinToolReturnPart | RetryPromptPart,
+    part: ToolReturnPart | NativeToolReturnPart | RetryPromptPart,
     *,
     classifier: ToolClassifier,
     cwd: Path | None = None,
@@ -1176,7 +1647,7 @@ def _build_progress_updates_for_message(
                 known_call_starts[part.tool_call_id] = start_update
                 updates.append(start_update)
                 continue
-            if isinstance(part, BuiltinToolReturnPart):
+            if isinstance(part, NativeToolReturnPart):
                 if _is_output_tool(part.tool_name):
                     continue
                 updates.append(

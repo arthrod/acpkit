@@ -1,6 +1,6 @@
 # Pydantic ACP Overview
 
-`pydantic-acp` is the production ACP adapter in ACP Kit.
+`pydantic-acp` is the primary Pydantic AI adapter in ACP Kit.
 
 Its job is simple: keep your existing `pydantic_ai.Agent` surface intact, then expose it as an ACP server without inventing runtime state the underlying agent cannot actually honor.
 
@@ -12,6 +12,7 @@ Use it when you want ACP-native clients to see truthful:
 - approval workflows
 - cancellation behavior
 - MCP metadata and host-backed tools
+- harness-backed filesystem, shell, and optional CodeMode capability surfaces
 - prompt resources such as editor selections, branch diffs, file references, and multimodal input
 - persisted ACP sessions and replayable transcript state
 
@@ -33,6 +34,25 @@ run_acp(agent=agent)
 ```
 
 This is the fastest path from a normal `pydantic_ai.Agent` to a working ACP server.
+
+If the agent should reuse an existing local Codex login, build the model through
+`codex-auth-helper` and pass explicit instructions at factory construction time:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
+)
+
+agent = Agent(model, name="codex-agent")
+```
+
+On the Pydantic path, `Agent(instructions=...)` can still be layered on top for
+agent-owned instructions, but the Codex factory should always receive explicit
+`instructions=...`.
 
 ### `create_acp_agent(...)`
 
@@ -115,7 +135,9 @@ By default, the adapter can own:
 - native ACP plan state
 - thinking effort config
 - approval flow through an approval bridge
+- projection-aware permission prompt rendering and remembered approval policies
 - generic or rich projected tool rendering
+- host-defined slash commands and prompt capability advertisement
 
 The built-in ownership path is usually enough for:
 
@@ -165,6 +187,23 @@ Common bridges:
   lets the host rewrite or enrich message history
 
 The important rule is that bridges should describe real runtime behavior, not hypothetical UI affordances.
+
+Harness-backed capability bridges follow the same rule. Use:
+
+- `HarnessFileSystemBridge` for workspace-scoped file tools
+- `HarnessShellBridge` for bounded shell tools
+- `HarnessCodeModeBridge` only when the run should expose CodeMode execution tools
+
+When you use those bridges, pair them with:
+
+- `HarnessFileSystemProjectionMap`
+- `HarnessShellProjectionMap`
+- `HarnessCodeModeProjectionMap`
+
+That combination keeps ACP transcript updates readable and tool-family-specific. The maintained guide
+for this surface is:
+
+- [Harness-backed Capabilities](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md)
 
 ## Runtime Notes
 
@@ -232,10 +271,11 @@ If you are integrating `pydantic-acp` in a real product:
 2. Read [AdapterConfig](pydantic-acp/adapter-config.md).
 3. Read [Models, Modes, and Slash Commands](pydantic-acp/runtime-controls.md).
 4. Read [Plans, Thinking, and Approvals](pydantic-acp/plans-thinking-approvals.md).
-5. Read [Prompt Resources and Context](pydantic-acp/prompt-resources.md) if your client attaches selections, diffs, file refs, or multimodal input.
-6. Read [Providers](providers.md) if the host already owns state.
-7. Read [Bridges](bridges.md) if you need ACP-visible runtime extensions.
-8. Read [Finance Agent](examples/finance.md) and [Travel Agent](examples/travel.md) for maintained end-to-end examples.
+5. Read [Harness-backed Capabilities](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md) if your agent should expose `pydantic-ai-harness` filesystem, shell, or CodeMode tools.
+6. Read [Prompt Resources and Context](pydantic-acp/prompt-resources.md) if your client attaches selections, diffs, file refs, or multimodal input.
+7. Read [Providers](providers.md) if the host already owns state.
+8. Read [Bridges](bridges.md) if you need ACP-visible runtime extensions.
+9. Read [Finance Agent](examples/finance.md) and [Travel Agent](examples/travel.md) for maintained end-to-end examples.
 
 ## Common Mistakes
 
@@ -249,21 +289,47 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.83.0`.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
+outside the supported range.
 
-That is not accidental. The adapter relies on a specific, tested Pydantic AI
-surface and should still be upgraded deliberately.
+Each supported minor is checked against the same adapter runtime suite and
+Pydantic-specific type-check scope. Run the matrix locally with:
 
-However, ACP Kit no longer imports Pydantic AI private history-processor
-modules directly. History processor support is expressed through ACP Kit's own
-callable aliases and passed into the public
-`Agent(..., history_processors=...)` interface.
+```bash
+make check-pydantic-ai-matrix
+```
+
+The current compatibility surface includes function-tool preparation,
+output-tool preparation, output validation/processing hooks,
+deferred-tool-call hooks, run metadata, and conversation IDs.
+
+Pydantic AI V2 defaults the agent dependency and output generic parameters to
+`object`. If your agent contract explicitly uses `RunContext[None]` or
+`Hooks[None]`, declare the dependency type instead of relying on the old V1
+default:
+
+```python
+from pydantic_ai import Agent
+
+agent: Agent[None, str] = Agent(
+    "openai:gpt-5",
+    deps_type=type(None),
+    name="typed-agent",
+)
+```
+
+The adapter consumes `run_stream_events()` as an async context manager across
+the supported range. Pydantic AI 2.4.0 starts that run lazily when event
+iteration begins; callers do not need a version branch.
+
+ACP Kit also no longer imports Pydantic AI private history-processor modules
+directly. History processor support is expressed through ACP Kit's own callable
+aliases and wrapped as `ProcessHistory` capabilities inside
+`contributions.capabilities`.
 
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- upgrades are still compatibility work, but the history-processor integration
-  is no longer a direct private-import dependency
-- extension code should use `HistoryProcessorCallable`,
-  `HistoryProcessorPlain`, or `HistoryProcessorContextual` from `pydantic_acp`
-  rather than importing from `pydantic_ai._history_processor`
+- Pydantic AI 2.0.0 through 2.4.0 share one public adapter contract
+- future Pydantic AI upgrades remain explicit compatibility work
+- integration points stay isolated behind ACP Kit bridge and runtime seams

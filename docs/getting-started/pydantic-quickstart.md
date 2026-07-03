@@ -25,6 +25,25 @@ def describe_project() -> str:
 
 Nothing here is ACP-specific yet.
 
+If the agent should reuse an existing local Codex login, build the model through
+`codex-auth-helper` and set instructions explicitly at the factory layer:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="Answer directly and keep responses short.",
+)
+
+agent = Agent(model, name="codex-agent")
+```
+
+On the Pydantic path, `Agent(instructions=...)` is also valid when you want
+agent-specific instructions in addition to the factory default. Do not rely on
+an implicit Codex instruction value.
+
 ## 2. Expose It Through ACP
 
 Wrap the agent with `run_acp(...)`:

@@ -130,6 +130,7 @@ class _PromptRuntime(Generic[AgentDepsT, OutputDataT]):
     def _build_run_kwargs(
         self,
         *,
+        session: AcpSessionContext,
         message_history: list[ModelMessage] | None,
         deferred_tool_results: DeferredToolResults | None,
         deps: AgentDepsT | None,
@@ -140,7 +141,9 @@ class _PromptRuntime(Generic[AgentDepsT, OutputDataT]):
         run_kwargs: dict[str, Any] = {
             "message_history": message_history,
             "deferred_tool_results": deferred_tool_results,
+            "conversation_id": session.session_id,
             "model": model_override,
+            "metadata": {"pydantic_acp_session_id": session.session_id},
         }
         if deps is not None:
             run_kwargs["deps"] = deps

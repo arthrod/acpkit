@@ -37,8 +37,7 @@ class CodexTokenManager:
     store: CodexAuthStore
     http_client: httpx.AsyncClient
     owns_http_client: bool = False
-    _lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False)
-    _sync_lock: Lock = field(default_factory=Lock, init=False, repr=False)
+    _refresh_lock: Lock = field(default_factory=Lock, init=False, repr=False)
     _state: CodexAuthState = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -57,13 +56,17 @@ class CodexTokenManager:
             await self.http_client.aclose()
 
     async def get_access_token(self) -> str:
-        async with self._lock:
+        while not self._refresh_lock.acquire(blocking=False):
+            await asyncio.sleep(0.01)
+        try:
             if self._should_refresh(self._state):
                 self._state = await self._refresh_locked()
             return self._state.access_token
+        finally:
+            self._refresh_lock.release()
 
     def get_access_token_sync(self) -> str:
-        with self._sync_lock:
+        with self._refresh_lock:
             if self._should_refresh(self._state):
                 self._state = self._refresh_locked_sync()
             return self._state.access_token

@@ -21,15 +21,22 @@ def create_codex_responses_model(
     *,
     config: CodexAuthConfig | None = None,
     http_client: httpx.AsyncClient | None = None,
+    instructions: str,
     settings: OpenAIResponsesModelSettings | None = None,
 ) -> CodexResponsesModel:
+    if instructions is None:
+        raise ValueError(
+            "`instructions` is required for Codex-backed Pydantic models. "
+            "Pass an explicit system instruction string."
+        )
     client = create_codex_async_openai(config=config, http_client=http_client)
     model_settings: OpenAIResponsesModelSettings = {"openai_store": False}
     if settings is not None:
         model_settings.update(settings)
-        model_settings.setdefault("openai_store", False)
+    model_settings["openai_store"] = False
     return CodexResponsesModel(
         model_name,
+        default_instructions=instructions,
         provider=OpenAIProvider(openai_client=client),
         settings=model_settings,
     )
@@ -40,6 +47,7 @@ def create_codex_chat_openai(
     *,
     config: CodexAuthConfig | None = None,
     http_client: httpx.AsyncClient | None = None,
+    instructions: str,
     sync_http_client: httpx.Client | None = None,
     include_response_headers: bool = False,
     model_kwargs: dict[str, Any] | None = None,
@@ -66,17 +74,37 @@ def create_codex_chat_openai(
     async_root_client = create_codex_async_openai(config=config, http_client=http_client)
     sync_root_client = create_codex_openai(config=config, http_client=sync_http_client)
     chat_model_kwargs = dict(model_kwargs or {})
+    if instructions is None:
+        raise ValueError(
+            "`instructions` is required for Codex-backed LangChain models. "
+            "Pass an explicit system instruction string."
+        )
+    if "store" in chat_model_kwargs:
+        raise ValueError(
+            "Do not pass `model_kwargs['store']`; Codex-backed ChatOpenAI always forces "
+            "`store=False`."
+        )
+    if "instructions" in chat_model_kwargs:
+        raise ValueError(
+            "Pass `instructions` either through the dedicated parameter or "
+            "`model_kwargs['instructions']`, not both."
+        )
+    chat_model_kwargs["instructions"] = instructions
+    chat_openai_kwargs: dict[str, Any] = {
+        "model": model_name,
+        "async_client": async_root_client.chat.completions,
+        "client": sync_root_client.chat.completions,
+        "include_response_headers": include_response_headers,
+        "model_kwargs": chat_model_kwargs,
+        "output_version": output_version,
+        "reasoning": reasoning,
+        "root_async_client": async_root_client,
+        "root_client": sync_root_client,
+        "store": False,
+        "temperature": temperature,
+        "use_previous_response_id": use_previous_response_id,
+        "use_responses_api": True,
+    }
     return ChatOpenAI(
-        model_name=model_name,
-        async_client=async_root_client.chat.completions,
-        client=sync_root_client.chat.completions,
-        include_response_headers=include_response_headers,
-        model_kwargs=chat_model_kwargs,
-        output_version=output_version,
-        reasoning=reasoning,
-        root_async_client=async_root_client,
-        root_client=sync_root_client,
-        temperature=temperature,
-        use_previous_response_id=use_previous_response_id,
-        use_responses_api=True,
+        **chat_openai_kwargs,
     )

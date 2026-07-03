@@ -315,10 +315,14 @@ def test_fork_session_clones_transcript_and_model_override(tmp_path: Path) -> No
     replayed_update_types = [
         type(update)
         for _, update in client.updates
-        if not isinstance(update, AvailableCommandsUpdate)
+        if not isinstance(update, AvailableCommandsUpdate | SessionInfoUpdate)
     ]
     assert replayed_update_types[0] is UserMessageChunk
     assert replayed_update_types[1:] == [AgentMessageChunk] * (len(replayed_update_types) - 1)
+    assert any(
+        isinstance(update, SessionInfoUpdate) and update.title == "Prime the original session."
+        for _, update in client.updates
+    )
     assert agent_message_texts(client) == ["switched"]
 
 
@@ -447,4 +451,12 @@ def test_load_session_can_skip_history_replay(tmp_path: Path) -> None:
     )
 
     assert load_response is not None
-    assert all(isinstance(update, AvailableCommandsUpdate) for _, update in client.updates)
+    assert all(
+        isinstance(update, AvailableCommandsUpdate | SessionInfoUpdate)
+        for _, update in client.updates
+    )
+    assert any(
+        isinstance(update, SessionInfoUpdate)
+        and update.title == "Prime the transcript without replay."
+        for _, update in client.updates
+    )

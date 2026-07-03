@@ -149,6 +149,8 @@ def test_phase2_server_path_and_metadata_helpers() -> None:
     assert normalize_mount_path("/") == "/"
     with pytest.raises(ValueError, match="mount_path must not be empty"):
         normalize_mount_path("   ")
+    with pytest.raises(ValueError, match="health endpoint"):
+        build_server_paths("/healthz")
 
     assert build_server_paths("/acp/").metadata_path == "/acp"
     assert build_server_paths("/acp/").websocket_path == "/acp/ws"
@@ -180,7 +182,7 @@ async def test_phase2_http_metadata_and_health_routes_are_served() -> None:
     )
     try:
         assert server.sockets is not None
-        port = server.sockets[0].getsockname()[1]
+        port = next(iter(server.sockets)).getsockname()[1]
         health_status, health_body = await asyncio.to_thread(
             _http_get,
             f"http://127.0.0.1:{port}/healthz",
@@ -219,7 +221,7 @@ async def test_phase2_websocket_path_and_bearer_auth_are_enforced() -> None:
         supported_agent_families=("generic-acp",),
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     try:
         with pytest.raises(InvalidStatus) as missing_token:
             async with connect(f"ws://127.0.0.1:{port}/secure/ws"):
