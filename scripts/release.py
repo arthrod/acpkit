@@ -10,6 +10,7 @@ import tempfile
 import tomllib
 import zipfile
 from dataclasses import dataclass
+from datetime import date
 from email.message import Message
 from email.parser import Parser
 from pathlib import Path
@@ -23,6 +24,7 @@ _SUPPORTED_VERSION_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)"
     r"(?:(?:a|b|rc)\d+)?$"
 )
+_RELEASE_DATE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class ReleaseValidationError(RuntimeError):
@@ -128,14 +130,34 @@ def _check_root_extras(root: Path, version: str) -> None:
             )
 
 
+def _check_release_tag(tag: str, version: str) -> None:
+    version_tag = f"v{version}"
+    if tag == version_tag:
+        return
+
+    dated_prefix = f"{version_tag}_"
+    if tag.startswith(dated_prefix):
+        release_date = tag.removeprefix(dated_prefix)
+        if _RELEASE_DATE_PATTERN.fullmatch(release_date) is not None:
+            try:
+                date.fromisoformat(release_date)
+            except ValueError:
+                pass
+            else:
+                return
+
+    raise ReleaseValidationError(
+        f"Release tag {tag!r} does not match workspace version {version!r}; "
+        f"expected {version_tag!r} or {version_tag + '_YYYY-MM-DD'!r}."
+    )
+
+
 def check_release(*, root: Path, tag: str | None) -> str:
     version = _workspace_version(root)
     _check_changelog(root, version)
     _check_root_extras(root, version)
-    if tag is not None and tag != f"v{version}":
-        raise ReleaseValidationError(
-            f"Release tag {tag!r} does not match workspace version {version!r}."
-        )
+    if tag is not None:
+        _check_release_tag(tag, version)
     print(f"Release metadata valid for {version}.")
     return version
 
@@ -334,7 +356,10 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     check_parser = subparsers.add_parser("check", help="Validate release metadata.")
-    check_parser.add_argument("--tag", help="Expected git tag, for example v1.0.0.")
+    check_parser.add_argument(
+        "--tag",
+        help="Expected git tag, for example v1.0.0 or v1.0.0_2026-07-04.",
+    )
 
     build_parser = subparsers.add_parser("build", help="Build and validate all artifacts.")
     build_parser.add_argument("--output-dir", type=Path, default=Path("dist"))
@@ -347,7 +372,11 @@ def _parser() -> argparse.ArgumentParser:
     prepare_parser = subparsers.add_parser(
         "prepare", help="Validate, build, and smoke test a tagged release."
     )
-    prepare_parser.add_argument("--tag", required=True)
+    prepare_parser.add_argument(
+        "--tag",
+        required=True,
+        help="Git tag, for example v1.0.0 or v1.0.0_2026-07-04.",
+    )
     prepare_parser.add_argument("--output-dir", type=Path, default=Path("dist"))
     return parser
 

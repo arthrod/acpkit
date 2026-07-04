@@ -27,8 +27,22 @@ def test_release_metadata_matches_current_version_and_tag() -> None:
     assert f"Release metadata valid for {acpkit.__version__}." in result.stdout
 
 
+def test_release_metadata_accepts_dated_tag() -> None:
+    result = _run_release("check", "--tag", f"v{acpkit.__version__}_2026-07-04")
+
+    assert result.returncode == 0
+    assert f"Release metadata valid for {acpkit.__version__}." in result.stdout
+
+
 def test_release_metadata_rejects_mismatched_tag() -> None:
     result = _run_release("check", "--tag", "v999.0.0")
+
+    assert result.returncode == 1
+    assert "does not match workspace version" in result.stderr
+
+
+def test_release_metadata_rejects_invalid_release_date() -> None:
+    result = _run_release("check", "--tag", f"v{acpkit.__version__}_2026-02-30")
 
     assert result.returncode == 1
     assert "does not match workspace version" in result.stderr

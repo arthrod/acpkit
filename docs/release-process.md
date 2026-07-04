@@ -16,7 +16,7 @@ only when every package reports the same PEP 440 version.
 Run the complete release gate:
 
 ```bash
-make release RELEASE_TAG=v1.0.0
+make release RELEASE_TAG=v1.0.0_2026-07-04
 ```
 
 The gate:
@@ -32,12 +32,16 @@ The gate:
 
 ## Publish
 
-Push the exact matching tag:
+Push a matching version tag. An optional ISO date suffix can distinguish the
+repository release event without changing the package version:
 
 ```bash
-git tag -s v1.0.0 -m "ACP Kit 1.0.0"
-git push origin v1.0.0
+git tag -s v1.0.0_2026-07-04 -m "ACP Kit 1.0.0"
+git push origin v1.0.0_2026-07-04
 ```
+
+Both `v1.0.0` and `v1.0.0_YYYY-MM-DD` validate against package version
+`1.0.0`. The suffix does not permit republishing an existing PyPI version.
 
 GitHub Actions repeats the release gate, uploads the artifacts for inspection,
 and publishes through PyPI Trusted Publishing. Never publish from a dirty
