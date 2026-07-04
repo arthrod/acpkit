@@ -8,6 +8,8 @@ The core contract is simple:
 2. expose it through ACP
 3. only publish ACP-visible state the runtime can actually honor
 
+The package also includes the inverse bridge: an ACP agent can be consumed as a Pydantic AI v2 provider/model pair via `AcpProvider` and `AcpModel`.
+
 ## Entry Points
 
 - `run_acp(...)`
@@ -16,8 +18,9 @@ The core contract is simple:
 - `AcpSessionContext`
 - `StaticAgentSource`
 - `FactoryAgentSource`
-- `MemorySessionStore`
-- `FileSessionStore`
+- `AcpProvider`
+- `AcpModel`
+- `AcpHostBridge`
 
 ## What It Covers
 
@@ -32,8 +35,11 @@ The core contract is simple:
 - projection maps for filesystem, hooks, web tools, and builtin tool families
 - capability bridges for upstream Pydantic AI capabilities
 - client-backed filesystem and terminal helpers
+- ACP client/provider bridging for consuming ACP agents from the Pydantic AI ecosystem
 
 ## Quick Start
+
+Expose a Pydantic AI agent through ACP:
 
 ```python
 from pydantic_ai import Agent
@@ -59,6 +65,32 @@ acp_agent = create_acp_agent(
 
 run_agent(acp_agent)
 ```
+
+## ACP Client Provider Bridge
+
+`AcpProvider` is the client-side mirror of the ACP server adapter. It wraps an ACP agent as a Pydantic AI v2 `Provider`; `AcpModel` is the model object Pydantic AI agents run against.
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import AcpProvider
+
+# `remote_acp_agent` can be any object implementing the ACP Agent interface.
+provider = AcpProvider(agent=remote_acp_agent, cwd="/workspace")
+model = provider.model("zed-agent")
+agent = Agent(model)
+
+result = await agent.run("Summarize the current workspace state.")
+print(result.output)
+```
+
+This keeps ownership boundaries explicit:
+
+- Pydantic AI owns the outer agent run, output validation, and normal model/provider lifecycle.
+- ACP owns the delegated agent session, ACP-visible updates, and any editor or host capabilities requested by that agent.
+- `AcpHostBridge` records ACP `session_update` messages and can delegate filesystem, terminal, approval, and extension callbacks to a real ACP host client when one is supplied.
+- Pydantic AI function tools are intentionally not executed directly by `AcpModel`; register tools on the ACP agent or expose host capabilities through ACP.
+
+Use this bridge when the thing you have is already an ACP agent and you want it to participate in code that expects a Pydantic AI provider/model. It is not another ACP server adapter and it does not replace `create_acp_agent(...)`.
 
 ## Native Plan Mode
 
@@ -227,6 +259,6 @@ Focused docs recipes:
 
 ## Compatibility Policy
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.83.0`.
+`pydantic-acp` requires `pydantic-ai-slim>=2.0.0,<3`.
 
-That pin is deliberate. The adapter is tested against a specific Pydantic AI surface and should still be upgraded deliberately, but the hook-compatibility seam is now isolated behind ACP Kit’s own compatibility layer instead of scattering private upstream imports through the runtime.
+The ACP client provider bridge depends on the Pydantic AI v2 `Provider` and `Model` contracts. Upgrades across major Pydantic AI versions should be deliberate because the adapter exposes both server-side ACP translation and client-side ACP provider integration.
