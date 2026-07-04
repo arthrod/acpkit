@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/vcoderun/acpkit/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/vcoderun/acpkit/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/vcoderun/acpkit/branch/main/graph/badge.svg?token=ZQL4NY4FK6)](https://codecov.io/gh/vcoderun/acpkit) [![PyPI version](https://img.shields.io/pypi/v/acpkit.svg)](https://pypi.org/project/acpkit/) [![Python versions](https://img.shields.io/pypi/pyversions/acpkit.svg)](https://pypi.org/project/acpkit/) [![GitHub release](https://img.shields.io/github/v/release/vcoderun/acpkit)](https://github.com/vcoderun/acpkit/releases) [![License](https://img.shields.io/github/license/vcoderun/acpkit)](https://github.com/vcoderun/acpkit/blob/main/LICENSE)
 
+
 ACP Kit is the adapter toolkit and monorepo for exposing existing agent runtimes through ACP without inventing runtime features that are not really there.
 
 > **ACP Kit v1:** `1.0.0` is the first stable release of the synchronized
