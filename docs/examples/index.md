@@ -11,8 +11,9 @@ Source directory:
 
 | Example | What it demonstrates |
 |---|---|
-| [`finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py) | session-aware finance workspace with ACP plans, approvals, mode-aware tool shaping, and projected note diffs |
+| [`finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py) | persistent finance sessions with ACP plans, approvals, mode-aware tool shaping, and projected note diffs |
 | [`travel_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py) | travel planning runtime with hook projection, approval-gated trip files, and prompt-model override behavior for media prompts |
+| [`mock_harness_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py) | real harness filesystem and shell capabilities with bounded policy and opt-in code mode |
 
 ## Maintained LangChain Examples
 
@@ -24,7 +25,7 @@ Source directory:
 |---|---|
 | [`codex_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/codex_graph.py) | Codex-backed `ChatOpenAI` construction through `codex-auth-helper`, then plain LangChain graph exposure through `langchain-acp` |
 | [`workspace_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/workspace_graph.py) | plain LangChain graph wiring, module-level `graph`, session-aware `graph_from_session(...)`, and filesystem read/write projection |
-| [`deepagents_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/deepagents_graph.py) | DeepAgents compatibility wiring through `langchain-acp`, approvals, and DeepAgents projection presets |
+| [`deepagents_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/deepagents_graph.py) | real DeepAgents graph construction with deterministic filesystem tools, native plans, approvals, and projection presets |
 
 ## Helper And CLI Recipes
 

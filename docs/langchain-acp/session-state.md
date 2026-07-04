@@ -34,6 +34,10 @@ Stored session state includes:
 - session-local mode id
 - config values
 - plan state
+
+`FileSessionStore` persists those values as local JSON files. File-backed session ids are restricted
+to ASCII letters, digits, `_`, and `-`, with a 128-character limit, so a client-supplied session id
+cannot escape the configured store root.
 - MCP server definitions
 - transcript updates
 - metadata

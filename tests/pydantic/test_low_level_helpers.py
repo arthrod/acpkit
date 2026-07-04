@@ -111,7 +111,12 @@ from pydantic_acp.session.state import (
     _is_transcript_kind,
     utc_now,
 )
-from pydantic_acp.session.store import FileSessionStore, MemorySessionStore, SessionStore
+from pydantic_acp.session.store import (
+    FileSessionStore,
+    MemorySessionStore,
+    SessionStore,
+    _store_child_path,
+)
 from pydantic_ai import Agent, ModelRequest, ModelResponse, RunUsage, TextPart
 from pydantic_ai.messages import (
     AudioUrl,
@@ -381,6 +386,22 @@ def test_file_session_store_covers_delete_fork_missing_and_list_skip(
     first.title = "First"
     store.save(first)
     assert store._session_path("first").exists()
+    assert store._session_path("safe_1-2").parent == store.root
+    assert store._temp_session_path("safe_1-2").parent == store.root
+    with pytest.raises(ValueError, match="session path"):
+        _store_child_path(store.root, "../escape.json")
+
+    unsafe_session_ids = ["", "../escape", "nested/session", ".hidden", "two words", "x" * 129]
+    for unsafe_session_id in unsafe_session_ids:
+        with pytest.raises(ValueError, match="session_id"):
+            store._session_path(unsafe_session_id)
+
+    with pytest.raises(ValueError, match="session_id"):
+        store.save(_session(tmp_path, session_id="../escape"))
+    with pytest.raises(ValueError, match="session_id"):
+        store.get("../escape")
+    with pytest.raises(ValueError, match="session_id"):
+        store.fork("first", new_session_id="../escape", cwd=tmp_path)
 
     forked = store.fork("first", new_session_id="forked", cwd=tmp_path / "forked")
     assert forked is not None
@@ -407,6 +428,7 @@ def test_file_session_store_covers_delete_fork_missing_and_list_skip(
     skip_store = SkipGhostFileSessionStore(store.root)
     ghost_path = skip_store._session_path("ghost")
     ghost_path.write_text("{}", encoding="utf-8")
+    (skip_store.root / "bad name.json").write_text("{}", encoding="utf-8")
     assert skip_store.get("ghost") is None
     assert skip_store.get("keep") is not None
     assert [session.session_id for session in skip_store.list_sessions()] == [
@@ -511,7 +533,13 @@ def test_prepare_tools_bridge_covers_validation_none_and_require_mode(
 
     bridge = PrepareToolsBridge[None](
         default_mode_id="chat",
-        modes=[PrepareToolsMode(id="chat", name="Chat", prepare_func=lambda _c, _t: None)],
+        modes=[
+            PrepareToolsMode(
+                id="chat",
+                name="Chat",
+                prepare_func=cast(Any, lambda _c, _t: None),
+            )
+        ],
     )
     session = _session(tmp_path)
 

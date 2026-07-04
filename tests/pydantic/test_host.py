@@ -236,7 +236,10 @@ def test_agent_factory_can_build_client_host_context(tmp_path: Path) -> None:
 
     def factory(session: AcpSessionContext) -> Agent[None, str]:
         host_context = ClientHostContext.from_session(client=client, session=session)
-        agent = Agent(TestModel(call_tools=["read_workspace_note"]))
+        agent = Agent(
+            TestModel(call_tools=["read_workspace_note"]),
+            deps_type=type(None),
+        )
 
         @agent.tool
         async def read_workspace_note(ctx: RunContext[None]) -> str:

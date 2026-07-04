@@ -60,6 +60,27 @@ It does not own:
 - Codex auth handling
 - WebSocket transport
 
+## Current Framework Compatibility
+
+The package metadata and compatibility gate use these minimum versions:
+
+- `langchain>=1.3.11`
+- `langgraph>=1.2.7`
+- `deepagents>=0.6.12` through `langchain-acp[deepagents]`
+
+Treat the three packages as one resolved stack. Validate changes with `make check-langchain-stack`;
+that gate runs both runtime tests and `ty` against the exact baseline versions.
+
+Compatibility details:
+
+- LangChain 1.3 agent graphs remain the primary `create_agent(...)` path.
+- LangGraph 1.2 graph state, interrupts, and streamed events stay upstream-owned.
+- DeepAgents 0.6 uses newer state-channel internals; do not inspect them from the adapter.
+- Project DeepAgents' public `read_file`, `write_file`, `edit_file`, `ls`, `glob`, `grep`, and
+  `execute` calls through `DeepAgentsProjectionMap`.
+- Keep `write_todos` handling in `DeepAgentsCompatibilityBridge`; ACP-native `TaskPlan` remains the
+  preferred framework-neutral plan surface.
+
 ## Do Not Confuse With
 
 - `langchain-acp` vs `pydantic-acp`
@@ -280,3 +301,15 @@ Stay in this skill when the main issue is:
 - Do not reuse Pydantic-only host-policy language when the bug is really about graph or tool seams.
 - Do not claim a projection preset exists for an unstable tool family unless it is implemented.
 - If the task is really transport-only, move to `acpremote`.
+
+## Production Baseline
+
+- Use a persistent `SessionStore` when replay, resume, fork, model, mode, or plan state must survive
+  process restarts; do not share `FileSessionStore` across replicas.
+- Cancellation must interrupt the active graph task, including streams blocked before their next
+  chunk, without swallowing unrelated event-loop cancellation.
+- Projection maps must match the graph's real tool names, argument schemas, and result shapes.
+- Export a configured `acp_agent = create_acp_agent(...)` for CLI and remote hosting so graph
+  factories, providers, bridges, and projections are not replaced by defaults.
+- Run `make check-langchain-stack` after framework upgrades and validate real
+  `create_deep_agent(...)` construction rather than compatibility fakes alone.

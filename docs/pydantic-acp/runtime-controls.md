@@ -6,7 +6,7 @@ These controls exist to keep session state explicit and inspectable from the cli
 
 ## Slash Commands
 
-The adapter exposes a small fixed command set plus dynamic mode commands.
+The adapter exposes a small fixed command set, dynamic mode commands, and optional host-defined commands.
 
 ### Fixed commands
 
@@ -40,6 +40,28 @@ Mode ids must remain compatible with slash-command addressing:
 - they cannot contain whitespace
 - they cannot collide with reserved commands such as `model`, `thinking`, `tools`, `hooks`, or `mcp-servers`
 - they should stay specific enough that the command still reads clearly in the UI
+
+### Custom Commands
+
+Configure `AdapterConfig(slash_command_provider=...)` to add host-owned commands:
+
+```python
+from acp.schema import AvailableCommand
+from pydantic_acp import SlashCommandResult, StaticSlashCommand, StaticSlashCommandProvider
+
+provider = StaticSlashCommandProvider(
+    commands=[
+        StaticSlashCommand(
+            command=AvailableCommand(name="diagnose", description="Run host diagnostics."),
+            handler=lambda request: SlashCommandResult(text="Diagnostics queued."),
+        )
+    ]
+)
+```
+
+Custom handlers receive `SlashCommandRequest` with the parsed command name, optional raw argument string, session, and active agent. Returning `None` or `SlashCommandResult(handled=False)` falls through to normal model execution.
+
+`SlashCommandResult.refresh_session_surface` defaults to `True` so commands that mutate visible state refresh commands, config, mode, plan, and session metadata after they run.
 
 ## Mode Changes Update ACP State
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Final, Generic, Literal, TypeVar, cast
 
 from acp.schema import SessionConfigOptionSelect, SessionConfigSelectOption, SessionMode
-from pydantic_ai.capabilities import PrepareTools
+from pydantic_ai.capabilities import PrepareOutputTools, PrepareTools
 from pydantic_ai.tools import RunContext, ToolDefinition, ToolsPrepareFunc
 
 from .._slash_commands import validate_mode_command_ids
@@ -24,6 +24,8 @@ _PLAN_GENERATION_CONFIG_OPTIONS: Final[tuple[PlanGenerationType, ...]] = (
 
 __all__ = (
     "PlanGenerationType",
+    "PrepareOutputToolsBridge",
+    "PrepareOutputToolsMode",
     "PrepareToolsBridge",
     "PrepareToolsMode",
 )
@@ -37,6 +39,14 @@ class PrepareToolsMode(Generic[AgentDepsT]):
     description: str | None = None
     plan_mode: bool = False
     plan_tools: bool = False
+
+
+@dataclass(slots=True, frozen=True, kw_only=True)
+class PrepareOutputToolsMode(Generic[AgentDepsT]):
+    id: str
+    name: str
+    prepare_func: ToolsPrepareFunc[AgentDepsT]
+    description: str | None = None
 
 
 @dataclass(slots=True, kw_only=True)
@@ -160,7 +170,7 @@ class PrepareToolsBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
                 options=[
                     SessionConfigSelectOption(
                         value=value,
-                        name="Tool-Based" if value == "tools" else "Structured",
+                        name="Tool Plans" if value == "tools" else "Structured Plans",
                     )
                     for value in _PLAN_GENERATION_CONFIG_OPTIONS
                 ],
@@ -261,3 +271,135 @@ class PrepareToolsBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
 
     def supports_plan_progress(self, session: AcpSessionContext) -> bool:
         return self.current_mode(session).plan_tools
+
+
+@dataclass(slots=True, kw_only=True)
+class PrepareOutputToolsBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
+    metadata_key: str | None = "prepare_output_tools"
+    default_mode_id: str
+    modes: list[PrepareOutputToolsMode[AgentDepsT]]
+    mode_config_key: str = "prepare_output_tools_mode"
+
+    def __post_init__(self) -> None:
+        if not self.modes:
+            raise ValueError("PrepareOutputToolsBridge requires at least one mode.")
+        validate_mode_command_ids(mode.id for mode in self.modes)
+        mode_ids = {mode.id for mode in self.modes}
+        if self.default_mode_id not in mode_ids:
+            raise ValueError("PrepareOutputToolsBridge default mode must match one of the modes.")
+
+    def build_prepare_output_tools(
+        self,
+        session: AcpSessionContext,
+    ) -> ToolsPrepareFunc[AgentDepsT]:
+        async def prepare_output_tools(
+            ctx: RunContext[AgentDepsT],
+            tool_defs: list[ToolDefinition],
+        ) -> list[ToolDefinition]:
+            mode = self._require_mode(self._current_mode_id(session))
+            try:
+                prepared = mode.prepare_func(ctx, list(tool_defs))
+                resolved = await resolve_value(prepared)
+            except Exception as error:
+                self._record_failed_event(
+                    session,
+                    title=f"prepare_output_tools.{mode.id}",
+                    raw_output=str(error),
+                )
+                raise
+
+            next_tool_defs = list(tool_defs if resolved is None else resolved)
+            self._record_completed_event(
+                session,
+                title=f"prepare_output_tools.{mode.id}",
+                raw_output=f"tools={len(next_tool_defs)}/{len(tool_defs)}",
+            )
+            return next_tool_defs
+
+        return prepare_output_tools
+
+    def build_capability(self, session: AcpSessionContext) -> PrepareOutputTools[AgentDepsT]:
+        return PrepareOutputTools(self.build_prepare_output_tools(session))
+
+    def build_agent_capabilities(
+        self,
+        session: AcpSessionContext,
+    ) -> tuple[PrepareOutputTools[AgentDepsT], ...]:
+        return (self.build_capability(session),)
+
+    def get_mode_state(
+        self,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
+    ) -> ModeState:
+        del agent
+        return ModeState(
+            modes=[
+                SessionMode(
+                    id=mode.id,
+                    name=mode.name,
+                    description=mode.description,
+                )
+                for mode in self.modes
+            ],
+            current_mode_id=self._current_mode_id(session),
+        )
+
+    def get_session_metadata(
+        self,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
+    ) -> dict[str, JsonValue]:
+        del agent
+        modes: list[JsonValue] = [
+            {
+                "description": mode.description,
+                "id": mode.id,
+                "name": mode.name,
+            }
+            for mode in self.modes
+        ]
+        return {
+            "current_mode_id": self._current_mode_id(session),
+            "modes": modes,
+        }
+
+    def set_mode(
+        self,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
+        mode_id: str,
+    ) -> ModeState | None:
+        del agent
+        if self._find_mode(mode_id) is None:
+            return None
+        session.config_values[self.mode_config_key] = mode_id
+        return ModeState(
+            modes=[
+                SessionMode(
+                    id=mode.id,
+                    name=mode.name,
+                    description=mode.description,
+                )
+                for mode in self.modes
+            ],
+            current_mode_id=mode_id,
+        )
+
+    def _current_mode_id(self, session: AcpSessionContext) -> str:
+        configured_mode = session.config_values.get(self.mode_config_key)
+        if isinstance(configured_mode, str) and self._find_mode(configured_mode) is not None:
+            return configured_mode
+        return self.default_mode_id
+
+    def _find_mode(self, mode_id: str) -> PrepareOutputToolsMode[AgentDepsT] | None:
+        for mode in self.modes:
+            if mode.id == mode_id:
+                return mode
+        return None
+
+    def _require_mode(self, mode_id: str) -> PrepareOutputToolsMode[AgentDepsT]:
+        mode = self._find_mode(mode_id)
+        if mode is None:
+            raise ValueError(f"Unknown prepare output tools mode: {mode_id!r}")
+        return mode

@@ -6,7 +6,7 @@ from typing import Generic, Protocol, TypeVar
 
 from pydantic_ai import Agent as PydanticAgent
 
-from .awaitables import is_awaitable, is_resolved
+from .awaitables import resolve_value
 from .session.state import AcpSessionContext
 
 AgentFactoryDepsT = TypeVar("AgentFactoryDepsT", contravariant=True)
@@ -61,11 +61,7 @@ class FactoryAgentSource(Generic[AgentDepsT, OutputDataT]):
     factory: AgentFactory[AgentDepsT, OutputDataT]
 
     async def get_agent(self, session: AcpSessionContext) -> PydanticAgent[AgentDepsT, OutputDataT]:
-        candidate = self.factory(session)
-        if is_awaitable(candidate):
-            return await candidate
-        assert is_resolved(candidate)
-        return candidate
+        return await resolve_value(self.factory(session))
 
     async def get_deps(
         self,

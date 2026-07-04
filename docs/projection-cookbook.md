@@ -118,6 +118,39 @@ Use these helpers as building blocks:
 
 - policy helpers decide whether a caution banner exists
 - text helpers decide how much content to show
+
+## Filesystem Search And List Output
+
+`FileSystemProjectionMap` can also project configured search or list tools:
+
+```python
+from pydantic_acp import FileSystemProjectionMap
+
+projection = FileSystemProjectionMap(
+    default_search_tool="list_files",
+    search_path_arg="path",
+    search_pattern_arg="pattern",
+    render_search_results_as_tree=True,
+)
+```
+
+When tree rendering is enabled, line-based path output is rendered as a readable tree. Failed or status-like output stays plain text. Dot directories are hidden by default while root-level dot files remain visible.
+
+## Projection-aware Classification
+
+Use `ProjectionAwareToolClassifier` when configured projection names should also control ACP tool kind:
+
+```python
+from pydantic_acp import ProjectionAwareToolClassifier
+from pydantic_acp.projection import DefaultToolClassifier
+
+classifier = ProjectionAwareToolClassifier(
+    base_classifier=DefaultToolClassifier(),
+    projection_maps=[projection],
+)
+```
+
+This is opt-in. Unknown tools still fall back to the base classifier.
 - diff helpers shape file changes
 - terminal status helpers normalize exit information
 

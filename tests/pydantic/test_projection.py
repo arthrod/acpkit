@@ -2,12 +2,17 @@ from __future__ import annotations as _annotations
 
 import asyncio
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
-from acp.schema import ToolCallLocation
+from acp.schema import ToolCallLocation, ToolKind
 from pydantic_acp.projection import (
     BuiltinToolProjectionMap,
+    CompositeProjectionMap,
     DefaultToolClassifier,
+    HarnessCodeModeProjectionMap,
+    HarnessFileSystemProjectionMap,
+    HarnessShellProjectionMap,
     ToolProjection,
     WebToolProjectionMap,
     _append_string_list_line,
@@ -27,8 +32,10 @@ from pydantic_acp.projection import (
     _format_web_search_start,
     _is_binary_like_content,
     _json_preview,
+    _looks_like_status_or_error_output,
     _preserve_file_diff_content,
     _read_existing_text,
+    _render_path_tree,
     _web_fetch_url,
     _web_search_query,
     build_compaction_updates,
@@ -38,11 +45,11 @@ from pydantic_acp.projection import (
 )
 from pydantic_acp.serialization import DefaultOutputSerializer
 from pydantic_ai import (
-    BuiltinToolCallPart,
-    BuiltinToolReturnPart,
     CompactionPart,
     ModelRequest,
     ModelResponse,
+    NativeToolCallPart,
+    NativeToolReturnPart,
     RetryPromptPart,
 )
 
@@ -54,6 +61,7 @@ from .support import (
     FileSystemProjectionMap,
     MemorySessionStore,
     Path,
+    ProjectionAwareToolClassifier,
     RecordingClient,
     TerminalToolCallContent,
     TestModel,
@@ -371,7 +379,7 @@ def test_builtin_web_search_projection_renders_query_and_results() -> None:
     projection_map = WebToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="web_search",
         args={
             "query": "acpkit",
@@ -387,7 +395,7 @@ def test_builtin_web_search_projection_renders_query_and_results() -> None:
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="web_search",
             tool_call_id="search-1",
             content=[
@@ -422,7 +430,7 @@ def test_builtin_web_fetch_projection_renders_url_and_preview() -> None:
     projection_map = WebToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="web_fetch",
         args={"url": "https://example.com/docs"},
         tool_call_id="fetch-1",
@@ -434,7 +442,7 @@ def test_builtin_web_fetch_projection_renders_url_and_preview() -> None:
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="web_fetch",
             tool_call_id="fetch-1",
             content={
@@ -495,7 +503,7 @@ def test_build_tool_updates_supports_builtin_tool_call_and_return_parts() -> Non
         [
             ModelResponse(
                 parts=[
-                    BuiltinToolCallPart(
+                    NativeToolCallPart(
                         tool_name="web_search",
                         args={"query": "acpkit"},
                         tool_call_id="search-1",
@@ -504,7 +512,7 @@ def test_build_tool_updates_supports_builtin_tool_call_and_return_parts() -> Non
             ),
             ModelResponse(
                 parts=[
-                    BuiltinToolReturnPart(
+                    NativeToolReturnPart(
                         tool_name="web_search",
                         tool_call_id="search-1",
                         content={"results": [{"title": "ACP Kit", "href": "https://example.com"}]},
@@ -531,7 +539,7 @@ def test_builtin_image_generation_projection_renders_prompt_and_result_summary()
     projection_map = BuiltinToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="image_generation",
         args={
             "prompt": "a kiwi bird in a raincoat",
@@ -547,7 +555,7 @@ def test_builtin_image_generation_projection_renders_prompt_and_result_summary()
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="image_generation",
             tool_call_id="img-1",
             content={
@@ -582,7 +590,7 @@ def test_builtin_mcp_projection_renders_start_and_progress_for_tool_calls() -> N
     projection_map = BuiltinToolProjectionMap()
     classifier = DefaultToolClassifier()
     serializer = DefaultOutputSerializer()
-    tool_call = BuiltinToolCallPart(
+    tool_call = NativeToolCallPart(
         tool_name="mcp_server:repo",
         args={
             "action": "call_tool",
@@ -598,7 +606,7 @@ def test_builtin_mcp_projection_renders_start_and_progress_for_tool_calls() -> N
         projection_map=projection_map,
     )
     progress_update = build_tool_progress_update(
-        BuiltinToolReturnPart(
+        NativeToolReturnPart(
             tool_name="mcp_server:repo",
             tool_call_id="mcp-1",
             content={
@@ -1042,12 +1050,12 @@ def test_build_tool_updates_skips_final_result_and_projects_retry_prompts() -> N
         [
             ModelResponse(
                 parts=[
-                    BuiltinToolCallPart(
+                    NativeToolCallPart(
                         tool_name="final_result",
                         args={"answer": "done"},
                         tool_call_id="out-1",
                     ),
-                    BuiltinToolReturnPart(
+                    NativeToolReturnPart(
                         tool_name="final_result",
                         tool_call_id="out-1",
                         content="done",
@@ -1077,3 +1085,378 @@ def test_build_tool_updates_skips_final_result_and_projects_retry_prompts() -> N
     assert retry_update.kind == "search"
     assert isinstance(retry_update.raw_output, str)
     assert "retry search" in retry_update.raw_output
+
+
+def test_filesystem_search_projection_renders_tree_output() -> None:
+    projection = FileSystemProjectionMap(
+        default_search_tool="list_files",
+        search_path_arg="root",
+        search_pattern_arg="pattern",
+        render_search_results_as_tree=True,
+    )
+
+    start = projection.project_start(
+        "list_files",
+        raw_input={"root": ".", "pattern": "*.py"},
+    )
+    progress = projection.project_progress(
+        "list_files",
+        raw_input={"root": ".", "pattern": "*.py"},
+        raw_output="src/app.py\nsrc/utils.py\nREADME.md\n.git/config\n.env\n...",
+        serialized_output="unused",
+        status="completed",
+    )
+
+    assert start is not None
+    assert start.title == "Search . for *.py"
+    assert start.locations is not None
+    assert start.locations[0].path == "."
+    assert progress is not None
+    assert progress.content is not None
+    text = progress.content[0].content.text
+    assert "Tree: ." in text
+    assert "src/" in text
+    assert "app.py" in text
+    assert ".env" in text
+    assert ".git" not in text
+    assert text.endswith("...")
+
+
+def test_harness_filesystem_projection_uses_upstream_tool_names() -> None:
+    projection = HarnessFileSystemProjectionMap()
+
+    read_start = projection.project_start("read_file", raw_input={"path": "src/app.py"})
+    read_progress = projection.project_progress(
+        "read_file",
+        raw_input={"path": "src/app.py"},
+        raw_output="[src/app.py | 2 lines | hash:abc123]\n     1\tprint('hi')\n",
+        serialized_output="ignored",
+        status="completed",
+    )
+    write_start = projection.project_start(
+        "write_file",
+        raw_input={"path": "src/app.py", "content": "print('hi')"},
+    )
+    search_progress = projection.project_progress(
+        "list_directory",
+        raw_input={"path": "src"},
+        raw_output="app.py\npkg/module.py",
+        serialized_output="ignored",
+        status="completed",
+    )
+
+    assert read_start is not None
+    assert read_start.title == "Read src/app.py"
+    assert read_start.locations == [ToolCallLocation(path="src/app.py")]
+    assert read_start.content is not None
+    read_start_content = read_start.content[0]
+    assert isinstance(read_start_content, ContentToolCallContent)
+    assert read_start_content.content.text == "Read file: `src/app.py`"
+
+    assert read_progress is not None
+    assert read_progress.locations == [ToolCallLocation(path="src/app.py")]
+    assert read_progress.status == "completed"
+    assert read_progress.content is not None
+    read_progress_content = read_progress.content[0]
+    assert isinstance(read_progress_content, ContentToolCallContent)
+    assert "Read `src/app.py`:" in read_progress_content.content.text
+    assert "[src/app.py | 2 lines | hash:abc123]" in read_progress_content.content.text
+    assert "print('hi')" in read_progress_content.content.text
+
+    assert write_start is not None
+    assert write_start.content is not None
+    write_content = write_start.content[0]
+    assert isinstance(write_content, FileEditToolCallContent)
+    assert write_content.path == "src/app.py"
+    assert write_content.new_text == "print('hi')"
+
+    assert search_progress is not None
+    assert search_progress.content is not None
+    search_content = search_progress.content[0]
+    assert isinstance(search_content, ContentToolCallContent)
+    assert "Tree: src" in search_content.content.text
+    assert "module.py" in search_content.content.text
+
+
+def test_harness_filesystem_read_projection_rejects_invalid_inputs() -> None:
+    projection = HarnessFileSystemProjectionMap()
+
+    assert projection.project_start("read_file", raw_input="invalid") is None
+    assert projection.project_start("read_file", raw_input={"offset": 5}) is None
+    assert (
+        projection.project_progress(
+            "read_file",
+            raw_input="invalid",
+            raw_output="ignored",
+            serialized_output="ignored",
+            status="completed",
+        )
+        is None
+    )
+    assert (
+        projection.project_progress(
+            "read_file",
+            raw_input={"offset": 5},
+            raw_output="ignored",
+            serialized_output="ignored",
+            status="completed",
+        )
+        is None
+    )
+
+
+def test_harness_shell_projection_renders_command_and_control_tools() -> None:
+    projection = HarnessShellProjectionMap()
+
+    run_start = projection.project_start("run_command", raw_input={"command": "pytest -q"})
+    check_start = projection.project_start("check_command", raw_input={"command_id": "cmd-1"})
+    stop_start = projection.project_start("stop_command", raw_input={})
+    invalid_start = projection.project_start("check_command", raw_input="invalid")
+    progress = projection.project_progress(
+        "start_command",
+        raw_input={"command": "python app.py"},
+        raw_output={"command_id": "cmd-2"},
+        serialized_output="ignored",
+        status="pending",
+    )
+
+    assert run_start is not None
+    assert run_start.title == "Execute pytest -q"
+    assert run_start.content is not None
+    assert run_start.content[0].content.text == "```bash\npytest -q\n```"
+
+    assert check_start is not None
+    assert check_start.title == "Check command cmd-1"
+    assert check_start.content is not None
+    assert check_start.content[0].content.text == "Command ID: cmd-1"
+
+    assert stop_start is not None
+    assert stop_start.title == "Stop command"
+    assert invalid_start is None
+
+    assert progress is not None
+    assert progress.content is not None
+    terminal_content = progress.content[0]
+    assert isinstance(terminal_content, TerminalToolCallContent)
+    assert terminal_content.terminal_id == "cmd-2"
+
+
+def test_harness_code_mode_projection_renders_code_and_output() -> None:
+    projection = HarnessCodeModeProjectionMap()
+
+    start = projection.project_start("run_code", raw_input={"code": "print('hi')"})
+    title_only = projection.project_start("run_code", raw_input={})
+    miss_start = projection.project_start("other", raw_input={})
+    progress = projection.project_progress(
+        "run_code",
+        raw_output={"stdout": "hi"},
+        serialized_output="ignored",
+        status="completed",
+    )
+    pending_progress = projection.project_progress(
+        "run_code",
+        raw_output="hi",
+        serialized_output="hi",
+        status="pending",
+    )
+
+    assert start is not None
+    assert start.title == "Run code: print('hi')"
+    assert start.content is not None
+    assert start.content[0].content.text == "```python\nprint('hi')\n```"
+    assert title_only is not None
+    assert title_only.title == "Run code"
+    assert miss_start is None
+    assert progress is not None
+    assert progress.content is not None
+    assert progress.content[0].content.text == "ignored"
+    assert pending_progress is None
+
+
+def test_filesystem_search_projection_keeps_plain_output_for_errors_and_disabled_tree() -> None:
+    projection = FileSystemProjectionMap(default_search_tool="search_files")
+
+    progress = projection.project_progress(
+        "search_files",
+        raw_input={"path": "."},
+        raw_output="src/app.py",
+        serialized_output="src/app.py",
+        status="completed",
+    )
+    failed = projection.project_progress(
+        "search_files",
+        raw_input={"path": "."},
+        raw_output="error: denied",
+        serialized_output="error: denied",
+        status="failed",
+    )
+
+    assert progress is not None
+    assert progress.content is not None
+    assert progress.content[0].content.text == "src/app.py"
+    assert failed is not None
+    assert failed.content is not None
+    assert failed.content[0].content.text == "error: denied"
+
+
+def test_filesystem_search_projection_covers_edge_paths() -> None:
+    projection = FileSystemProjectionMap(
+        default_search_tool="search_files",
+        search_path_arg="root",
+        search_pattern_arg="query",
+        render_search_results_as_tree=True,
+        hide_dot_directories_in_tree=False,
+        tree_root_label="workspace",
+    )
+
+    assert projection.project_start("search_files", raw_input="invalid") is None
+    assert (
+        projection.project_progress(
+            "search_files",
+            raw_input="invalid",
+            raw_output="src/app.py",
+            serialized_output="src/app.py",
+            status="completed",
+        )
+        is None
+    )
+
+    pattern_only = projection.project_start("search_files", raw_input={"query": "*.py"})
+    path_only = projection.project_start("search_files", raw_input={"root": "src"})
+    default_title = projection.project_start("search_files", raw_input={})
+    custom_tree = projection.project_progress(
+        "search_files",
+        raw_input={"root": "src", "query": "*.py"},
+        raw_output=".git/config\nsrc/\n./README.md",
+        serialized_output="ignored",
+        status="completed",
+    )
+
+    assert pattern_only is not None
+    assert pattern_only.title == "Search for *.py"
+    assert path_only is not None
+    assert path_only.title == "List src"
+    assert default_title is not None
+    assert default_title.title == "Search files"
+    assert custom_tree is not None
+    assert custom_tree.content is not None
+    custom_tree_text = custom_tree.content[0].content.text
+    assert "Tree: workspace" in custom_tree_text
+    assert ".git/" in custom_tree_text
+    assert "src/" in custom_tree_text
+
+
+def test_path_tree_helpers_cover_empty_hidden_and_root_paths() -> None:
+    assert _looks_like_status_or_error_output("")
+    assert _render_path_tree("\n./\n", root_label=".", hide_dot_directories=True).strip() == "./"
+    assert (
+        _render_path_tree(
+            ".git/config",
+            root_label=".",
+            hide_dot_directories=True,
+        )
+        == ".git/config"
+    )
+
+    visible_hidden_dir = _render_path_tree(
+        ".git/config",
+        root_label=".",
+        hide_dot_directories=False,
+    )
+    assert ".git/" in visible_hidden_dir
+    assert "config" in visible_hidden_dir
+
+    directory_leaf = _render_path_tree(
+        "src/",
+        root_label=".",
+        hide_dot_directories=True,
+    )
+    assert "src/" in directory_leaf
+    assert _render_path_tree("/", root_label=".", hide_dot_directories=True).startswith("Tree: .")
+
+
+def test_projection_aware_tool_classifier_uses_filesystem_projection_names() -> None:
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=DefaultToolClassifier(),
+        projection_maps=[
+            FileSystemProjectionMap(
+                default_read_tool="load_document",
+                default_write_tool="save_document",
+                default_bash_tool="run_command",
+                default_search_tool="list_files",
+            )
+        ],
+    )
+
+    assert classifier.classify("load_document") == "read"
+    assert classifier.classify("save_document") == "edit"
+    assert classifier.classify("run_command") == "execute"
+    assert classifier.classify("list_files") == "search"
+    assert classifier.classify("custom_unknown") == "execute"
+    assert classifier.approval_policy_key("list_files") == "list_files"
+
+
+def test_projection_aware_tool_classifier_uses_harness_projection_names() -> None:
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=DefaultToolClassifier(),
+        projection_maps=[
+            HarnessFileSystemProjectionMap(),
+            HarnessShellProjectionMap(),
+            HarnessCodeModeProjectionMap(),
+        ],
+    )
+
+    assert classifier.classify("read_file") == "read"
+    assert classifier.classify("write_file") == "edit"
+    assert classifier.classify("list_directory") == "search"
+    assert classifier.classify("run_command") == "execute"
+    assert classifier.classify("run_code") == "execute"
+
+
+def test_projection_aware_tool_classifier_preserves_raw_input_for_fallback() -> None:
+    class ArgSensitiveClassifier:
+        def classify(self, tool_name: str, raw_input: Any = None) -> ToolKind:
+            del tool_name
+            if isinstance(raw_input, dict) and raw_input.get("read_only") is True:
+                return "read"
+            return "execute"
+
+        def approval_policy_key(self, tool_name: str, raw_input: Any = None) -> str:
+            del raw_input
+            return tool_name
+
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=ArgSensitiveClassifier(),
+        projection_maps=[FileSystemProjectionMap(default_read_tool="known_read")],
+    )
+
+    assert classifier.classify("unknown_tool", {"read_only": True}) == "read"
+    assert classifier.classify("unknown_tool", {"read_only": False}) == "execute"
+    assert classifier.approval_policy_key("unknown_tool", {"read_only": True}) == "unknown_tool"
+
+
+def test_projection_aware_tool_classifier_recurses_into_composite_maps() -> None:
+    classifier = ProjectionAwareToolClassifier(
+        base_classifier=DefaultToolClassifier(),
+        projection_maps=[
+            CompositeProjectionMap(
+                maps=(
+                    WebToolProjectionMap(search_tool_names=frozenset({"web_search"})),
+                    FileSystemProjectionMap(default_search_tool="nested_search"),
+                    CompositeProjectionMap(
+                        maps=(
+                            FileSystemProjectionMap(default_read_tool="nested_read"),
+                            FileSystemProjectionMap(default_write_tool="nested_write"),
+                            FileSystemProjectionMap(default_bash_tool="nested_command"),
+                        )
+                    ),
+                )
+            )
+        ],
+    )
+
+    assert classifier.classify("nested_search") == "search"
+    assert classifier.classify("nested_read") == "read"
+    assert classifier.classify("nested_write") == "edit"
+    assert classifier.classify("nested_command") == "execute"
+    assert classifier.classify("nested_unknown") == "execute"

@@ -8,6 +8,19 @@
 
 It is not a separate agent framework. The adapter takes a runtime that is already graph-shaped and exposes it through ACP without discarding the runtime's real semantics.
 
+## Framework Compatibility
+
+`langchain-acp` currently requires:
+
+| Framework | Supported baseline | Adapter contract |
+| --- | --- | --- |
+| LangChain | `>=1.3.11` | `create_agent(...)`, middleware, messages, and streaming |
+| LangGraph | `>=1.2.7` | compiled graph invocation, state, interrupts, and stream events |
+| DeepAgents | `>=0.6.12` | optional `deepagents` extra, built-in tool projection, and plan compatibility |
+
+The baseline is tested as one resolved stack in CI. The adapter does not cap future compatible
+minor releases, but the lockfile records the exact versions used by the repository.
+
 ## Core Construction Paths
 
 The public construction seams stay centered on graph ownership:
@@ -35,7 +48,10 @@ from langchain.agents import create_agent
 from langchain_acp import run_acp
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="You are a helpful coding assistant.",
+    ),
     tools=[],
     name="codex-graph",
 )
@@ -69,6 +85,8 @@ Use `graph_factory=` when ACP session state should rebuild the upstream graph. T
 If model construction depends on a local Codex login, pair this adapter with
 `codex-auth-helper`. The helper owns auth parsing, refresh, and Responses-backed
 `ChatOpenAI` construction; `langchain-acp` only owns ACP adaptation.
+`create_codex_chat_openai(...)` requires `instructions=`, including when it is
+called inside `graph_factory=...`.
 
 ## What The Adapter Owns
 
@@ -77,10 +95,13 @@ If model construction depends on a local Codex login, pair this adapter with
 - `AdapterConfig`
 - explicit session stores and transcript replay
 - provider-owned models, modes, and config options
+- prompt capability advertisement
 - native ACP plan state with `TaskPlan`
-- approval bridging
+- approval bridging with projection-aware permission cards
 - capability bridges
+- built-in and host-defined slash commands
 - projection maps and event projection maps
+- external hook event projection
 - ACP-facing type exports in `langchain_acp.types`
 
 The important difference is upstream shape, not ACP Kit architecture. On the LangChain side the adapter deals in graphs and middleware instead of model profiles and tool preparers.
@@ -127,6 +148,51 @@ run_acp(graph_factory=graph_from_session, config=config)
 The point is not to make the adapter magical. The point is to keep the host,
 the graph, and the ACP surface aligned without inventing runtime state the graph
 cannot really honor.
+
+## Prompt Capabilities And Slash Commands
+
+Prompt capability advertisement is configurable instead of hardcoded:
+
+```python
+from langchain_acp import AdapterConfig, AdapterPromptCapabilities
+
+config = AdapterConfig(
+    prompt_capabilities=AdapterPromptCapabilities(
+        audio=False,
+        image=False,
+        embedded_context=True,
+    )
+)
+```
+
+The adapter also owns an ACP-native slash-command layer:
+
+- mode commands such as `/ask`
+- `/model`
+- `/tools`
+- `/mcp-servers`
+- custom host commands through `slash_command_provider`
+
+```python
+from acp.schema import AvailableCommand
+from langchain_acp import (
+    AdapterConfig,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
+)
+
+config = AdapterConfig(
+    slash_command_provider=StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="ping", description="Return pong."),
+                handler=lambda _request: SlashCommandResult(text="pong"),
+            )
+        ]
+    )
+)
+```
 
 ## Session Lifecycle And Replay
 
@@ -204,9 +270,22 @@ The adapter surface is:
 
 - `ApprovalBridge`
 - `NativeApprovalBridge`
+- `ProjectionAwareApprovalBridge`
+- `PermissionToolCallBuilder`
+- `ApprovalPolicyStore`
 - ACP permission requests and resume flow
 
 When the runtime really pauses for approval, the ACP session pauses for approval too.
+
+Remembered approval choices and permission card rendering live on `NativeApprovalBridge`:
+
+```python
+from langchain_acp import NativeApprovalBridge
+
+config = AdapterConfig(
+    approval_bridge=NativeApprovalBridge(enable_persistent_choices=True),
+)
+```
 
 ## Capability Bridges And Graph Build Contributions
 
@@ -219,6 +298,7 @@ Built-in bridges:
 - `ConfigOptionsBridge`
 - `ToolSurfaceBridge`
 - `DeepAgentsCompatibilityBridge`
+- `ExternalHookEventBridge`
 
 Graph-build contributions are aggregated through:
 
@@ -321,6 +401,18 @@ acp_agent = create_acp_agent(
 ```
 
 That compatibility layer keeps `write_todos` plan extraction and familiar filesystem or shell projection behavior available without making DeepAgents policy the core adapter architecture.
+
+`DeepAgentsProjectionMap` follows the stable DeepAgents 0.6 built-in tool contracts:
+
+- `read_file(file_path=...)`
+- `write_file(file_path=..., content=...)`
+- `edit_file(file_path=..., old_string=..., new_string=...)`
+- `ls(path=...)`, `glob(pattern=..., path=...)`, and `grep(pattern=..., path=...)`
+- `execute(command=...)`
+
+DeepAgents 0.6 moved filesystem state onto newer LangGraph channel semantics. That state remains
+owned by the compiled graph; the ACP adapter observes public stream and tool-call events instead of
+reaching into DeepAgents state internals.
 
 ## Migration From `deepagents-acp`
 

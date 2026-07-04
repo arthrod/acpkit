@@ -8,7 +8,7 @@ title: ACP Kit
 
 ACP Kit is the adapter toolkit and monorepo for exposing existing agent runtimes through ACP without inventing runtime behavior the source framework does not actually own.
 
-Today the repo ships two production-grade adapter families:
+Today the repo ships two maintained adapter families:
 
 - [`pydantic-acp`](pydantic-acp.md) for `pydantic_ai.Agent`
 - [`langchain-acp`](langchain-acp.md) for LangChain, LangGraph, and DeepAgents graphs
@@ -34,7 +34,7 @@ Three ideas drive the SDK:
 
 | Package | Purpose | Start here |
 |---|---|---|
-| [`pydantic-acp`](pydantic-acp.md) | production-grade ACP adapter for `pydantic_ai.Agent` | If your runtime starts from a `pydantic_ai.Agent` |
+| [`pydantic-acp`](pydantic-acp.md) | maintained ACP adapter for `pydantic_ai.Agent` | If your runtime starts from a `pydantic_ai.Agent` |
 | [`langchain-acp`](langchain-acp.md) | graph-centric ACP adapter for LangChain, LangGraph, and DeepAgents | If your runtime already produces a compiled graph |
 | [`acpkit`](cli.md) | CLI target resolution, launch helpers, adapter dispatch | If you want `acpkit run ...` or `acpkit launch ...` |
 | [`helpers`](helpers.md) | supporting packages such as `codex-auth-helper` and `acpremote` | If you need transport or model-construction helpers around an adapter |

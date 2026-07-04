@@ -83,7 +83,7 @@ class _NativePlanRuntime:
                 options=[
                     SessionConfigSelectOption(
                         value=value,
-                        name="Tool-Based" if value == "tools" else "Structured",
+                        name="Tool Plans" if value == "tools" else "Structured Plans",
                     )
                     for value in _PLAN_GENERATION_CONFIG_OPTIONS
                 ],

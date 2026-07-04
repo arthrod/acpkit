@@ -148,6 +148,7 @@ class RemoteProxyAgent:
     options: TransportOptions = field(default_factory=TransportOptions)
     _client: Client | None = field(default=None, init=False, repr=False)
     _remote: RemoteClientConnection | None = field(default=None, init=False, repr=False)
+    _retired_remote: RemoteClientConnection | None = field(default=None, init=False, repr=False)
     _connect_lock: asyncio.Lock = field(default_factory=asyncio.Lock, init=False, repr=False)
     _latency_tracker: _TransportLatencyTracker = field(
         default_factory=_TransportLatencyTracker,
@@ -158,22 +159,20 @@ class RemoteProxyAgent:
 
     def on_connect(self, conn: Client) -> None:
         if self._client is not None and self._client is not conn and self._remote is not None:
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = None
-            if loop is not None:
-                loop.create_task(self._remote.close())
+            self._retired_remote = self._remote
             self._remote = None
+            self._remote_cwd = None
         self._client = conn
 
     async def close(self) -> None:
-        if self._remote is None:
-            return
         remote = self._remote
         self._remote = None
         self._remote_cwd = None
-        await remote.close()
+        try:
+            await self._close_retired_remote()
+        finally:
+            if remote is not None:
+                await remote.close()
 
     async def initialize(
         self,
@@ -367,9 +366,10 @@ class RemoteProxyAgent:
         return remote.connection
 
     async def _remote_connection(self) -> RemoteClientConnection:
-        if self._remote is not None:
+        if self._remote is not None and self._retired_remote is None:
             return self._remote
         async with self._connect_lock:
+            await self._close_retired_remote()
             if self._remote is not None:
                 return self._remote
             client = self._client
@@ -395,6 +395,12 @@ class RemoteProxyAgent:
             self._remote_cwd = remote.metadata.remote_cwd if remote.metadata is not None else None
             self._remote = remote
             return remote
+
+    async def _close_retired_remote(self) -> None:
+        remote = self._retired_remote
+        self._retired_remote = None
+        if remote is not None:
+            await remote.close()
 
     def _resolve_cwd(self, cwd: str) -> str:
         return self._remote_cwd or cwd

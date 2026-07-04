@@ -14,7 +14,7 @@ ready-to-use `CodexResponsesModel` or a LangChain chat model.
 - Reads tokens from `~/.codex/auth.json`
 - Derives `ChatGPT-Account-Id` from the auth file or token claims
 - Refreshes expired access tokens with `https://auth.openai.com/oauth/token`
-- Writes refreshed tokens back to the auth file
+- Writes refreshed tokens back to the auth file with private, atomic file replacement
 - Builds an OpenAI-compatible client pointed at `https://chatgpt.com/backend-api/codex`
 - Returns a `pydantic-ai` responses model that already applies the Codex backend requirements
 - Returns a LangChain `ChatOpenAI` model configured for the Responses API
@@ -32,6 +32,8 @@ The helper enforces two backend-specific behaviors for you:
 - It does not replace `pydantic-ai`; it only provides a model/client factory
 
 ## Install
+
+For the latest stable release:
 
 ```bash
 uv add codex-auth-helper
@@ -69,8 +71,11 @@ codex login
 from codex_auth_helper import create_codex_responses_model
 from pydantic_ai import Agent
 
-model = create_codex_responses_model("gpt-5.4")
-agent = Agent(model, instructions="You are a helpful coding assistant.")
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
+)
+agent = Agent(model)
 
 result = agent.run_sync("Naber")
 print(result.output)
@@ -83,7 +88,10 @@ from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
 
 graph = create_agent(
-    model=create_codex_chat_openai("gpt-5.4"),
+    model=create_codex_chat_openai(
+        "gpt-5.4",
+        instructions="You are a helpful coding assistant.",
+    ),
     tools=[],
     name="codex-graph",
 )
@@ -95,6 +103,14 @@ The LangChain helper returns `langchain_openai.ChatOpenAI` configured to:
 - reuse local Codex auth state
 - keep `use_responses_api=True`
 - default to `output_version="responses/v1"`
+- require `instructions=` and pass it through to the Responses request
+
+`instructions` is mandatory for `create_codex_chat_openai(...)`. The helper does not provide an
+implicit system prompt for the LangChain path; callers must pass the behavior they want explicitly.
+
+The same rule applies to `create_codex_responses_model(...)` on the Pydantic path. Pass the Codex
+system behavior to the helper directly instead of relying on a separate agent-level instruction just
+to seed the model.
 
 ## Custom Auth Path
 
@@ -106,8 +122,23 @@ from pathlib import Path
 from codex_auth_helper import CodexAuthConfig, create_codex_responses_model
 
 config = CodexAuthConfig(auth_path=Path("/tmp/codex-auth.json"))
-model = create_codex_responses_model("gpt-5.4", config=config)
+model = create_codex_responses_model(
+    "gpt-5.4",
+    config=config,
+    instructions="You are a helpful coding assistant.",
+)
 ```
+
+## Auth State Safety
+
+The auth state file contains credentials and should be treated as private host state.
+
+When refreshed tokens are written back, `CodexAuthStore` uses a private temp file, `fsync`, atomic
+replace, and POSIX `0600` permissions for the final file. If replace fails, the previous auth file is
+left intact and the temp file is cleaned up.
+
+Keep the parent directory private and do not copy auth state into logs, examples, test fixtures, or
+container images.
 
 ## Passing Extra OpenAI Responses Settings
 
@@ -120,6 +151,7 @@ from codex_auth_helper import create_codex_responses_model
 
 model = create_codex_responses_model(
     "gpt-5.4",
+    instructions="You are a helpful coding assistant.",
     settings={
         "openai_reasoning_summary": "concise",
     },
@@ -177,6 +209,7 @@ This package is intentionally small and focused:
 
 - auth file parsing
 - token refresh
+- private, atomic auth state writes
 - Codex-specific OpenAI client wiring
 - `pydantic-ai` responses model factory
 - LangChain Responses-model factory
@@ -185,3 +218,4 @@ This package is intentionally small and focused:
 
 - [Helpers Overview](https://vcoderun.github.io/acpkit/helpers/)
 - [API Reference](https://vcoderun.github.io/acpkit/api/codex_auth_helper/)
+- [Security Guidance](https://vcoderun.github.io/acpkit/security/)

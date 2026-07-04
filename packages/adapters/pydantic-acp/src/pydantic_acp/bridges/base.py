@@ -2,7 +2,7 @@ from __future__ import annotations as _annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from acp.schema import McpCapabilities, ToolCallProgress, ToolCallStart, ToolCallStatus, ToolKind
 from pydantic_ai.capabilities import AbstractCapability
@@ -11,6 +11,9 @@ from pydantic_ai.settings import ModelSettings
 from ..agent_types import RuntimeAgent
 from ..providers import ConfigOption, ModeState
 from ..session.state import AcpSessionContext, JsonValue, SessionTranscriptUpdate
+
+if TYPE_CHECKING:
+    from ..projection import ProjectionMap
 
 __all__ = (
     "BufferedCapabilityBridge",
@@ -47,6 +50,9 @@ class CapabilityBridge:
     def get_mcp_capabilities(self, agent: RuntimeAgent | None = None) -> McpCapabilities | None:
         del agent
         return None
+
+    def get_projection_maps(self) -> tuple[ProjectionMap, ...]:
+        return ()
 
     def get_approval_policy_key(
         self,

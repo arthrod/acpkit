@@ -97,6 +97,7 @@ nav:
           - Models, Modes, and Slash Commands: pydantic-acp/runtime-controls.md
           - Plans, Thinking, and Approvals: pydantic-acp/plans-thinking-approvals.md
           - Prompt Resources and Context: pydantic-acp/prompt-resources.md
+          - Harness-backed Capabilities: pydantic-acp/harness-capabilities.md
           - Providers: providers.md
           - Bridges: bridges.md
           - Host Backends and Projections: host-backends.md
@@ -118,6 +119,8 @@ nav:
       - Compatibility Matrix Template: compatibility-matrix-template.md
       - Projection Cookbook: projection-cookbook.md
       - Integration Readiness: integration-readiness.md
+      - Production Deployment: production-deployment.md
+      - Security Guidance: security.md
   - Examples:
       - Overview: examples/index.md
       - Finance Agent: examples/finance.md
@@ -133,5 +136,9 @@ nav:
       - langchain_acp: api/langchain_acp.md
       - pydantic_acp: api/pydantic_acp.md
       - codex_auth_helper: api/codex_auth_helper.md
+  - Release Notes:
+      - ACP Kit 1.0.0: releases/acpkit-1.0.0.md
+  - Versioning: versioning.md
+  - Release Process: release-process.md
   - Testing: testing.md
   - About: about/index.md

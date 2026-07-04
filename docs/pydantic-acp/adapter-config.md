@@ -27,6 +27,8 @@ Use it to decide:
 | `approval_bridge` | `ApprovalBridge \| None` | Live ACP approval workflow |
 | `approval_state_provider` | `ApprovalStateProvider \| None` | Extra approval metadata exposed into session metadata |
 | `capability_bridges` | `Sequence[CapabilityBridge]` | ACP-visible runtime extensions |
+| `prompt_capabilities` | `AdapterPromptCapabilities` | ACP prompt capability advertisement for audio, image, and embedded context input |
+| `slash_command_provider` | `SlashCommandProvider \| None` | Extra host-defined slash commands exposed and handled by the adapter |
 | `session_store` | `SessionStore` | Backing store for ACP sessions |
 | `host_access_policy` | `HostAccessPolicy \| None` | Shared host file and terminal access policy for integrations that want one typed guardrail surface |
 | `projection_maps` | `Sequence[ProjectionMap]` | Richer tool rendering |
@@ -36,6 +38,30 @@ Use it to decide:
 | `enable_generic_tool_projection` | `bool` | Enables fallback tool projection |
 | `enable_model_config_option` | `bool` | Controls whether the model picker is mirrored as an ACP config option |
 | `replay_history_on_load` | `bool` | Replays transcript/message history when a session is loaded |
+
+## Prompt Capability Advertisement
+
+Use `AdapterPromptCapabilities` when the ACP client should see a narrower prompt input surface than the adapter can parse by default:
+
+```python
+from pydantic_acp import AdapterConfig, AdapterPromptCapabilities
+
+config = AdapterConfig(
+    prompt_capabilities=AdapterPromptCapabilities(
+        audio=False,
+        image=False,
+        embedded_context=False,
+    ),
+)
+```
+
+This changes ACP initialization metadata only. It does not rewrite prompt parsing rules.
+
+## Custom Slash Commands
+
+Use `slash_command_provider` when the host wants to advertise and handle application-specific slash commands without replacing the built-in `/model`, `/tools`, `/hooks`, `/mcp-servers`, or mode command behavior.
+
+Command names must be lowercase slash-compatible ids such as `diagnose` or `refresh-index`; they cannot collide with built-ins or active mode ids.
 
 ## A Practical Configuration
 

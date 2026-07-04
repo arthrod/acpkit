@@ -2,9 +2,15 @@
 
 [![CI](https://github.com/vcoderun/acpkit/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/vcoderun/acpkit/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/vcoderun/acpkit/branch/main/graph/badge.svg?token=ZQL4NY4FK6)](https://codecov.io/gh/vcoderun/acpkit) [![PyPI version](https://img.shields.io/pypi/v/acpkit.svg)](https://pypi.org/project/acpkit/) [![Python versions](https://img.shields.io/pypi/pyversions/acpkit.svg)](https://pypi.org/project/acpkit/) [![GitHub release](https://img.shields.io/github/v/release/vcoderun/acpkit)](https://github.com/vcoderun/acpkit/releases) [![License](https://img.shields.io/github/license/vcoderun/acpkit)](https://github.com/vcoderun/acpkit/blob/main/LICENSE)
 
+
 ACP Kit is the adapter toolkit and monorepo for exposing existing agent runtimes through ACP without inventing runtime features that are not really there.
 
-Today the repo ships two production-grade adapter families:
+> **ACP Kit v1:** `1.0.0` is the first stable release of the synchronized
+> adapter, helper, and transport packages. See the
+> [release notes](https://vcoderun.github.io/acpkit/releases/acpkit-1.0.0/)
+> and [versioning policy](https://vcoderun.github.io/acpkit/versioning/).
+
+Today the repo ships two maintained adapter families:
 
 - `pydantic-acp`
 - `langchain-acp`
@@ -36,7 +42,17 @@ ACP Kit is not a new agent framework. The intended workflow is:
 
 ## Installation
 
-Production:
+Every maintained integration:
+
+```bash
+uv add "acpkit[all]>=1.0.0,<2.0.0"
+```
+
+```bash
+pip install "acpkit[all]>=1.0.0,<2.0.0"
+```
+
+Latest stable Pydantic integration:
 
 ```bash
 uv add "acpkit[pydantic]"
@@ -97,6 +113,9 @@ pip install -e ".[dev,docs,pydantic,langchain]"
 ```
 
 Contributor setup and validation commands are documented in [CONTRIBUTING.md](https://github.com/vcoderun/acpkit/blob/main/CONTRIBUTING.md).
+
+Release validation and artifact smoke testing are documented in the
+[release process](https://vcoderun.github.io/acpkit/release-process/).
 
 ## Quickstart
 
@@ -183,11 +202,13 @@ acpkit launch -c "python3.11 finance_agent.py"
 
 `launch TARGET` and `launch --command ...` are mutually exclusive. `-p/--path` only applies to `TARGET` mode.
 
-`acpkit run` also resolves module-level LangChain and DeepAgents graphs:
+The maintained LangChain and DeepAgents examples export configured native ACP
+targets so their graph factories, sessions, modes, plans, and projections stay
+intact:
 
 ```bash
-acpkit run examples.langchain.workspace_graph:graph
-acpkit run examples.langchain.deepagents_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
+acpkit run examples.langchain.deepagents_graph:acp_agent
 ```
 
 If the module omits `:attribute`, `acpkit` selects the last defined supported target instance in that module, regardless of whether it is a Pydantic AI agent or a LangGraph graph.
@@ -195,8 +216,8 @@ If the module omits `:attribute`, `acpkit` selects the last defined supported ta
 Expose any supported target through the remote WebSocket transport:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.pydantic.finance_agent:acp_agent
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 If you already have a native ACP agent object, `acpkit run module:agent` can dispatch that directly too.
@@ -444,6 +465,8 @@ Top-level docs:
 - [LangChain ACP Overview](https://vcoderun.github.io/acpkit/langchain-acp/)
 - [Helpers](https://vcoderun.github.io/acpkit/helpers/)
 - [acpremote Overview](https://vcoderun.github.io/acpkit/acpremote/)
+- [Security Guidance](https://vcoderun.github.io/acpkit/security/)
+- [Production Deployment](https://vcoderun.github.io/acpkit/production-deployment/)
 - [AdapterConfig](https://vcoderun.github.io/acpkit/pydantic-acp/adapter-config/)
 - [Plans, Thinking, and Approvals](https://vcoderun.github.io/acpkit/pydantic-acp/plans-thinking-approvals/)
 - [Prompt Resources and Context](https://vcoderun.github.io/acpkit/pydantic-acp/prompt-resources/)

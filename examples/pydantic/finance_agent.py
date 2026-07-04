@@ -7,12 +7,13 @@ from typing import Any, Final
 
 from pydantic_acp import (
     AdapterConfig,
+    FileSessionStore,
     FileSystemProjectionMap,
-    MemorySessionStore,
     NativeApprovalBridge,
     PrepareToolsBridge,
     PrepareToolsMode,
     ThinkingBridge,
+    create_acp_agent,
     run_acp,
     truncate_text,
 )
@@ -22,7 +23,7 @@ from pydantic_ai import Agent
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import DeferredToolRequests, RunContext, ToolDefinition
 
-__all__ = ("FinancePlanPersistenceProvider", "agent", "config", "main")
+__all__ = ("FinancePlanPersistenceProvider", "acp_agent", "agent", "config", "main")
 
 _FINANCE_DIR_NAME: Final[str] = ".finance-agent"
 _NOTES_DIR_NAME: Final[str] = "notes"
@@ -32,6 +33,10 @@ _READ_NOTE_TOOL: Final[str] = "read_market_note"
 _WRITE_NOTE_TOOL: Final[str] = "save_market_note"
 _QUOTE_TOOL: Final[str] = "quote_symbol"
 _READ_PREVIEW_CHARS: Final[int] = 4000
+_SESSION_STORE_ROOT: Final[Path] = (
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    / "pydantic-finance"
+)
 _MUTATING_TOOLS: Final[frozenset[str]] = frozenset({_WRITE_NOTE_TOOL})
 _DEFAULT_FILES: Final[dict[str, str]] = {
     "watchlist.md": "# Finance Watchlist\n\n- NVDA\n- MSFT\n- AAPL\n",
@@ -217,7 +222,7 @@ def save_market_note(path: str, content: str) -> str:
 
 
 config = AdapterConfig(
-    session_store=MemorySessionStore(),
+    session_store=FileSessionStore(_SESSION_STORE_ROOT),
     capability_bridges=[
         ThinkingBridge(),
         PrepareToolsBridge(
@@ -256,8 +261,13 @@ config = AdapterConfig(
         )
     ],
 )
+acp_agent = create_acp_agent(agent=agent, config=config)
 
 
 def main() -> None:
     _ensure_finance_workspace(_finance_root(Path.cwd()))
     run_acp(agent=agent, config=config)
+
+
+if __name__ == "__main__":  # pragma: no cover
+    main()

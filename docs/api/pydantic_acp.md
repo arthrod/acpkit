@@ -16,6 +16,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.AdapterModel
 
+::: pydantic_acp.AdapterPromptCapabilities
+
 ::: pydantic_acp.AcpSessionContext
 
 ::: pydantic_acp.JsonValue
@@ -58,6 +60,14 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.ApprovalStateProvider
 
+::: pydantic_acp.ApprovalPolicy
+
+::: pydantic_acp.ApprovalPolicyStore
+
+::: pydantic_acp.SessionMetadataApprovalPolicyStore
+
+::: pydantic_acp.PermissionOptionSet
+
 ## Bridge Classes
 
 ::: pydantic_acp.CapabilityBridge
@@ -68,9 +78,17 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.PrepareToolsMode
 
+::: pydantic_acp.PrepareOutputToolsBridge
+
+::: pydantic_acp.PrepareOutputToolsMode
+
 ::: pydantic_acp.ThinkingBridge
 
 ::: pydantic_acp.HookBridge
+
+::: pydantic_acp.ExternalHookEventBridge
+
+::: pydantic_acp.EventEmissionMode
 
 ::: pydantic_acp.HistoryProcessorBridge
 
@@ -117,6 +135,36 @@ This page documents the public surface re-exported by `pydantic_acp`.
 ::: pydantic_acp.BuiltinToolProjectionMap
 
 ::: pydantic_acp.CompositeProjectionMap
+
+::: pydantic_acp.ProjectionAwareToolClassifier
+
+## Approval Presentation
+
+::: pydantic_acp.PermissionRequestContext
+
+::: pydantic_acp.PermissionToolCallBuilder
+
+::: pydantic_acp.DefaultPermissionToolCallBuilder
+
+::: pydantic_acp.NativeApprovalBridge
+
+::: pydantic_acp.ProjectionAwareApprovalBridge
+
+::: pydantic_acp.supports_projection_aware_approval_bridge
+
+## Slash Commands
+
+::: pydantic_acp.SlashCommandRequest
+
+::: pydantic_acp.SlashCommandResult
+
+::: pydantic_acp.SlashCommandProvider
+
+::: pydantic_acp.StaticSlashCommand
+
+::: pydantic_acp.StaticSlashCommandProvider
+
+::: pydantic_acp.SlashCommandHandler
 
 ## Projection Helpers
 

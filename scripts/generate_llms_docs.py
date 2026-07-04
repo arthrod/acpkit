@@ -76,7 +76,7 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="Core Docs",
         title="AdapterConfig",
-        summary="Field-by-field guide to runtime configuration, ownership, and adapter behavior.",
+        summary="Field-by-field guide to runtime configuration, prompt capabilities, ownership, and adapter behavior.",
         path="docs/pydantic-acp/adapter-config.md",
     ),
     DocPage(
@@ -88,13 +88,13 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="Core Docs",
         title="Models, Modes, and Slash Commands",
-        summary="Model selection, dynamic mode switching, thinking effort, and slash command semantics.",
+        summary="Model selection, dynamic mode switching, custom slash commands, thinking effort, and slash command semantics.",
         path="docs/pydantic-acp/runtime-controls.md",
     ),
     DocPage(
         section="Core Docs",
         title="Plans, Thinking, and Approvals",
-        summary="Native plan state, approval flows, cancellation, and thinking capability behavior.",
+        summary="Native plan state, approval flows, permission presentation, approval policy storage, cancellation, and thinking capability behavior.",
         path="docs/pydantic-acp/plans-thinking-approvals.md",
     ),
     DocPage(
@@ -106,19 +106,19 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="Core Docs",
         title="Providers",
-        summary="Host-owned models, modes, config, plan persistence, and approval metadata patterns.",
+        summary="Host-owned models, modes, config, plan persistence, approval metadata, and approval policy ownership patterns.",
         path="docs/providers.md",
     ),
     DocPage(
         section="Core Docs",
         title="Bridges",
-        summary="Capability bridges for prepare-tools, thinking, hooks, MCP metadata, and history processors.",
+        summary="Capability bridges for prepare-tools, thinking, hooks, external hook events, MCP metadata, and history processors.",
         path="docs/bridges.md",
     ),
     DocPage(
         section="Core Docs",
         title="Host Backends and Projections",
-        summary="Client-backed filesystem, terminal execution, and projection map rendering.",
+        summary="Client-backed filesystem, terminal execution, projection map rendering, search/list projection, and tool classification.",
         path="docs/host-backends.md",
     ),
     DocPage(
@@ -238,7 +238,7 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="API Reference",
         title="pydantic_acp API",
-        summary="API reference for the adapter package, session stores, providers, bridges, and helpers.",
+        summary="API reference for the adapter package, session stores, providers, bridges, approval policy/presentation seams, slash commands, projections, and helpers.",
         path="docs/api/pydantic_acp.md",
     ),
     DocPage(

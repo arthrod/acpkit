@@ -5,12 +5,15 @@ import importlib.util
 import runpy
 import sys
 from importlib.machinery import ModuleSpec
+from itertools import cycle
 from pathlib import Path
 from types import ModuleType, SimpleNamespace
 from typing import Any, NoReturn, cast
 
 import pytest
 from click.testing import CliRunner
+from langchain_core.language_models import GenericFakeChatModel
+from langchain_core.messages import AIMessage
 from pydantic_ai import Agent
 
 from acpkit import (
@@ -945,7 +948,10 @@ def test_target_resolution_reports_import_and_attribute_errors(
 
     monkeypatch.setattr("acpkit.runtime.importlib.import_module", fake_import_module)
 
-    with pytest.raises(AcpKitError, match="Could not import module `sample_import_broken`"):
+    with pytest.raises(
+        AcpKitError,
+        match="Could not import module `sample_import_broken`.*broken import",
+    ):
         load_target("sample_import_broken:agent")
 
     with pytest.raises(AcpKitError, match="missing attribute `missing`"):
@@ -1253,11 +1259,19 @@ def test_adapter_helpers_cover_langchain_and_acp_runner_paths(
 def test_workspace_graph_module_runs_as_main(monkeypatch: pytest.MonkeyPatch) -> None:
     observed: dict[str, Any] = {}
 
+    import codex_auth_helper
     import langchain_acp
 
     def fake_run_acp(*, graph_factory: Any, config: Any) -> None:
         observed["call"] = (graph_factory, config)
 
+    monkeypatch.setattr(
+        codex_auth_helper,
+        "create_codex_chat_openai",
+        lambda _model_name, **_kwargs: GenericFakeChatModel(
+            messages=cycle([AIMessage(content="codex-ready")])
+        ),
+    )
     monkeypatch.setattr(langchain_acp, "run_acp", fake_run_acp)
 
     runpy.run_module("examples.langchain.workspace_graph", run_name="__main__")
