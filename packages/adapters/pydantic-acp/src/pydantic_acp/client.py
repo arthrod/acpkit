@@ -2,9 +2,10 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import inspect
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, TypeAlias
 from uuid import uuid4
@@ -35,10 +36,12 @@ from pydantic_ai.messages import (
     AudioUrl,
     BinaryContent,
     DocumentUrl,
+    FinishReason,
     ImageUrl,
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    ModelResponseStreamEvent,
     RetryPromptPart,
     SystemPromptPart,
     TextContent,
@@ -51,7 +54,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.native_tools import AbstractNativeTool
-from pydantic_ai.profiles import ModelProfile
+from pydantic_ai.profiles import ModelProfile, ModelProfileSpec
 from pydantic_ai.providers import Provider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RequestUsage
@@ -96,14 +99,14 @@ class AcpHostBridge:
     """Minimal ACP host/client implementation used by :class:`AcpProvider`.
 
     ACP agents send their visible output to a connected ACP client via
-    ``session_update``.  Pydantic AI models, however, return a ``ModelResponse``.
+    ``session_update``. Pydantic AI models, however, return a ``ModelResponse``.
     This bridge is the seam between the two contracts: it records ACP updates so
     ``AcpModel`` can fold agent message chunks back into Pydantic AI response
     parts, while optionally delegating real host operations to an upstream ACP
     client supplied by the caller.
 
     The bridge intentionally does not emulate a filesystem, terminal, approval
-    UI, or extension namespace.  When an ACP agent asks for such host operations
+    UI, or extension namespace. When an ACP agent asks for such host operations
     and no delegate was supplied, the request fails explicitly instead of
     inventing host behavior that is not present.
     """
@@ -325,15 +328,15 @@ class _AcpPromptResult:
 class AcpProvider(Provider[AcpAgent]):
     """Pydantic AI v2 provider that treats an ACP agent as the model backend.
 
-    This is the inverse of the normal ``pydantic-acp`` server adapter.  The
-    server adapter exposes a ``pydantic_ai.Agent`` through ACP.  ``AcpProvider``
+    This is the inverse of the normal ``pydantic-acp`` server adapter. The
+    server adapter exposes a ``pydantic_ai.Agent`` through ACP. ``AcpProvider``
     consumes an existing ACP agent and makes it available to Pydantic AI as a
     provider/model pair, so application code can write ordinary Pydantic AI
     agents while delegating the underlying model turn to ACP.
 
     The provider owns ACP protocol/session setup, model selection handoff via
     ``set_session_model`` when the remote agent supports it, host/client update
-    capture, and prompt rendering.  It deliberately remains a provider rather
+    capture, and prompt rendering. It deliberately remains a provider rather
     than an alternate agent framework: Pydantic AI still owns the outer agent
     run, result validation, usage accumulation, and history shape.
     """
@@ -401,7 +404,7 @@ class AcpProvider(Provider[AcpAgent]):
         model_name: str = "agent",
         *,
         settings: ModelSettings | None = None,
-        profile: ModelProfile | None = None,
+        profile: ModelProfileSpec | None = None,
     ) -> AcpModel:
         """Build an ``AcpModel`` bound to this provider."""
         return AcpModel(
@@ -501,7 +504,7 @@ class AcpModel(Model[AcpAgent]):
         *,
         provider: AcpProvider,
         settings: ModelSettings | None = None,
-        profile: ModelProfile | None = None,
+        profile: ModelProfileSpec | None = None,
     ) -> None:
         self._model_name = model_name
         self._provider = provider
@@ -554,7 +557,7 @@ class AcpModel(Model[AcpAgent]):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
         run_context: Any | None = None,
-    ):
+    ) -> AsyncGenerator[StreamedResponse, None]:
         del run_context
         response = await self.request(messages, model_settings, model_request_parameters)
         yield _AcpBufferedStreamedResponse(
@@ -596,7 +599,7 @@ class _AcpBufferedStreamedResponse(StreamedResponse):
         self.provider_details = self.response.provider_details
         self.finish_reason = self.response.finish_reason
 
-    async def _get_event_iterator(self):
+    async def _get_event_iterator(self) -> AsyncGenerator[ModelResponseStreamEvent, None]:
         for part in self.response.parts:
             if not isinstance(part, TextPart):
                 continue
@@ -622,7 +625,7 @@ class _AcpBufferedStreamedResponse(StreamedResponse):
         return self.response.provider_url
 
     @property
-    def timestamp(self):
+    def timestamp(self) -> datetime:
         return self.response.timestamp
 
 
@@ -740,7 +743,7 @@ def _int_attr(value: Any, name: str) -> int:
     return int(raw_value)
 
 
-def _finish_reason_from_acp(stop_reason: str | None):
+def _finish_reason_from_acp(stop_reason: str | None) -> FinishReason:
     if stop_reason in (None, "end_turn", "stop"):
         return "stop"
     if stop_reason in ("max_tokens", "length"):
