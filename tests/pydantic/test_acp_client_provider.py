@@ -122,9 +122,9 @@ async def test_pydantic_ai_agent_can_use_acp_as_just_a_provider() -> None:
 
 def test_pydantic_acp_requires_pydantic_ai_v2() -> None:
     package_pyproject = Path("packages/adapters/pydantic-acp/pyproject.toml")
-    data = tomllib.loads(package_pyproject.read_text())
-    dependencies = data["project"]["dependencies"]
-    pydantic_ai_dependency = next(
+    data: dict[str, Any] = tomllib.loads(package_pyproject.read_text())
+    dependencies: list[str] = data["project"]["dependencies"]
+    pydantic_ai_dependency: str = next(
         dependency for dependency in dependencies if dependency.startswith("pydantic-ai-slim")
     )
 
