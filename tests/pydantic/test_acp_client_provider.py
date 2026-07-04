@@ -26,6 +26,7 @@ class EchoACPAgent:
         self.client: Any | None = None
         self.initialized_protocols: list[int] = []
         self.session_cwds: list[str] = []
+        self.session_models: list[tuple[str, str]] = []
         self.prompts: list[tuple[str, str]] = []
 
     def on_connect(self, conn: Any) -> None:
@@ -62,7 +63,8 @@ class EchoACPAgent:
         session_id: str,
         **kwargs: Any,
     ) -> None:
-        del model_id, session_id, kwargs
+        del kwargs
+        self.session_models.append((session_id, model_id))
 
     async def prompt(
         self,
@@ -78,7 +80,10 @@ class EchoACPAgent:
         self.prompts.append((session_id, rendered_prompt))
         await self.client.session_update(
             session_id=session_id,
-            update=AgentMessageChunk(content=text_block(f"acp echo: {rendered_prompt}")),
+            update=AgentMessageChunk(
+                session_update="agent_message_chunk",
+                content=text_block(f"acp echo: {rendered_prompt}"),
+            ),
             source="echo-acp-agent",
         )
         return PromptResponse(stop_reason="end_turn")
@@ -110,6 +115,7 @@ async def test_pydantic_ai_agent_can_use_acp_as_just_a_provider() -> None:
     assert "Summarize the ACP bridge" in result.output
     assert acp_agent.initialized_protocols == [PROTOCOL_VERSION]
     assert acp_agent.session_cwds == ["/workspace"]
+    assert acp_agent.session_models == [("session-1", "zed-agent")]
     assert len(acp_agent.prompts) == 1
     assert "Summarize the ACP bridge" in acp_agent.prompts[0][1]
 
