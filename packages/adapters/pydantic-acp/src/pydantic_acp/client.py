@@ -102,7 +102,7 @@ class _UnconfiguredACPClient:
 
 class _DirectACPConnection:
     def __init__(self, agent: ACPAgent, host_client: ACPProvider) -> None:
-        self._agent = agent
+        self._agent: ACPAgent = agent
         agent.on_connect(host_client)
 
     async def initialize(
@@ -177,17 +177,21 @@ class ACPProvider(Provider[ACPClientConnection]):
         permission_handler: PermissionHandler | None = None,
     ) -> None:
         self._client: ACPClientConnection = client or cast(ACPClientConnection, _UnconfiguredACPClient())
-        self._name = name
-        self._base_url = base_url
-        self._cwd = cwd
-        self._session_id = session_id
-        self._mcp_servers = list(mcp_servers) if mcp_servers is not None else None
-        self._client_capabilities = client_capabilities or ClientCapabilities()
-        self._client_info = client_info or Implementation(name="pydantic-acp", version="2")
-        self._protocol_version = protocol_version
-        self._permission_handler = permission_handler
-        self._initialized = False
-        self._lifecycle_lock = asyncio.Lock()
+        self._name: str = name
+        self._base_url: str = base_url
+        self._cwd: str = cwd
+        self._session_id: str | None = session_id
+        self._mcp_servers: list[ACPServerDefinition] | None = (
+            list(mcp_servers) if mcp_servers is not None else None
+        )
+        self._client_capabilities: ClientCapabilities = client_capabilities or ClientCapabilities()
+        self._client_info: Implementation = client_info or Implementation(
+            name="pydantic-acp", version="2"
+        )
+        self._protocol_version: int = protocol_version
+        self._permission_handler: PermissionHandler | None = permission_handler
+        self._initialized: bool = False
+        self._lifecycle_lock: asyncio.Lock = asyncio.Lock()
         self._prompt_locks: dict[str, asyncio.Lock] = {}
         self._active_text: dict[str, list[str]] = {}
         self._updates: list[tuple[str, Any, dict[str, Any]]] = []
@@ -320,7 +324,7 @@ class ACPProvider(Provider[ACPClientConnection]):
             raise PermissionError(
                 "ACPProvider cannot grant ACP tool permissions without a permission_handler."
             )
-        result = self._permission_handler(
+        result: Any | Awaitable[Any] = self._permission_handler(
             options=options,
             session_id=session_id,
             tool_call=tool_call,
@@ -356,9 +360,9 @@ class ACPModel(Model[ACPClientConnection]):
         profile: Any = None,
     ) -> None:
         super().__init__(settings=settings, profile=profile)
-        self._model_name = model_name
-        self._provider = provider
-        self._history_mode = history_mode
+        self._model_name: str = model_name
+        self._provider: ACPProvider = provider
+        self._history_mode: HistoryMode = history_mode
 
     @property
     def provider(self) -> ACPProvider:
