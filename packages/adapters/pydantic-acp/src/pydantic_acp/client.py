@@ -11,6 +11,7 @@ from typing import Any, TypeAlias
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
+from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
@@ -477,12 +478,19 @@ class AcpProvider(Provider[AcpAgent]):
             if self._current_model_name != model_name:
                 set_session_model = getattr(self._client, "set_session_model", None)
                 if set_session_model is not None:
-                    result = set_session_model(
-                        model_id=model_name,
-                        session_id=self._session_id,
-                    )
-                    if inspect.isawaitable(result):
-                        await result
+                    try:
+                        result = set_session_model(
+                            model_id=model_name,
+                            session_id=self._session_id,
+                        )
+                        if inspect.isawaitable(result):
+                            await result
+                    except RequestError as exc:
+                        # Some ACP servers do not implement session/set_model.
+                        # If the method is missing, assume the model was already
+                        # configured at session creation and continue.
+                        if exc.code != -32601 or (exc.data or {}).get("method") != "session/set_model":
+                            raise
                 self._current_model_name = model_name
 
             return self._session_id

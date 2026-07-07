@@ -6,6 +6,7 @@ from typing import Any
 
 import pytest
 from acp import PROTOCOL_VERSION
+from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.schema import (
     AgentCapabilities,
@@ -113,6 +114,19 @@ class EchoACPAgent:
         return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)
 
 
+class NoSetSessionModelACPAgent(EchoACPAgent):
+    """ACP agent that does not implement session/set_model."""
+
+    async def set_session_model(
+        self,
+        model_id: str,
+        session_id: str,
+        **kwargs: Any,
+    ) -> None:
+        del model_id, session_id, kwargs
+        raise RequestError.method_not_found("session/set_model")
+
+
 def test_acp_client_provider_is_plain_pydantic_ai_provider() -> None:
     acp_agent = EchoACPAgent()
     provider = AcpProvider(agent=acp_agent, cwd="/workspace")
@@ -142,6 +156,20 @@ async def test_pydantic_ai_agent_can_use_acp_as_just_a_provider() -> None:
     assert acp_agent.session_models == [("session-1", "zed-agent")]
     assert len(acp_agent.prompts) == 1
     assert "Summarize the ACP bridge" in acp_agent.prompts[0][1]
+
+
+async def test_acp_provider_ignores_missing_set_session_model_method() -> None:
+    acp_agent = NoSetSessionModelACPAgent()
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    model = AcpModel(model_name="zed-agent", provider=provider)
+    agent = Agent(model)
+
+    result = await agent.run("Summarize the ACP bridge")
+
+    assert "Summarize the ACP bridge" in result.output
+    assert acp_agent.initialized_protocols == [PROTOCOL_VERSION]
+    assert acp_agent.session_cwds == ["/workspace"]
+    assert len(acp_agent.prompts) == 1
 
 
 def test_pydantic_acp_requires_pydantic_ai_v2() -> None:
