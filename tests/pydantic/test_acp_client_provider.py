@@ -2,7 +2,7 @@ from __future__ import annotations as _annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pydantic_acp
 import pytest
@@ -544,7 +544,7 @@ async def test_host_bridge_on_connect_forwards_to_delegate_when_supported() -> N
     def on_connect_handler(conn: Any) -> None:
         connected.append(conn)
 
-    delegate.on_connect = on_connect_handler
+    delegate.on_connect: Callable[[Any], None] = on_connect_handler
 
     sentinel_agent = object()
     bridge.on_connect(sentinel_agent)

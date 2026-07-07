@@ -376,6 +376,8 @@ class AcpProvider(Provider[AcpAgent]):
     run, result validation, usage accumulation, and history shape.
     """
 
+    _history_mode: HistoryMode
+
     # -- overloads matching the OpenAIProvider pattern ----------------------
 
     @overload
@@ -490,9 +492,8 @@ class AcpProvider(Provider[AcpAgent]):
     def client(self) -> AcpAgent:
         return self._client
 
-    # FIX: instance method, not @staticmethod — matches the abstract base
-    # signature `def model_profile(self, model_name: str) -> ModelProfile | None`.
-    def model_profile(self, model_name: str) -> ModelProfile | None:
+    @staticmethod
+    def model_profile(model_name: str) -> ModelProfile | None:
         del model_name
         return ACP_MODEL_PROFILE
 
@@ -640,7 +641,7 @@ class AcpProvider(Provider[AcpAgent]):
 class AcpModel(Model[AcpAgent]):
     """Pydantic AI ``Model`` backed by an ACP agent provider."""
 
-    _provider: AcpProvider
+    _provider: Provider[AcpAgent]
 
     def __init__(
         self,
@@ -682,8 +683,9 @@ class AcpModel(Model[AcpAgent]):
         )
         del model_settings
         self._ensure_supported_request(model_request_parameters)
-        prompt = await self._provider.render_prompt_blocks(messages, model_request_parameters)
-        acp_result = await self._provider.request_prompt(
+        provider = cast(AcpProvider, self._provider)
+        prompt = await provider.render_prompt_blocks(messages, model_request_parameters)
+        acp_result = await provider.request_prompt(
             model_name=self.model_name,
             prompt=prompt,
         )
