@@ -103,6 +103,7 @@ This keeps ownership boundaries explicit:
 - Pydantic AI function tools are intentionally not executed directly by `AcpModel`; register tools on the ACP agent or expose host capabilities through ACP.
 
 Use this bridge when the thing you have is already an ACP agent and you want it to participate in code that expects a Pydantic AI provider/model. It is not another ACP server adapter and it does not replace `create_acp_agent(...)`.
+
 If you are using Codex-backed Pydantic models through `codex-auth-helper`, pass explicit
 instructions when building the model. That is the preferred seam for Codex-specific system behavior:
 
