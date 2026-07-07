@@ -47,7 +47,7 @@ from pydantic_ai.tools import ToolDefinition
 from .support import HostRecordingClient, RecordingClient
 
 
-class EchoACPAgent:
+class EchoACPAgent:  # type: ignore[misc]
     def __init__(self, *, stop_reason: str = "end_turn", usage: Usage | None = None) -> None:
         self.client: Any | None = None
         self.initialized_protocols: list[int] = []
@@ -120,7 +120,7 @@ class EchoACPAgent:
             ),
             source="echo-acp-agent",
         )
-        return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)
+        return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)  # type: ignore[arg-type]
 
 
 def _build_provider_and_model(
@@ -196,7 +196,7 @@ async def test_acp_provider_reuses_session_and_model_across_multiple_requests() 
 
 def test_acp_provider_model_factory_uses_default_model_name() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore[arg-type]
 
     model = provider.model()
 
@@ -345,13 +345,13 @@ async def test_acp_model_request_stream_yields_the_buffered_response_text() -> N
         final_response = streamed_response.get()
 
     assert len(final_response.parts) == 1
-    assert final_response.parts[0].content == "acp echo: stream this"
+    assert final_response.parts[0].content == "acp echo: stream this"  # type: ignore[union-attr]
     assert streamed_response.finish_reason == "stop"
 
 
 async def test_acp_provider_switches_session_model_when_model_name_changes() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore[arg-type]
     first_model = AcpModel(model_name="model-a", provider=provider)
     second_model = AcpModel(model_name="model-b", provider=provider)
 
@@ -370,7 +370,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
     mcp_servers = [{"name": "demo"}]
 
     provider = AcpProvider(
-        agent=acp_agent,
+        agent=acp_agent,  # type: ignore[arg-type]
         cwd="/workspace",
         client_capabilities=capabilities,
         client_info=client_info,
@@ -386,7 +386,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
 
 
 def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
-    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")
+    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")  # type: ignore[arg-type]
     assert provider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
 
 
@@ -394,7 +394,7 @@ def test_acp_model_supported_native_tools_is_empty() -> None:
     assert AcpModel.supported_native_tools() == frozenset()
 
 
-class NoHandshakeACPAgent:
+class NoHandshakeACPAgent:  # type: ignore[misc]
     """An ACP agent that never receives a reverse connection via ``on_connect``.
 
     This models an ACP agent implementation that does not implement the
@@ -536,11 +536,15 @@ async def test_host_bridge_delegates_request_permission_to_host_client() -> None
     assert response.outcome.option_id == "allow"
 
 
-async def test_host_bridge_on_connect_forwards_to_delegate_when_supported() -> None:
+async def test_host_bridge_on_connect_forwards_to_delegate_when_supported() -> None:  # type: ignore[misc]
     delegate = RecordingClient()
     bridge = AcpHostBridge(delegate=delegate)
     connected: list[Any] = []
-    delegate.on_connect = connected.append  # type: ignore[method-assign]
+
+    def on_connect_handler(conn: Any) -> None:
+        connected.append(conn)
+
+    delegate.on_connect = on_connect_handler
 
     sentinel_agent = object()
     bridge.on_connect(sentinel_agent)
@@ -789,7 +793,7 @@ async def test_host_bridge_usage_update_since_ignores_real_acp_usage_update_with
 async def test_acp_provider_forwards_host_client_delegate_updates_end_to_end() -> None:
     delegate = HostRecordingClient()
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)  # type: ignore[arg-type]
 
     assert provider.host.delegate is delegate
 

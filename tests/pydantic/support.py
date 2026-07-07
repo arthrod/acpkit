@@ -370,7 +370,7 @@ class RecordingClient:
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         raise AssertionError(f"unexpected extension notification: {method!r} {params!r}")
 
-    def on_connect(self, conn: AcpAgent) -> None:
+    def on_connect(self, conn: AcpAgent) -> None:  # type: ignore[misc]
         del conn
 
 

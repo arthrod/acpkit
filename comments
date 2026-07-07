@@ -1,7 +1,0 @@
-python -c "
-import inspect
-from acp import schema
-print(inspect.getsource(schema.SessionModelState))
-print(inspect.getsource(schema.SessionModeState))
-print(inspect.getsource(schema.NewSessionResponse))
-" 2>&1 | head -60
