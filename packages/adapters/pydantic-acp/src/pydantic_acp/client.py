@@ -801,10 +801,12 @@ def _default_render_prompt_blocks(
             text = _render_message(latest, include_role=False)
             if text.strip():
                 return [text_block(text)]
+    if not messages:
+        return []
     full_text = "\n\n".join(
         _render_message(message, include_role=True) for message in messages
     ).strip()
-    return [text_block(full_text)]
+    return [text_block(full_text)] if full_text else []
 
 
 def _latest_model_request(messages: Sequence[ModelMessage]) -> ModelMessage | None:

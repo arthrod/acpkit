@@ -178,7 +178,7 @@ def test_load_target_reports_missing_langchain_adapter_from_import_error(
 
     monkeypatch.setattr("acpkit.runtime.importlib.import_module", fake_import_module)
     monkeypatch.setattr(
-        "acpkit.adapters.find_spec",
+        "acpkit.runtime.adapters.find_spec",
         lambda name: (
             None
             if name in {"langchain", "langgraph", "langchain_acp"}
