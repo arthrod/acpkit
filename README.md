@@ -277,6 +277,32 @@ Host-facing utilities include:
 - `BlackBoxHarness` for ACP boundary integration tests
 - `CompatibilityManifest` for documenting the ACP surface an integration truly supports
 
+## ACP Client Provider Bridge
+
+`pydantic-acp` also includes the inverse bridge: an ACP agent can be consumed as a Pydantic AI v2 provider/model pair via `AcpProvider` and `AcpModel`.
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import AcpProvider
+
+# `remote_acp_agent` can be any object implementing the ACP Agent interface.
+provider = AcpProvider(agent=remote_acp_agent, cwd="/workspace")
+model = provider.model("zed-agent")
+agent = Agent(model)
+
+result = await agent.run("Summarize the current workspace state.")
+print(result.output)
+```
+
+This keeps ownership boundaries explicit:
+
+- Pydantic AI owns the outer agent run, output validation, and normal model/provider lifecycle.
+- ACP owns the delegated agent session, ACP-visible updates, and any editor or host capabilities requested by that agent.
+- `AcpHostBridge` records ACP `session_update` messages and can delegate filesystem, terminal, approval, and extension callbacks to a real ACP host client when one is supplied.
+- Pydantic AI function tools are intentionally not executed directly by `AcpModel`; register tools on the ACP agent or expose host capabilities through ACP.
+
+Use this bridge when the thing you have is already an ACP agent and you want it to participate in code that expects a Pydantic AI provider/model. It is not another ACP server adapter and it does not replace `create_acp_agent(...)`.
+
 ## What `langchain-acp` Supports
 
 `langchain-acp` keeps ACP Kit's adapter seams intact while staying graph-centric on the upstream side.
