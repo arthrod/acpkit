@@ -13,12 +13,17 @@ from acp.schema import (
     AgentCapabilities,
     AgentMessageChunk,
     AllowedOutcome,
+    AuthenticateResponse,
     ClientCapabilities,
+    CloseSessionResponse,
+    ForkSessionResponse,
     Implementation,
     InitializeResponse,
+    LoadSessionResponse,
     NewSessionResponse,
     PermissionOption,
     PromptResponse,
+    ResumeSessionResponse,
     ToolCallUpdate,
     Usage,
     UsageUpdate,
@@ -49,6 +54,7 @@ from .support import HostRecordingClient, RecordingClient
 
 
 class EchoACPAgent:  # type: ignore[misc]
+    """Minimal ACP agent test double that doesn't implement the full protocol."""
     def __init__(
         self,
         *,
@@ -69,12 +75,45 @@ class EchoACPAgent:  # type: ignore[misc]
     def on_connect(self, conn: Any) -> None:
         self.client = conn
 
-    async def authenticate(self, method_id: str, **kwargs: Any) -> Any:
+    async def authenticate(self, method_id: str, **kwargs: Any) -> AuthenticateResponse | None:
         del method_id, kwargs
         return None
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        del cwd, session_id, mcp_servers, kwargs
+
+    async def close_session(self, session_id: str, **kwargs: Any) -> CloseSessionResponse | None:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        del method, params
+        return {}
+
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        del method, params
+
+    async def fork_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> ForkSessionResponse:
+        del cwd, session_id, mcp_servers, kwargs
+        return ForkSessionResponse(session_id="forked-session")
+
+    async def list_sessions(self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any) -> Any:
+        del cursor, cwd, kwargs
+        return None
+
+    async def load_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> LoadSessionResponse | None:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def resume_session(self, session_id: str, **kwargs: Any) -> Any:
         del session_id, kwargs
+        return None
+
+    async def set_config_option(self, config_id: str, value: Any, session_id: str, **kwargs: Any) -> None:
+        del config_id, value, session_id, kwargs
+
+    async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
+        del mode_id, session_id, kwargs
 
     async def initialize(
         self,
@@ -400,7 +439,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
 
 
 def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
-    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")  # type: ignore[arg-type]
+    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")
     assert provider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
 
 
@@ -409,7 +448,7 @@ def test_acp_model_supported_native_tools_is_empty() -> None:
 
 
 class NoHandshakeACPAgent:  # type: ignore[misc]
-    """An ACP agent that never receives a reverse connection via ``on_connect``.
+    """Minimal ACP agent test double that doesn't implement the full protocol.
 
     This models an ACP agent implementation that does not implement the
     optional ``on_connect`` hook. ``AcpProvider`` must still be constructible
@@ -417,12 +456,45 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
     model response carries no text.
     """
 
-    async def authenticate(self, method_id: str, **kwargs: Any) -> Any:
+    async def authenticate(self, method_id: str, **kwargs: Any) -> AuthenticateResponse | None:
         del method_id, kwargs
         return None
 
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        del cwd, session_id, mcp_servers, kwargs
+
+    async def close_session(self, session_id: str, **kwargs: Any) -> CloseSessionResponse | None:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        del method, params
+        return {}
+
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        del method, params
+
+    async def fork_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> ForkSessionResponse:
+        del cwd, session_id, mcp_servers, kwargs
+        return ForkSessionResponse(session_id="forked-session")
+
+    async def list_sessions(self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any) -> Any:
+        del cursor, cwd, kwargs
+        return None
+
+    async def load_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> LoadSessionResponse | None:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def resume_session(self, session_id: str, **kwargs: Any) -> Any:
         del session_id, kwargs
+        return None
+
+    async def set_config_option(self, config_id: str, value: Any, session_id: str, **kwargs: Any) -> None:
+        del config_id, value, session_id, kwargs
+
+    async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
+        del mode_id, session_id, kwargs
 
     async def initialize(self, protocol_version: int, **kwargs: Any) -> InitializeResponse:
         del kwargs
@@ -814,7 +886,7 @@ async def test_host_bridge_usage_update_since_ignores_real_acp_usage_update_with
 async def test_acp_provider_forwards_host_client_delegate_updates_end_to_end() -> None:
     delegate = HostRecordingClient()
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)  # type: ignore[arg-type]
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)
 
     assert provider.host.delegate is delegate
 
