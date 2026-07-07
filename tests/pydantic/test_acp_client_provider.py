@@ -28,8 +28,10 @@ from pydantic_ai.messages import (
     BinaryContent,
     ImageUrl,
     ModelRequest,
+    ModelResponse,
     RetryPromptPart,
     SystemPromptPart,
+    TextPart,
     ToolReturnPart,
     UploadedFile,
     UserPromptPart,
@@ -52,6 +54,9 @@ class EchoACPAgent:
         self.prompts: list[tuple[str, str]] = []
         self.stop_reason = stop_reason
         self.usage = usage
+        self.client_capabilities: ClientCapabilities | None = None
+        self.client_info: Implementation | None = None
+        self.mcp_servers_seen: list[list[Any] | None] = []
 
     def on_connect(self, conn: Any) -> None:
         self.client = conn
@@ -63,8 +68,10 @@ class EchoACPAgent:
         client_info: Implementation | None = None,
         **kwargs: Any,
     ) -> InitializeResponse:
-        del client_capabilities, client_info, kwargs
+        del kwargs
         self.initialized_protocols.append(protocol_version)
+        self.client_capabilities = client_capabilities
+        self.client_info = client_info
         return InitializeResponse(
             protocol_version=protocol_version,
             agent_info=Implementation(name="echo-acp-agent", version="test"),
@@ -77,8 +84,9 @@ class EchoACPAgent:
         mcp_servers: list[Any] | None = None,
         **kwargs: Any,
     ) -> NewSessionResponse:
-        del mcp_servers, kwargs
+        del kwargs
         self.session_cwds.append(cwd)
+        self.mcp_servers_seen.append(mcp_servers)
         return NewSessionResponse(session_id=f"session-{len(self.session_cwds)}")
 
     async def set_session_model(
@@ -338,6 +346,100 @@ async def test_acp_model_request_stream_yields_the_buffered_response_text() -> N
     assert streamed_response.finish_reason == "stop"
 
 
+async def test_acp_provider_switches_session_model_when_model_name_changes() -> None:
+    acp_agent = EchoACPAgent()
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    first_model = AcpModel(model_name="model-a", provider=provider)
+    second_model = AcpModel(model_name="model-b", provider=provider)
+
+    await Agent(first_model).run("first turn")
+    await Agent(second_model).run("second turn")
+
+    # The ACP session is created once and reused; only the model selection changes.
+    assert acp_agent.session_cwds == ["/workspace"]
+    assert acp_agent.session_models == [("session-1", "model-a"), ("session-1", "model-b")]
+
+
+async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() -> None:
+    acp_agent = EchoACPAgent()
+    capabilities = ClientCapabilities()
+    client_info = Implementation(name="custom-client", version="9.9.9")
+    mcp_servers = [{"name": "demo"}]
+
+    provider = AcpProvider(
+        agent=acp_agent,
+        cwd="/workspace",
+        client_capabilities=capabilities,
+        client_info=client_info,
+        mcp_servers=mcp_servers,
+    )
+    model = AcpModel(model_name="zed-agent", provider=provider)
+
+    await Agent(model).run("hello")
+
+    assert acp_agent.client_capabilities is capabilities
+    assert acp_agent.client_info is client_info
+    assert acp_agent.mcp_servers_seen == [mcp_servers]
+
+
+def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
+    assert AcpProvider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
+
+
+def test_acp_model_supported_native_tools_is_empty() -> None:
+    assert AcpModel.supported_native_tools() == frozenset()
+
+
+class NoHandshakeACPAgent:
+    """An ACP agent that never receives a reverse connection via ``on_connect``.
+
+    This models an ACP agent implementation that does not implement the
+    optional ``on_connect`` hook. ``AcpProvider`` must still be constructible
+    and usable; the agent simply never observes host updates, so the resulting
+    model response carries no text.
+    """
+
+    async def initialize(self, protocol_version: int, **kwargs: Any) -> InitializeResponse:
+        del kwargs
+        return InitializeResponse(
+            protocol_version=protocol_version,
+            agent_info=Implementation(name="no-handshake-agent", version="test"),
+            agent_capabilities=AgentCapabilities(),
+        )
+
+    async def new_session(
+        self, cwd: str, mcp_servers: list[Any] | None = None, **kwargs: Any
+    ) -> NewSessionResponse:
+        del cwd, mcp_servers, kwargs
+        return NewSessionResponse(session_id="session-1")
+
+    async def prompt(
+        self,
+        prompt: list[Any],
+        session_id: str,
+        message_id: str | None = None,
+        **kwargs: Any,
+    ) -> PromptResponse:
+        del prompt, session_id, message_id, kwargs
+        return PromptResponse(stop_reason="end_turn")
+
+
+async def test_acp_provider_does_not_require_the_agent_to_support_on_connect() -> None:
+    acp_agent = NoHandshakeACPAgent()
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    model = AcpModel(model_name="agent", provider=provider)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("hello")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert response.parts == []
+    assert response.finish_reason == "stop"
+    assert response.provider_details == {"acp_session_id": "session-1"}
+
+
 # --- AcpHostBridge behavior (changed code) -------------------------------------------
 
 
@@ -439,6 +541,53 @@ async def test_host_bridge_on_connect_forwards_to_delegate_when_supported() -> N
     assert connected == [sentinel_agent]
 
 
+async def test_host_bridge_delegates_terminal_lifecycle_calls_to_host_client() -> None:
+    delegate = HostRecordingClient()
+    bridge = AcpHostBridge(delegate=delegate)
+
+    output = await bridge.terminal_output(session_id="session-1", terminal_id="terminal-1")
+    release = await bridge.release_terminal(session_id="session-1", terminal_id="terminal-1")
+    wait = await bridge.wait_for_terminal_exit(session_id="session-1", terminal_id="terminal-1")
+    kill = await bridge.kill_terminal(session_id="session-1", terminal_id="terminal-1")
+
+    assert output.output == "terminal-output"
+    assert release is delegate.release_response
+    assert wait.exit_code == 0
+    assert kill is delegate.kill_response
+    assert delegate.output_calls == [("session-1", "terminal-1")]
+    assert delegate.release_calls == [("session-1", "terminal-1")]
+    assert delegate.wait_calls == [("session-1", "terminal-1")]
+    assert delegate.kill_calls == [("session-1", "terminal-1")]
+
+
+class ExtensionRecordingClient(RecordingClient):
+    """A host client double that actually answers ACP extension calls."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.ext_method_calls: list[tuple[str, dict[str, Any]]] = []
+        self.ext_notification_calls: list[tuple[str, dict[str, Any]]] = []
+
+    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        self.ext_method_calls.append((method, params))
+        return {"ok": True}
+
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        self.ext_notification_calls.append((method, params))
+
+
+async def test_host_bridge_delegates_extension_calls_to_host_client() -> None:
+    delegate = ExtensionRecordingClient()
+    bridge = AcpHostBridge(delegate=delegate)
+
+    result = await bridge.ext_method(method="custom/thing", params={"x": 1})
+    await bridge.ext_notification(method="custom/notify", params={"y": 2})
+
+    assert result == {"ok": True}
+    assert delegate.ext_method_calls == [("custom/thing", {"x": 1})]
+    assert delegate.ext_notification_calls == [("custom/notify", {"y": 2})]
+
+
 # --- Pure helper functions (changed code) --------------------------------------------
 
 
@@ -508,6 +657,29 @@ def test_default_render_prompt_blocks_covers_media_user_content() -> None:
     assert "[image-url:https://example.com/x.png]" in rendered
     assert "[binary:text/plain:3 bytes]" in rendered
     assert "[uploaded-file:openai:file-1]" in rendered
+
+
+def test_default_render_prompt_blocks_falls_back_to_message_text_without_a_request() -> None:
+    # No `ModelRequest` is present, so rendering must fall back to `message.text`
+    # instead of the request-part renderer.
+    response = ModelResponse(parts=[TextPart("previous turn output")])
+
+    blocks = client_module._default_render_prompt_blocks([response], ModelRequestParameters())
+
+    assert len(blocks) == 1
+    assert blocks[0].text == "previous turn output"
+
+
+def test_default_render_prompt_blocks_returns_nothing_for_empty_messages() -> None:
+    assert client_module._default_render_prompt_blocks([], ModelRequestParameters()) == []
+
+
+def test_is_agent_message_chunk_supports_duck_typed_updates() -> None:
+    class FakeChunkLike:
+        session_update = "agent_message_chunk"
+
+    assert client_module._is_agent_message_chunk(FakeChunkLike()) is True
+    assert client_module._is_agent_message_chunk(object()) is False
 
 
 # --- Prior (pre-existing) server adapter behavior path --------------------------------
