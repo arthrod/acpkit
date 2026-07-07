@@ -6,9 +6,9 @@ from pathlib import Path
 import pytest
 
 
-def _load_pydantic_test_script():
-    module_path = Path(__file__).resolve().parents[1] / "pydantic_test.py"
-    spec = importlib.util.spec_from_file_location("pydantic_test_script", module_path)
+def _load_probe_prompt_script():
+    module_path = Path(__file__).resolve().parents[1] / "probe_prompt.py"
+    spec = importlib.util.spec_from_file_location("probe_prompt_script", module_path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -16,58 +16,18 @@ def _load_pydantic_test_script():
     return module
 
 
-script = _load_pydantic_test_script()
+script = _load_probe_prompt_script()
 
 
-@pytest.fixture
-def changelog_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    path = tmp_path / "pydantic_test_changelog.md"
-    monkeypatch.setattr(script, "CHANGELOG", path)
-    return path
+def test_module_defines_expected_model_id_and_workspace() -> None:
+    assert script.MODEL_ID == "MiniMax-M2.7"
+    assert isinstance(script.WORKSPACE, Path)
 
 
-def test_append_changelog_creates_file_with_header_on_first_write(changelog_path: Path) -> None:
-    assert not changelog_path.exists()
+def test_module_patches_acp_utils_validate_model_with_pi_compat_validate() -> None:
+    import acp.utils as acp_utils
 
-    script.append_changelog(1, "What is the capital of France?", "Paris")
-
-    content = changelog_path.read_text(encoding="utf-8")
-    assert content.startswith("# pydantic_test changelog\n\n")
-    assert "run 1" in content
-    assert "**Prompt:** What is the capital of France?" in content
-    assert "**Response:** Paris" in content
-
-
-def test_append_changelog_does_not_repeat_header_on_subsequent_writes(changelog_path: Path) -> None:
-    script.append_changelog(1, "first prompt", "first response")
-    script.append_changelog(2, "second prompt", "second response")
-
-    content = changelog_path.read_text(encoding="utf-8")
-
-    assert content.count("# pydantic_test changelog") == 1
-    assert "run 1" in content
-    assert "run 2" in content
-    assert "**Prompt:** first prompt" in content
-    assert "**Prompt:** second prompt" in content
-    assert content.index("run 1") < content.index("run 2")
-
-
-def test_append_changelog_preserves_existing_content_across_calls(changelog_path: Path) -> None:
-    changelog_path.write_text("# pydantic_test changelog\n\nexisting entry\n\n", encoding="utf-8")
-
-    script.append_changelog(3, "third prompt", "third response")
-
-    content = changelog_path.read_text(encoding="utf-8")
-    assert content.count("# pydantic_test changelog") == 1
-    assert "existing entry" in content
-    assert "run 3" in content
-
-
-def test_prompts_list_and_workspace_paths_are_defined() -> None:
-    assert len(script.PROMPTS) == 3
-    assert all(isinstance(prompt, str) and prompt for prompt in script.PROMPTS)
-    assert script.CHANGELOG.name == "pydantic_test_changelog.md"
-    assert script.CHANGELOG.parent == script.WORKSPACE
+    assert acp_utils.validate_model is script._pi_compat_validate
 
 
 # --- `_pi_compat_validate` (pi -> acp==0.9.0 NewSessionResponse payload shim) --------
@@ -205,9 +165,3 @@ def test_pi_compat_validate_forwards_return_value_from_original_validator(
     result = script._pi_compat_validate({"models": []}, _FakeNewSessionResponseType())
 
     assert result is sentinel
-
-
-def test_module_patches_acp_utils_validate_model_with_pi_compat_validate() -> None:
-    import acp.utils as acp_utils
-
-    assert acp_utils.validate_model is script._pi_compat_validate
