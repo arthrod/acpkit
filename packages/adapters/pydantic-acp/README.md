@@ -384,11 +384,10 @@ Focused docs recipes:
 
 ## Compatibility Policy
 
-`pydantic-acp` requires `pydantic-ai-slim>=2.0.0,<3`.
-
-The ACP client provider bridge depends on the Pydantic AI v2 `Provider` and `Model` contracts. Upgrades across major Pydantic AI versions should be deliberate because the adapter exposes both server-side ACP translation and client-side ACP provider integration.
 `pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
 no longer supported.
+
+The ACP client provider bridge depends on the Pydantic AI v2 `Provider` and `Model` contracts. Upgrades across major Pydantic AI versions should be deliberate because the adapter exposes both server-side ACP translation and client-side ACP provider integration.
 
 Every supported minor is exercised by the repository's runtime and type-check
 compatibility matrix. The adapter keeps upstream compatibility behind ACP Kit's
