@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import acp.utils as _acp_utils
-from acpremote import connect_acp
+from acpremote import CommandOptions, connect_acp, serve_stdio_command
 from pydantic_ai import Agent
 from pydantic_acp import AcpProvider
 
@@ -12,7 +12,7 @@ from pydantic_acp import AcpProvider
 #   "gemini-2.5-pro" / "gemini-3-pro-preview" / "gemini-2.5-flash"  (google-gemini-cli, needs `pi login` gemini)
 #   "claude-sonnet-4-5" / "gemini-3-flash"                          (google-antigravity, needs `pi login` antigravity)
 #   "gpt-5.2-codex" / "gpt-5.1"                                     (openai-codex, needs `pi login` codex — token currently expired)
-MODEL_ID = "MiniMax-M3"
+MODEL_ID = "minimax/MiniMax-M3"
 PROVIDER_ID = "minimax"
 WORKSPACE = Path(__file__).parent
 CHANGELOG = WORKSPACE / "pydantic_test_changelog.md"
@@ -64,26 +64,44 @@ def append_changelog(iteration: int, prompt: str, response: str) -> None:
 
 
 async def main() -> None:
-    print("Connecting to ACP server...")
-    remote_agent = connect_acp("ws://127.0.0.1:4566/acp/ws")
-    print("Connected, creating provider...")
-    provider = AcpProvider(agent=remote_agent, cwd=str(WORKSPACE))
-    print("Getting model...")
-    model = provider.model(MODEL_ID)
-    print("Creating agent...")
-    agent = Agent(model)
-    print("Agent created successfully")
+    # Start pi-acp as a stdio command and expose it over WebSocket
+    print("Starting pi-acp server...")
+    command_opts = CommandOptions(command=("pi-acp",), cwd=str(WORKSPACE))
+    server = await serve_stdio_command(
+        command_options=command_opts,
+        host="127.0.0.1",
+        port=0,  # Let OS assign a free port
+    )
+    sockets = list(server.sockets)
+    port = sockets[0].getsockname()[1]
+    ws_url = f"ws://127.0.0.1:{port}/acp/ws"
+    print(f"pi-acp server started on {ws_url}")
 
     try:
-        print("Testing single prompt...")
-        print("Calling agent.run...")
-        result = await asyncio.wait_for(agent.run("Say hello"), timeout=10)
-        print(f"Result: {result.output}")
-    except TimeoutError:
-        print("ERROR: agent.run timed out after 10 seconds")
+        print("Connecting to ACP server...")
+        remote_agent = connect_acp(ws_url)
+        print("Connected, creating provider...")
+        provider = AcpProvider(agent=remote_agent, cwd=str(WORKSPACE))
+        print("Getting model...")
+        model = provider.model(MODEL_ID)
+        print("Creating agent...")
+        agent = Agent(model)
+        print("Agent created successfully")
+
+        try:
+            print("Testing single prompt...")
+            print("Calling agent.run...")
+            result = await asyncio.wait_for(agent.run("Say hello"), timeout=100)
+            print(f"Result: {result.output}")
+        except TimeoutError:
+            print("ERROR: agent.run timed out after 100 seconds")
+        finally:
+            print("Closing connection...")
+            await remote_agent.close()
     finally:
-        print("Closing connection...")
-        await remote_agent.close()
+        print("Closing server...")
+        server.close()
+        await server.wait_closed()
 
 
 if __name__ == "__main__":
