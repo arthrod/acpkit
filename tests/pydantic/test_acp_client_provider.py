@@ -121,10 +121,22 @@ class EchoACPAgent:
         return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)
 
 
+def _build_provider_and_model(
+    agent: Any,
+    *,
+    model_name: str = "zed-agent",
+    cwd: str = "/workspace",
+    prompt_renderer: Any = None,
+) -> tuple[AcpProvider, AcpModel]:
+    """Construct an ``AcpProvider``/``AcpModel`` pair with this file's shared test defaults."""
+    provider = AcpProvider(agent=agent, cwd=cwd, prompt_renderer=prompt_renderer)
+    model = AcpModel(model_name=model_name, provider=provider)
+    return provider, model
+
+
 def test_acp_client_provider_is_plain_pydantic_ai_provider() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    provider, model = _build_provider_and_model(acp_agent)
 
     assert isinstance(provider, Provider)
     assert provider.client is acp_agent
@@ -138,8 +150,7 @@ def test_acp_client_provider_is_plain_pydantic_ai_provider() -> None:
 
 async def test_pydantic_ai_agent_can_use_acp_as_just_a_provider() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
     agent = Agent(model)
 
     result = await agent.run("Summarize the ACP bridge")
@@ -169,8 +180,7 @@ def test_pydantic_acp_requires_pydantic_ai_v2() -> None:
 
 async def test_acp_provider_reuses_session_and_model_across_multiple_requests() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
     agent = Agent(model)
 
     await agent.run("first turn")
@@ -201,8 +211,7 @@ async def test_acp_provider_custom_prompt_renderer_is_used_instead_of_default() 
         seen_message_counts.append(len(messages))
         return [text_block("rendered by custom renderer")]
 
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace", prompt_renderer=render)
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent, prompt_renderer=render)
     agent = Agent(model)
 
     result = await agent.run("ignored by custom renderer")
@@ -219,8 +228,7 @@ async def test_acp_provider_custom_prompt_renderer_supports_async_callables() ->
         del messages, params
         return [text_block("rendered async")]
 
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace", prompt_renderer=render)
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent, prompt_renderer=render)
     agent = Agent(model)
 
     await agent.run("ignored")
@@ -239,8 +247,7 @@ async def test_acp_provider_prefers_prompt_response_usage_over_host_updates() ->
             total_tokens=24,
         )
     )
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
     agent = Agent(model)
 
     result = await agent.run("count my tokens")
@@ -267,8 +274,7 @@ async def test_acp_provider_maps_acp_stop_reasons_to_finish_reasons(
     stop_reason: str, expected_finish_reason: str
 ) -> None:
     acp_agent = EchoACPAgent(stop_reason=stop_reason)
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
 
     response = await model.request(
         [ModelRequest(parts=[UserPromptPart("hello")])],
@@ -282,8 +288,7 @@ async def test_acp_provider_maps_acp_stop_reasons_to_finish_reasons(
 
 async def test_acp_model_rejects_function_tools() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
 
     with pytest.raises(UserError, match="function tools"):
         await model.request(
@@ -299,8 +304,7 @@ async def test_acp_model_rejects_native_tools() -> None:
     # `Model.prepare_request` rejects the native tool before AcpModel's own
     # `_ensure_supported_request` guard is ever reached.
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
 
     with pytest.raises(UserError, match="(?i)native tool"):
         await model.request(
@@ -313,8 +317,7 @@ async def test_acp_model_rejects_native_tools() -> None:
 
 async def test_acp_model_rejects_disallowed_text_output() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
 
     with pytest.raises(UserError, match="text-response provider bridge"):
         await model.request(
@@ -327,8 +330,7 @@ async def test_acp_model_rejects_disallowed_text_output() -> None:
 
 async def test_acp_model_request_stream_yields_the_buffered_response_text() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
+    _provider, model = _build_provider_and_model(acp_agent)
 
     async with model.request_stream(
         [ModelRequest(parts=[UserPromptPart("stream this")])],
@@ -718,8 +720,7 @@ async def test_prior_server_adapter_can_be_consumed_through_new_client_provider(
     inner_model = TestModel(custom_output_text="Hello from ACP")
     server_adapter = create_acp_agent(agent=Agent(inner_model))
 
-    provider = AcpProvider(agent=server_adapter, cwd="/workspace")
-    model = AcpModel(model_name=inner_model.model_name, provider=provider)
+    _provider, model = _build_provider_and_model(server_adapter, model_name=inner_model.model_name)
     outer_agent = Agent(model)
 
     result = await outer_agent.run("Ping the bridge")
