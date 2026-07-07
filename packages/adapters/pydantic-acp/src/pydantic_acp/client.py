@@ -6,7 +6,7 @@ from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Literal, TypeAlias, overload
+from typing import Any, Literal, TypeAlias, cast, overload
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
@@ -539,7 +539,7 @@ class AcpProvider(Provider[AcpAgent]):
         rendered = self._prompt_renderer(messages, model_request_parameters)
         if inspect.isawaitable(rendered):
             rendered = await rendered
-        return list(rendered)
+        return list(cast(Sequence[AgentPromptBlock], rendered))
 
     async def request_prompt(
         self,
@@ -628,8 +628,10 @@ class AcpProvider(Provider[AcpAgent]):
 # AcpModel
 # ---------------------------------------------------------------------------
 
-class AcpModel(Model):
+class AcpModel(Model[AcpAgent]):
     """Pydantic AI ``Model`` backed by an ACP agent provider."""
+
+    _provider: AcpProvider
 
     def __init__(
         self,
