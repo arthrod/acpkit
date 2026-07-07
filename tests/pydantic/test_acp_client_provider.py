@@ -1,12 +1,13 @@
 from __future__ import annotations as _annotations
 
+import asyncio
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from acp import PROTOCOL_VERSION
-from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.schema import (
     AgentCapabilities,
@@ -122,30 +123,42 @@ class EchoACPAgent:
         return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)
 
 
-class NoSetSessionModelACPAgent(EchoACPAgent):
-    """ACP agent that does not implement session/set_model."""
+class SlowSessionACPAgent(EchoACPAgent):
+    """An ``EchoACPAgent`` whose session creation is artificially delayed.
 
-    async def set_session_model(
+    Used to widen the concurrency window around :meth:`AcpProvider._ensure_session`
+    so a test can assert the session-creation lock actually serializes callers
+    instead of racing to create two ACP sessions.
+    """
+
+    async def new_session(
         self,
-        model_id: str,
-        session_id: str,
+        cwd: str,
+        mcp_servers: list[Any] | None = None,
         **kwargs: Any,
-    ) -> None:
-        del model_id, session_id, kwargs
-        raise RequestError.method_not_found("session/set_model")
+    ) -> NewSessionResponse:
+        await asyncio.sleep(0.01)
+        return await super().new_session(cwd, mcp_servers, **kwargs)
 
 
-class NoSetSessionModelMessageACPAgent(EchoACPAgent):
-    """ACP agent that returns the JSON-RPC message form of method-not-found."""
+class CamelCaseStopReasonACPAgent(EchoACPAgent):
+    """An ACP agent whose prompt response only exposes a camelCase ``stopReason``.
 
-    async def set_session_model(
+    Exercises the ``getattr(prompt_response, "stopReason", None)`` fallback in
+    ``AcpProvider.request_prompt`` for ACP agent implementations that return a
+    duck-typed response without the canonical snake_case attribute.
+    """
+
+    async def prompt(
         self,
-        model_id: str,
+        prompt: list[Any],
         session_id: str,
+        message_id: str | None = None,
         **kwargs: Any,
-    ) -> None:
-        del model_id, session_id, kwargs
-        raise RequestError(-32601, "Method not found: session/set_model")
+    ) -> Any:
+        del prompt, message_id, kwargs
+        self.prompts.append((session_id, ""))
+        return SimpleNamespace(stopReason="max_tokens", usage=None)
 
 
 def _build_provider_and_model(
@@ -188,34 +201,6 @@ async def test_pydantic_ai_agent_can_use_acp_as_just_a_provider() -> None:
     assert acp_agent.session_models == [("session-1", "zed-agent")]
     assert len(acp_agent.prompts) == 1
     assert "Summarize the ACP bridge" in acp_agent.prompts[0][1]
-
-
-async def test_acp_provider_ignores_missing_set_session_model_method() -> None:
-    acp_agent = NoSetSessionModelACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
-    agent = Agent(model)
-
-    result = await agent.run("Summarize the ACP bridge")
-
-    assert "Summarize the ACP bridge" in result.output
-    assert acp_agent.initialized_protocols == [PROTOCOL_VERSION]
-    assert acp_agent.session_cwds == ["/workspace"]
-    assert len(acp_agent.prompts) == 1
-
-
-async def test_acp_provider_ignores_missing_set_session_model_message() -> None:
-    acp_agent = NoSetSessionModelMessageACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
-    model = AcpModel(model_name="zed-agent", provider=provider)
-    agent = Agent(model)
-
-    result = await agent.run("Summarize the ACP bridge")
-
-    assert "Summarize the ACP bridge" in result.output
-    assert acp_agent.initialized_protocols == [PROTOCOL_VERSION]
-    assert acp_agent.session_cwds == ["/workspace"]
-    assert len(acp_agent.prompts) == 1
 
 
 def test_pydantic_acp_requires_pydantic_ai_v2() -> None:
@@ -437,6 +422,43 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
     assert acp_agent.mcp_servers_seen == [mcp_servers]
 
 
+async def test_acp_provider_falls_back_to_camel_case_stop_reason() -> None:
+    acp_agent = CamelCaseStopReasonACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("hello")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert response.finish_reason == "length"
+
+
+async def test_acp_provider_reports_empty_usage_when_agent_reports_none() -> None:
+    acp_agent = EchoACPAgent(usage=None)
+    _provider, model = _build_provider_and_model(acp_agent)
+    agent = Agent(model)
+
+    result = await agent.run("no usage info here")
+
+    assert not result.usage.has_values()
+
+
+async def test_acp_provider_serializes_session_creation_under_concurrent_requests() -> None:
+    acp_agent = SlowSessionACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+    agent = Agent(model)
+
+    await asyncio.gather(agent.run("first turn"), agent.run("second turn"))
+
+    # Both requests raced to create a session, but the lock in
+    # `AcpProvider._ensure_session` must ensure only one was actually created.
+    assert acp_agent.session_cwds == ["/workspace"]
+    assert len(acp_agent.prompts) == 2
+    assert {session_id for session_id, _ in acp_agent.prompts} == {"session-1"}
+
+
 def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
     assert AcpProvider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
 
@@ -527,6 +549,27 @@ async def test_host_bridge_forwards_session_update_to_delegate_when_present() ->
     assert delegate.updates == [("session-1", update)]
 
 
+async def test_host_bridge_records_the_source_kwarg_on_session_update() -> None:
+    bridge = AcpHostBridge()
+    update = AgentMessageChunk(session_update="agent_message_chunk", content=text_block("hi"))
+
+    await bridge.session_update(session_id="session-1", update=update, source="agent-x")
+
+    assert bridge.updates[0].source == "agent-x"
+
+
+async def test_host_bridge_session_update_records_locally_when_delegate_lacks_the_hook() -> None:
+    class DelegateWithoutSessionUpdate:
+        pass
+
+    bridge = AcpHostBridge(delegate=DelegateWithoutSessionUpdate())
+    update = AgentMessageChunk(session_update="agent_message_chunk", content=text_block("hi"))
+
+    await bridge.session_update(session_id="session-1", update=update)
+
+    assert bridge.updates[0].update is update
+
+
 @pytest.mark.parametrize(
     "call",
     [
@@ -552,6 +595,26 @@ async def test_host_bridge_ext_notification_is_a_noop_without_a_delegate() -> No
     bridge = AcpHostBridge()
 
     await bridge.ext_notification(method="custom/notify", params={})
+
+
+async def test_host_bridge_ext_notification_is_a_noop_when_delegate_lacks_the_hook() -> None:
+    class DelegateWithoutExtNotification:
+        pass
+
+    bridge = AcpHostBridge(delegate=DelegateWithoutExtNotification())
+
+    await bridge.ext_notification(method="custom/notify", params={})
+
+
+def test_host_bridge_on_connect_is_a_noop_without_a_delegate_or_hook() -> None:
+    bridge_without_delegate = AcpHostBridge()
+    bridge_without_delegate.on_connect(object())
+
+    class DelegateWithoutOnConnect:
+        pass
+
+    bridge_with_incompatible_delegate = AcpHostBridge(delegate=DelegateWithoutOnConnect())
+    bridge_with_incompatible_delegate.on_connect(object())
 
 
 async def test_host_bridge_delegates_filesystem_and_terminal_calls_to_host_client() -> None:
@@ -643,6 +706,32 @@ async def test_host_bridge_delegates_extension_calls_to_host_client() -> None:
     assert delegate.ext_notification_calls == [("custom/notify", {"y": 2})]
 
 
+def test_host_bridge_records_since_filters_by_index_and_session() -> None:
+    bridge = AcpHostBridge()
+    bridge.updates.append(AcpUpdateRecord(session_id="s1", update="u1"))
+    bridge.updates.append(AcpUpdateRecord(session_id="s2", update="u2"))
+    index = bridge.snapshot_index()
+    bridge.updates.append(AcpUpdateRecord(session_id="s1", update="u3"))
+
+    assert index == 2
+    assert [record.update for record in bridge.records_since(0)] == ["u1", "u2", "u3"]
+    assert [record.update for record in bridge.records_since(index)] == ["u3"]
+    assert [record.update for record in bridge.records_since(0, session_id="s1")] == ["u1", "u3"]
+
+
+def test_agent_message_text_since_ignores_non_agent_message_chunk_updates() -> None:
+    bridge = AcpHostBridge()
+    bridge.updates.append(AcpUpdateRecord(session_id="s1", update="not-a-chunk"))
+    bridge.updates.append(
+        AcpUpdateRecord(
+            session_id="s1",
+            update=AgentMessageChunk(session_update="agent_message_chunk", content=text_block("hello")),
+        )
+    )
+
+    assert bridge.agent_message_text_since(0, session_id="s1") == "hello"
+
+
 # --- Pure helper functions (changed code) --------------------------------------------
 
 
@@ -727,6 +816,28 @@ def test_default_render_prompt_blocks_falls_back_to_message_text_without_a_reque
 
 def test_default_render_prompt_blocks_returns_nothing_for_empty_messages() -> None:
     assert client_module._default_render_prompt_blocks([], ModelRequestParameters()) == []
+
+
+def test_render_tool_return_falls_back_to_tool_call_id_when_tool_name_is_empty() -> None:
+    part = ToolReturnPart(tool_name="", content="ok", tool_call_id="call-99")
+
+    rendered = client_module._render_tool_return(part)
+
+    assert "Tool result: call-99" in rendered
+
+
+def test_acp_buffered_streamed_response_falls_back_when_response_fields_are_missing() -> None:
+    response = ModelResponse(parts=[])
+
+    buffered = client_module._AcpBufferedStreamedResponse(
+        model_request_parameters=ModelRequestParameters(),
+        response=response,
+    )
+
+    assert buffered.model_name == "acp"
+    assert buffered.provider_name is None
+    assert buffered.provider_url is None
+    assert buffered.timestamp == response.timestamp
 
 
 def test_is_agent_message_chunk_supports_duck_typed_updates() -> None:
