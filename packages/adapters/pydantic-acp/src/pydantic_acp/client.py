@@ -80,21 +80,24 @@ class ACPClientConnection(Protocol):
     async def close_session(self, session_id: str, **kwargs: Any) -> Any: ...
 
 
+_UNCONFIGURED_CLIENT_ERROR = "ACPProvider has no ACP client connection configured."
+
+
 class _UnconfiguredACPClient:
     async def initialize(self, **_: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def new_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def prompt(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def cancel(self, *_: Any, **__: Any) -> None:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def close_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
 
 class _DirectACPConnection:
@@ -288,7 +291,7 @@ class ACPProvider(Provider[ACPClientConnection]):
                 streamed_text = "".join(self._active_text.get(session_id, ()))
                 if streamed_text:
                     return streamed_text
-                response_text = _extract_response_text(response)
+                response_text = _extract_text(response)
                 if response_text:
                     return response_text
                 return ""
@@ -302,7 +305,7 @@ class ACPProvider(Provider[ACPClientConnection]):
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self._updates.append((session_id, update, dict(kwargs)))
-        text = _extract_update_text(update)
+        text = _extract_text(update)
         if text:
             self._active_text.setdefault(session_id, []).append(text)
 
@@ -426,23 +429,16 @@ def _response_field(response: Any, *names: str) -> Any:
     return None
 
 
-def _extract_update_text(update: Any) -> str:
-    parts: list[str] = []
-    for candidate in _walk_text_candidates(update):
-        if isinstance(candidate, str):
-            parts.append(candidate)
-    return "".join(parts)
+_TEXT_FIELD_NAMES = ("text", "delta", "message", "output_text")
 
 
-def _extract_response_text(response: Any) -> str:
-    if response is None:
-        return ""
-    parts: list[str] = []
-    for name in ("text", "output_text", "content", "message"):
-        value = _response_field(response, name)
-        if isinstance(value, str):
-            parts.append(value)
-    return "".join(parts)
+def _extract_text(value: Any) -> str:
+    """Recursively collect text from an ACP response or session update.
+
+    Used both for the final `prompt` response and for streamed session-update
+    payloads, so text-bearing fields only need to be enumerated once.
+    """
+    return "".join(candidate for candidate in _walk_text_candidates(value) if isinstance(candidate, str))
 
 
 def _walk_text_candidates(value: Any) -> list[Any]:
@@ -459,11 +455,11 @@ def _walk_text_candidates(value: Any) -> list[Any]:
         return items
 
     candidates: list[Any] = []
-    content = getattr(value, "content", None)
+    content = _response_field(value, "content")
     if content is not None and content is not value:
         candidates.extend(_walk_text_candidates(content))
-    for name in ("text", "delta", "message", "output_text"):
-        attr = getattr(value, name, None)
+    for name in _TEXT_FIELD_NAMES:
+        attr = _response_field(value, name)
         if isinstance(attr, str):
             candidates.append(attr)
     return candidates
