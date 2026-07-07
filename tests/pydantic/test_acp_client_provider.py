@@ -2,12 +2,13 @@ from __future__ import annotations as _annotations
 
 import tomllib
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Literal, cast
 
 import pydantic_acp
 import pytest
 from acp import PROTOCOL_VERSION
 from acp.helpers import text_block
+from acp.interfaces import Agent as AcpAgent
 from acp.schema import (
     AgentCapabilities,
     AgentMessageChunk,
@@ -48,13 +49,18 @@ from .support import HostRecordingClient, RecordingClient
 
 
 class EchoACPAgent:  # type: ignore[misc]
-    def __init__(self, *, stop_reason: str = "end_turn", usage: Usage | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        stop_reason: Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"] = "end_turn",
+        usage: Usage | None = None,
+    ) -> None:
         self.client: Any | None = None
         self.initialized_protocols: list[int] = []
         self.session_cwds: list[str] = []
         self.session_models: list[tuple[str, str]] = []
         self.prompts: list[tuple[str, str]] = []
-        self.stop_reason = stop_reason
+        self.stop_reason: Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"] = stop_reason
         self.usage = usage
         self.client_capabilities: ClientCapabilities | None = None
         self.client_info: Implementation | None = None
@@ -62,6 +68,13 @@ class EchoACPAgent:  # type: ignore[misc]
 
     def on_connect(self, conn: Any) -> None:
         self.client = conn
+
+    async def authenticate(self, method_id: str, **kwargs: Any) -> Any:
+        del method_id, kwargs
+        return None
+
+    async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        del session_id, kwargs
 
     async def initialize(
         self,
@@ -120,7 +133,7 @@ class EchoACPAgent:  # type: ignore[misc]
             ),
             source="echo-acp-agent",
         )
-        return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)  # type: ignore[arg-type]
+        return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)
 
 
 def _build_provider_and_model(
@@ -276,7 +289,7 @@ async def test_acp_provider_maps_acp_stop_reasons_to_finish_reasons(
     stop_reason: str,
     expected_finish_reason: str,
 ) -> None:
-    acp_agent = EchoACPAgent(stop_reason=stop_reason)
+    acp_agent = EchoACPAgent(stop_reason=cast(Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"], stop_reason))
     _provider, model = _build_provider_and_model(acp_agent)
 
     response = await model.request(
@@ -345,7 +358,8 @@ async def test_acp_model_request_stream_yields_the_buffered_response_text() -> N
         final_response = streamed_response.get()
 
     assert len(final_response.parts) == 1
-    assert final_response.parts[0].content == "acp echo: stream this"  # type: ignore[union-attr]
+    assert isinstance(final_response.parts[0], TextPart)
+    assert final_response.parts[0].content == "acp echo: stream this"
     assert streamed_response.finish_reason == "stop"
 
 
@@ -403,6 +417,13 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
     model response carries no text.
     """
 
+    async def authenticate(self, method_id: str, **kwargs: Any) -> Any:
+        del method_id, kwargs
+        return None
+
+    async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        del session_id, kwargs
+
     async def initialize(self, protocol_version: int, **kwargs: Any) -> InitializeResponse:
         del kwargs
         return InitializeResponse(
@@ -428,7 +449,7 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
         **kwargs: Any,
     ) -> PromptResponse:
         del prompt, session_id, message_id, kwargs
-        return PromptResponse(stop_reason="end_turn")
+        return PromptResponse(stop_reason="end_turn")  # type: ignore[arg-type]
 
 
 async def test_acp_provider_does_not_require_the_agent_to_support_on_connect() -> None:
@@ -544,9 +565,9 @@ async def test_host_bridge_on_connect_forwards_to_delegate_when_supported() -> N
     def on_connect_handler(conn: Any) -> None:
         connected.append(conn)
 
-    delegate.on_connect: Callable[[Any], None] = on_connect_handler
+    cast(Any, delegate).on_connect = on_connect_handler
 
-    sentinel_agent = object()
+    sentinel_agent = cast(AcpAgent, object())
     bridge.on_connect(sentinel_agent)
 
     assert connected == [sentinel_agent]
