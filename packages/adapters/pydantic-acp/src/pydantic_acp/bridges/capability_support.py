@@ -480,7 +480,9 @@ class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None,
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return "execute" if tool_name in self.tool_names else None
@@ -538,7 +540,9 @@ class McpCapabilityBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None,
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return (
@@ -610,7 +614,9 @@ class PrefixToolsBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None,
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return "execute" if tool_name.startswith(f"{self.prefix}_") else None
@@ -833,7 +839,9 @@ class WebSearchBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None,
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["search"] | None:
         del raw_input
         return "search" if tool_name in self.tool_names else None
@@ -888,7 +896,9 @@ class WebFetchBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None,
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["fetch"] | None:
         del raw_input
         return "fetch" if tool_name in self.tool_names else None

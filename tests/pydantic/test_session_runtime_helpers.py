@@ -162,7 +162,9 @@ def test_set_session_model_covers_missing_state_and_unconfigured_selection(
 
     monkeypatch.setattr(runtime, "_get_model_selection_state", permissive_model_state)
     monkeypatch.setattr(
-        runtime, "_resolve_unconfigured_model_id", lambda model_id: model_id.strip(),
+        runtime,
+        "_resolve_unconfigured_model_id",
+        lambda model_id: model_id.strip(),
     )
     monkeypatch.setattr(runtime, "_remember_default_model", lambda _agent: None)
     monkeypatch.setattr(runtime, "_build_session_surface", fake_build_surface)
@@ -283,7 +285,10 @@ def test_session_runtime_misc_runtime_helpers_and_serialization(
     assert (
         asyncio.run(
             runtime._build_config_options(
-                stored_session, agent, model_selection_state=None, mode_state=None,
+                stored_session,
+                agent,
+                model_selection_state=None,
+                mode_state=None,
             ),
         )
         is None

@@ -75,7 +75,9 @@ class _SessionModelRuntime(Generic[AgentDepsT, OutputDataT]):
             normalized_argument = argument.strip().lower()
             if (
                 await self._runtime.set_config_option(
-                    "thinking", session.session_id, normalized_argument,
+                    "thinking",
+                    session.session_id,
+                    normalized_argument,
                 )
                 is None
             ):

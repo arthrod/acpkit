@@ -903,7 +903,8 @@ def test_list_agent_mcp_servers_handles_mcp_toolset() -> None:
         (
             SimpleNamespace(
                 transport=_make_named_transport(
-                    "StreamableHttpSseTransport", "https://example.com/sse",
+                    "StreamableHttpSseTransport",
+                    "https://example.com/sse",
                 ),
             ),
             "sse",

@@ -204,7 +204,8 @@ def test_prompt_projects_tool_calls(tmp_path: Path) -> None:
         return f"contents:{path}"
 
     adapter = create_acp_agent(
-        agent=agent, config=AdapterConfig(session_store=MemorySessionStore()),
+        agent=agent,
+        config=AdapterConfig(session_store=MemorySessionStore()),
     )
     client = RecordingClient()
     adapter.on_connect(client)

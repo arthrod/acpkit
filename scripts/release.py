@@ -365,12 +365,14 @@ def _parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--output-dir", type=Path, default=Path("dist"))
 
     smoke_parser = subparsers.add_parser(
-        "smoke", help="Install built artifacts in a clean environment.",
+        "smoke",
+        help="Install built artifacts in a clean environment.",
     )
     smoke_parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
 
     prepare_parser = subparsers.add_parser(
-        "prepare", help="Validate, build, and smoke test a tagged release.",
+        "prepare",
+        help="Validate, build, and smoke test a tagged release.",
     )
     prepare_parser.add_argument(
         "--tag",

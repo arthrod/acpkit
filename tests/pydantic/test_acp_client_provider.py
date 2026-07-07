@@ -273,7 +273,8 @@ async def test_acp_provider_prefers_prompt_response_usage_over_host_updates() ->
     ],
 )
 async def test_acp_provider_maps_acp_stop_reasons_to_finish_reasons(
-    stop_reason: str, expected_finish_reason: str,
+    stop_reason: str,
+    expected_finish_reason: str,
 ) -> None:
     acp_agent = EchoACPAgent(stop_reason=stop_reason)
     _provider, model = _build_provider_and_model(acp_agent)
@@ -410,7 +411,10 @@ class NoHandshakeACPAgent:
         )
 
     async def new_session(
-        self, cwd: str, mcp_servers: list[Any] | None = None, **kwargs: Any,
+        self,
+        cwd: str,
+        mcp_servers: list[Any] | None = None,
+        **kwargs: Any,
     ) -> NewSessionResponse:
         del cwd, mcp_servers, kwargs
         return NewSessionResponse(session_id="session-1")
@@ -482,7 +486,9 @@ async def test_host_bridge_forwards_session_update_to_delegate_when_present() ->
             session_id="session-1",
             tool_call=ToolCallUpdate(tool_call_id="call-1"),
         ),
-        lambda bridge: bridge.write_text_file(content="data", path="/tmp/f", session_id="session-1"),
+        lambda bridge: bridge.write_text_file(
+            content="data", path="/tmp/f", session_id="session-1"
+        ),
         lambda bridge: bridge.read_text_file(path="/tmp/f", session_id="session-1"),
         lambda bridge: bridge.create_terminal(command="ls", session_id="session-1"),
         lambda bridge: bridge.ext_method(method="custom/thing", params={}),
@@ -505,7 +511,9 @@ async def test_host_bridge_delegates_filesystem_and_terminal_calls_to_host_clien
     delegate = HostRecordingClient()
     bridge = AcpHostBridge(delegate=delegate)
 
-    write_response = await bridge.write_text_file(content="hello", path="/tmp/f", session_id="session-1")
+    write_response = await bridge.write_text_file(
+        content="hello", path="/tmp/f", session_id="session-1"
+    )
     read_response = await bridge.read_text_file(path="/tmp/f", session_id="session-1")
     terminal_response = await bridge.create_terminal(command="ls", session_id="session-1")
 
@@ -624,7 +632,9 @@ def test_default_render_prompt_blocks_covers_system_tool_and_retry_parts() -> No
             SystemPromptPart("Be terse."),
             UserPromptPart("What is the status?"),
             ToolReturnPart(tool_name="check_status", content="ok", tool_call_id="call-1"),
-            RetryPromptPart(content="please retry", tool_name="check_status", tool_call_id="call-1"),
+            RetryPromptPart(
+                content="please retry", tool_name="check_status", tool_call_id="call-1"
+            ),
         ],
     )
 
@@ -707,7 +717,9 @@ async def test_prior_server_adapter_direction_still_works_standalone() -> None:
     )
 
     assert prompt_response.stop_reason == "end_turn"
-    agent_updates = [update for _, update in client.updates if isinstance(update, AgentMessageChunk)]
+    agent_updates = [
+        update for _, update in client.updates if isinstance(update, AgentMessageChunk)
+    ]
     assert "".join(chunk.content.text for chunk in agent_updates) == "Hello from ACP"
 
 
@@ -755,7 +767,9 @@ async def test_host_bridge_records_since_scopes_by_session_and_supports_snapshot
     assert [record.update for record in only_session_2_after_snapshot] == [second_update]
 
 
-async def test_host_bridge_usage_update_since_ignores_real_acp_usage_update_without_usage_field() -> None:
+async def test_host_bridge_usage_update_since_ignores_real_acp_usage_update_without_usage_field() -> (
+    None
+):
     # The real ACP `UsageUpdate` schema carries context-window `size`/`used` fields, not a
     # `usage` attribute. `usage_update_since` only reads `getattr(update, "usage", None)`, so
     # recording a genuine `UsageUpdate` must not populate any token counts.
@@ -786,7 +800,9 @@ async def test_acp_provider_forwards_host_client_delegate_updates_end_to_end() -
     result = await Agent(model).run("hello via delegate")
 
     assert "acp echo: hello via delegate" in result.output
-    forwarded_updates = [update for _, update in delegate.updates if isinstance(update, AgentMessageChunk)]
+    forwarded_updates = [
+        update for _, update in delegate.updates if isinstance(update, AgentMessageChunk)
+    ]
     assert len(forwarded_updates) == 1
     assert forwarded_updates[0].content.text == "acp echo: hello via delegate"
 

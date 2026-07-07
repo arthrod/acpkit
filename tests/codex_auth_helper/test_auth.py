@@ -115,7 +115,8 @@ def test_auth_state_helper_edge_paths_cover_missing_nested_claims() -> None:
     invalid_exp_token = write_auth_file.__globals__["_jwt"]({"exp": "not-an-int"})
     fallback_exp_token = write_auth_file.__globals__["_jwt"]({"exp": 1})
     assert _extract_expiry(
-        access_token=fallback_exp_token, id_token=invalid_exp_token,
+        access_token=fallback_exp_token,
+        id_token=invalid_exp_token,
     ) == datetime.fromtimestamp(
         1,
         tz=UTC,

@@ -340,7 +340,8 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         agent: PydanticAgent[AgentDepsT, OutputDataT],
     ) -> None:
         metadata_sections = self._runtime._owner._bridge_manager.get_metadata_sections(
-            session, agent,
+            session,
+            agent,
         )
         approval_state = await self.get_approval_state(session, agent)
         if approval_state is not None:

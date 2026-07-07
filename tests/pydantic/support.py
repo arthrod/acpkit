@@ -295,7 +295,11 @@ class RecordingClient:
         self.updates.append((session_id, update))
 
     async def write_text_file(
-        self, content: str, path: str, session_id: str, **kwargs: Any,
+        self,
+        content: str,
+        path: str,
+        session_id: str,
+        **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         del content, path, session_id, kwargs
         raise AssertionError("filesystem flow is not part of this test")
@@ -325,25 +329,37 @@ class RecordingClient:
         raise AssertionError("terminal flow is not part of this test")
 
     async def terminal_output(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> TerminalOutputResponse:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
 
     async def release_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> ReleaseTerminalResponse | None:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
 
     async def wait_for_terminal_exit(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> WaitForTerminalExitResponse:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
 
     async def kill_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> KillTerminalResponse | None:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
@@ -391,7 +407,11 @@ class FilesystemRecordingClient(RecordingClient):
         self.write_response: WriteTextFileResponse | None = WriteTextFileResponse()
 
     async def write_text_file(
-        self, content: str, path: str, session_id: str, **kwargs: Any,
+        self,
+        content: str,
+        path: str,
+        session_id: str,
+        **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         del kwargs
         self.write_calls.append((session_id, path, content))
@@ -446,28 +466,40 @@ class TerminalRecordingClient(RecordingClient):
         return CreateTerminalResponse(terminal_id="terminal-1")
 
     async def terminal_output(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> TerminalOutputResponse:
         del kwargs
         self.output_calls.append((session_id, terminal_id))
         return TerminalOutputResponse(output="terminal-output", truncated=False)
 
     async def release_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> ReleaseTerminalResponse | None:
         del kwargs
         self.release_calls.append((session_id, terminal_id))
         return self.release_response
 
     async def wait_for_terminal_exit(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> WaitForTerminalExitResponse:
         del kwargs
         self.wait_calls.append((session_id, terminal_id))
         return self.wait_response
 
     async def kill_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any,
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> KillTerminalResponse | None:
         del kwargs
         self.kill_calls.append((session_id, terminal_id))

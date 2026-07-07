@@ -94,6 +94,8 @@ scripts/check_releases.py
 # Scripts
 connect*.py
 expose*.py
+probe*.py
+pydantic_test*.py
 CHANGELOG
 .acprouter-state
 .deepagents-graph

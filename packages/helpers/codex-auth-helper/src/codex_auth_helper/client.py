@@ -17,7 +17,8 @@ __all__ = (
 
 
 def _resolve_default_headers(
-    token_manager: CodexTokenManager, headers: dict[str, str | Omit],
+    token_manager: CodexTokenManager,
+    headers: dict[str, str | Omit],
 ) -> None:
     account_id = token_manager.current_account_id
     if account_id is not None:

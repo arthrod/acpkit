@@ -198,7 +198,8 @@ class HostAccessPolicy:
         disposition: HostAccessDisposition = "allow"
         outside_cwd = not path_is_within_root(resolved_path, normalized_session_cwd)
         outside_workspace = normalized_workspace_root is not None and not path_is_within_root(
-            resolved_path, normalized_workspace_root,
+            resolved_path,
+            normalized_workspace_root,
         )
 
         if is_absolute_input:
@@ -279,7 +280,8 @@ class HostAccessPolicy:
         disposition: HostAccessDisposition = "allow"
         outside_cwd = not path_is_within_root(resolved_cwd, normalized_session_cwd)
         outside_workspace = normalized_workspace_root is not None and not path_is_within_root(
-            resolved_cwd, normalized_workspace_root,
+            resolved_cwd,
+            normalized_workspace_root,
         )
         referenced_external_paths = tuple(
             path

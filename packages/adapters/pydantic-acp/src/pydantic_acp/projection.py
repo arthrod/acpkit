@@ -388,7 +388,8 @@ class FileSystemProjectionMap:
         return None
 
     def _search_locations_from_input(
-        self, raw_input: dict[str, Any],
+        self,
+        raw_input: dict[str, Any],
     ) -> list[ToolCallLocation] | None:
         path = self._search_path_from_input(raw_input)
         return [ToolCallLocation(path=path)] if path is not None else None

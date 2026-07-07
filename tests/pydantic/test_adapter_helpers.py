@@ -626,7 +626,9 @@ def test_runtime_model_restore_and_error_paths_are_handled(
         adapter._resolve_runtime_model(agent, model_override="not a model id\n")
 
     with pytest.raises(RequestError):
-        asyncio.run(adapter._resolve_deferred_approvals(session=session, requests=cast("Any", None)))
+        asyncio.run(
+            adapter._resolve_deferred_approvals(session=session, requests=cast("Any", None))
+        )
 
     assert asyncio.run(adapter._record_cancelled_approval(session, None)) is None
     assert (
@@ -1511,14 +1513,22 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
         return True
 
     async def fake_persist_external_plan_state(
-        session: Any, *, agent: Any, entries: Any, plan_markdown: Any,
+        session: Any,
+        *,
+        agent: Any,
+        entries: Any,
+        plan_markdown: Any,
     ) -> None:
         native_plan_calls.append(
             ("persist_external", (session, agent, list(entries), plan_markdown)),
         )
 
     async def fake_persist_native_plan_state(
-        session: Any, *, agent: Any, entries: Any, plan_markdown: Any,
+        session: Any,
+        *,
+        agent: Any,
+        entries: Any,
+        plan_markdown: Any,
     ) -> None:
         native_plan_calls.append(("persist_native", (session, agent, list(entries), plan_markdown)))
 
@@ -1646,7 +1656,9 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
     assert session.config_values["model"] == "test"
 
     monkeypatch.setattr(
-        adapter._session_runtime, "_resolve_model_id_from_value", lambda value: None,
+        adapter._session_runtime,
+        "_resolve_model_id_from_value",
+        lambda value: None,
     )
     assign_model(agent, "restored-model")
     session.session_model_id = "restored-model"

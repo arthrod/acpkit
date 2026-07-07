@@ -22,7 +22,8 @@ CompiledAgentGraph = CompiledStateGraph[Any, Any, Any, Any]
 
 class GraphFactory(Protocol):
     def __call__(
-        self, session: AcpSessionContext,
+        self,
+        session: AcpSessionContext,
     ) -> CompiledAgentGraph | Awaitable[CompiledAgentGraph]: ...
 
 

@@ -164,7 +164,8 @@ async def test_native_acp_agent_stub_methods_and_adapter_module_patch_fallback(
 
 
 def test_load_target_resolves_module_attribute(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -186,7 +187,8 @@ def test_load_target_resolves_module_attribute(
 
 
 def test_load_target_uses_current_working_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -208,7 +210,8 @@ def test_load_target_uses_current_working_directory(
 
 
 def test_load_target_resolves_latest_agent_when_attribute_is_omitted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -232,7 +235,8 @@ def test_load_target_resolves_latest_agent_when_attribute_is_omitted(
 
 
 def test_load_target_uses_explicit_import_roots(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     agent_home = tmp_path / "agent_home"
     agent_home.mkdir()
@@ -264,7 +268,8 @@ def test_parse_target_ref_rejects_empty_module_and_attribute() -> None:
 
 
 def test_run_target_dispatches_to_pydantic_adapter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -290,7 +295,8 @@ def test_run_target_dispatches_to_pydantic_adapter(
 
 
 def test_run_target_reports_missing_pydantic_adapter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -335,7 +341,8 @@ def test_load_target_reports_missing_pydantic_adapter_from_import_error(
 
 
 def test_run_target_reports_when_no_adapters_are_installed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -380,7 +387,8 @@ def test_launch_target_invokes_toad_with_mirrored_run_command(
     monkeypatch.setattr("acpkit.runtime.subprocess.run", record_run)
 
     exit_code = launch_target(
-        "sample_launch_app:agent", import_roots=("/tmp/one", "/tmp/two words"),
+        "sample_launch_app:agent",
+        import_roots=("/tmp/one", "/tmp/two words"),
     )
 
     assert exit_code == 0
@@ -1011,7 +1019,8 @@ def test_runtime_materialize_acp_agent_covers_langchain_and_failure_paths(
     monkeypatch.setattr("acpkit.runtime.is_acp_target", lambda target: False)
     monkeypatch.setattr("acpkit.runtime.is_pydantic_target", lambda target: False)
     monkeypatch.setattr(
-        "acpkit.runtime.is_langchain_target", lambda target: target is sentinel_graph,
+        "acpkit.runtime.is_langchain_target",
+        lambda target: target is sentinel_graph,
     )
 
     def fake_import_module(name: str, package: str | None = None) -> ModuleType:

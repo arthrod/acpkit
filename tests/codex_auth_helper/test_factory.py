@@ -91,7 +91,8 @@ def test_create_codex_responses_model_rejects_missing_instructions_runtime(
 
 @pytest.mark.asyncio
 async def test_codex_responses_model_forces_streaming_on_request(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     auth_path = tmp_path / "auth.json"
     write_auth_file(auth_path, account_id="acct_demo")

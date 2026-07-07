@@ -104,7 +104,8 @@ def _prompt_has_binary_media(prompt: Sequence[AgentPromptBlock]) -> bool:
                 return True
             continue
         if isinstance(block, EmbeddedResourceContentBlock) and isinstance(
-            block.resource, BlobResourceContents,
+            block.resource,
+            BlobResourceContents,
         ):
             return True
     return False

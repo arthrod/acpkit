@@ -236,7 +236,9 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
         )
         is response
     )
-    assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [tool_def]
+    assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [
+        tool_def
+    ]
     assert asyncio.run(
         registry["before_tool_validate"][0].func(
             cast("Any", None),
@@ -330,13 +332,16 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
 
     assert asyncio.run(partially_registry["before_run"][0].func(cast("Any", None))) is None
     assert (
-        asyncio.run(partially_registry["before_node_run"][0].func(cast("Any", None), node=tool_call))
+        asyncio.run(
+            partially_registry["before_node_run"][0].func(cast("Any", None), node=tool_call)
+        )
         is tool_call
     )
     assert (
         asyncio.run(
             partially_registry["_on_event"][0].func(
-                cast("Any", None), cast("Any", SimpleNamespace(event_kind="silent")),
+                cast("Any", None),
+                cast("Any", SimpleNamespace(event_kind="silent")),
             ),
         ).event_kind
         == "silent"
@@ -729,7 +734,9 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
     assert (
         asyncio.run(
             registry["after_node_run"][0].func(
-                cast("Any", None), node=tool_call, result="node-result",
+                cast("Any", None),
+                node=tool_call,
+                result="node-result",
             ),
         )
         == "node-result"
@@ -749,7 +756,8 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
         is tool_call
     )
     wrapped_stream = registry["wrap_run_event_stream"][0].func(
-        cast("Any", None), stream=event_stream(),
+        cast("Any", None),
+        stream=event_stream(),
     )
     assert asyncio.run(wrapped_stream.__anext__()).event_kind == "demo_event"
     assert (
@@ -784,7 +792,9 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
         )
         is response
     )
-    assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [tool_def]
+    assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [
+        tool_def
+    ]
     assert asyncio.run(
         registry["before_tool_validate"][0].func(
             cast("Any", None),
