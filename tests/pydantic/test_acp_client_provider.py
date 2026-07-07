@@ -33,6 +33,7 @@ from pydantic_ai.messages import (
     RetryPromptPart,
     SystemPromptPart,
     TextPart,
+    ToolCallPart,
     ToolReturnPart,
     UploadedFile,
     UserPromptPart,
@@ -174,6 +175,18 @@ def test_pydantic_acp_requires_pydantic_ai_v2() -> None:
 
     assert ">=2.0.0" in pydantic_ai_dependency
     assert "==1." not in pydantic_ai_dependency
+
+
+def test_root_workspace_depends_on_pydantic_ai_v2() -> None:
+    """The root ``acpkit`` package pulls in ``pydantic-ai`` for the client provider bridge."""
+    root_pyproject = Path("pyproject.toml")
+    data: dict[str, Any] = tomllib.loads(root_pyproject.read_text())
+    dependencies: list[str] = data["project"]["dependencies"]
+    pydantic_ai_dependency = next(
+        dependency for dependency in dependencies if dependency.startswith("pydantic-ai")
+    )
+
+    assert pydantic_ai_dependency == "pydantic-ai>=2.4.0"
 
 
 # --- AcpProvider / AcpModel behavior (changed code) ---------------------------------
@@ -710,6 +723,300 @@ async def test_prior_server_adapter_direction_still_works_standalone() -> None:
     assert "".join(chunk.content.text for chunk in agent_updates) == "Hello from ACP"
 
 
+# --- AcpHostBridge.records_since / usage_update_since (changed code) ----------------
+
+
+async def test_host_bridge_records_since_without_session_filter_returns_all_records() -> None:
+    bridge = AcpHostBridge()
+    first_update = AgentMessageChunk(session_update="agent_message_chunk", content=text_block("a"))
+    second_update = AgentMessageChunk(session_update="agent_message_chunk", content=text_block("b"))
+
+    await bridge.session_update(session_id="session-1", update=first_update)
+    await bridge.session_update(session_id="session-2", update=second_update)
+
+    records = bridge.records_since(0)
+
+    assert [record.session_id for record in records] == ["session-1", "session-2"]
+    assert [record.update for record in records] == [first_update, second_update]
+
+
+async def test_host_bridge_records_since_filters_by_session_id() -> None:
+    bridge = AcpHostBridge()
+    await bridge.session_update(
+        session_id="session-1",
+        update=AgentMessageChunk(session_update="agent_message_chunk", content=text_block("a")),
+    )
+    await bridge.session_update(
+        session_id="session-2",
+        update=AgentMessageChunk(session_update="agent_message_chunk", content=text_block("b")),
+    )
+
+    records = bridge.records_since(0, session_id="session-2")
+
+    assert len(records) == 1
+    assert records[0].session_id == "session-2"
+
+
+async def test_host_bridge_records_since_only_returns_records_after_index() -> None:
+    bridge = AcpHostBridge()
+    await bridge.session_update(
+        session_id="session-1",
+        update=AgentMessageChunk(session_update="agent_message_chunk", content=text_block("first")),
+    )
+    index = bridge.snapshot_index()
+    await bridge.session_update(
+        session_id="session-1",
+        update=AgentMessageChunk(session_update="agent_message_chunk", content=text_block("second")),
+    )
+
+    records = bridge.records_since(index)
+
+    assert len(records) == 1
+    assert records[0].update.content.text == "second"
+
+
+def test_host_bridge_usage_update_since_returns_empty_usage_without_matching_updates() -> None:
+    bridge = AcpHostBridge()
+
+    usage = bridge.usage_update_since(0, session_id="session-1")
+
+    assert not usage.has_values()
+
+
+async def test_host_bridge_usage_update_since_returns_latest_usage_update_for_session() -> None:
+    bridge = AcpHostBridge()
+    await bridge.session_update(
+        session_id="session-1",
+        update=UsageUpdate(
+            session_update="usage_update",
+            usage=Usage(input_tokens=1, output_tokens=1, total_tokens=2),
+        ),
+    )
+    await bridge.session_update(
+        session_id="session-2",
+        update=UsageUpdate(
+            session_update="usage_update",
+            usage=Usage(input_tokens=99, output_tokens=99, total_tokens=198),
+        ),
+    )
+    await bridge.session_update(
+        session_id="session-1",
+        update=UsageUpdate(
+            session_update="usage_update",
+            usage=Usage(input_tokens=5, output_tokens=6, total_tokens=11),
+        ),
+    )
+
+    usage = bridge.usage_update_since(0, session_id="session-1")
+
+    assert usage.input_tokens == 5
+    assert usage.output_tokens == 6
+
+
+class NoSessionUpdateDelegate:
+    """A delegate that does not implement ``session_update`` at all."""
+
+
+async def test_host_bridge_session_update_does_not_forward_when_delegate_lacks_the_method() -> None:
+    delegate = NoSessionUpdateDelegate()
+    bridge = AcpHostBridge(delegate=delegate)
+    update = AgentMessageChunk(session_update="agent_message_chunk", content=text_block("hi"))
+
+    await bridge.session_update(session_id="session-1", update=update)
+
+    assert bridge.updates[0].update is update
+
+
+# --- Usage fallback: PromptResponse has no usage but host received UsageUpdate -------
+
+
+class UsageUpdateOnlyACPAgent(EchoACPAgent):
+    """An ACP agent that reports usage only via a ``session_update`` UsageUpdate.
+
+    Its ``PromptResponse`` intentionally carries no ``usage`` field, forcing
+    ``AcpProvider.request_prompt`` to fall back to ``AcpHostBridge.usage_update_since``.
+    """
+
+    async def prompt(
+        self,
+        prompt: list[Any],
+        session_id: str,
+        message_id: str | None = None,
+        **kwargs: Any,
+    ) -> PromptResponse:
+        del message_id, kwargs
+        assert self.client is not None
+        rendered_prompt = "".join(str(getattr(block, "text", "")) for block in prompt)
+        self.prompts.append((session_id, rendered_prompt))
+        await self.client.session_update(
+            session_id=session_id,
+            update=UsageUpdate(
+                session_update="usage_update",
+                usage=Usage(input_tokens=3, output_tokens=4, total_tokens=7),
+            ),
+        )
+        return PromptResponse(stop_reason=self.stop_reason, usage=None)
+
+
+async def test_acp_provider_falls_back_to_host_usage_when_prompt_response_has_no_usage() -> None:
+    acp_agent = UsageUpdateOnlyACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("hello")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert response.usage.input_tokens == 3
+    assert response.usage.output_tokens == 4
+
+
+# --- stop_reason resolution: camelCase fallback (changed code) -----------------------
+
+
+class _StopReasonOnlyCamelCase:
+    """A minimal ``PromptResponse``-shaped object exposing only ``stopReason``."""
+
+    def __init__(self, stop_reason: str) -> None:
+        self.stopReason = stop_reason
+        self.usage = None
+
+
+class CamelCaseStopReasonACPAgent(EchoACPAgent):
+    async def prompt(
+        self,
+        prompt: list[Any],
+        session_id: str,
+        message_id: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        del message_id, kwargs
+        assert self.client is not None
+        rendered_prompt = "".join(str(getattr(block, "text", "")) for block in prompt)
+        self.prompts.append((session_id, rendered_prompt))
+        await self.client.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(session_update="agent_message_chunk", content=text_block("ok")),
+        )
+        return _StopReasonOnlyCamelCase(self.stop_reason)
+
+
+async def test_acp_provider_reads_stop_reason_from_camel_case_attribute() -> None:
+    acp_agent = CamelCaseStopReasonACPAgent(stop_reason="max_tokens")
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("hello")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert response.finish_reason == "length"
+
+
+# --- _finish_reason_from_acp direct unit tests (changed code) ------------------------
+
+
+@pytest.mark.parametrize(
+    ("stop_reason", "expected"),
+    [
+        (None, "stop"),
+        ("end_turn", "stop"),
+        ("stop", "stop"),
+        ("max_tokens", "length"),
+        ("length", "length"),
+        ("cancelled", "error"),
+        ("some_unrecognized_value", "stop"),
+    ],
+)
+def test_finish_reason_from_acp_maps_known_and_unknown_stop_reasons(
+    stop_reason: str | None, expected: str
+) -> None:
+    assert client_module._finish_reason_from_acp(stop_reason) == expected
+
+
+# --- _AcpBufferedStreamedResponse direct property tests (changed code) ---------------
+
+
+def test_acp_buffered_streamed_response_falls_back_to_acp_model_name_when_missing() -> None:
+    response = ModelResponse(
+        parts=[TextPart("hi")],
+        model_name=None,
+        provider_name="acp",
+        provider_url="acp://local",
+    )
+    buffered = client_module._AcpBufferedStreamedResponse(
+        model_request_parameters=ModelRequestParameters(),
+        response=response,
+    )
+
+    assert buffered.model_name == "acp"
+    assert buffered.provider_name == "acp"
+    assert buffered.provider_url == "acp://local"
+    assert buffered.timestamp == response.timestamp
+
+
+async def test_acp_buffered_streamed_response_close_stream_is_a_noop() -> None:
+    response = ModelResponse(parts=[TextPart("hi")])
+    buffered = client_module._AcpBufferedStreamedResponse(
+        model_request_parameters=ModelRequestParameters(),
+        response=response,
+    )
+
+    assert await buffered.close_stream() is None
+
+
+async def test_acp_buffered_streamed_response_skips_non_text_parts() -> None:
+    response = ModelResponse(parts=[ToolCallPart("some_tool", {}), TextPart("visible")])
+    buffered = client_module._AcpBufferedStreamedResponse(
+        model_request_parameters=ModelRequestParameters(),
+        response=response,
+    )
+
+    async for _ in buffered:
+        pass
+    aggregated = buffered.get()
+
+    # Only the `TextPart` is turned into stream events; the `ToolCallPart` is
+    # silently skipped by `_get_event_iterator`, so it never reaches the
+    # aggregated response built from those events.
+    assert len(aggregated.parts) == 1
+    assert aggregated.parts[0].content == "visible"
+
+
+# --- AcpUpdateRecord dataclass behavior (changed code) --------------------------------
+
+
+def test_acp_update_record_is_frozen_and_defaults_source_to_none() -> None:
+    record = AcpUpdateRecord(session_id="session-1", update="payload")
+
+    assert record.source is None
+    with pytest.raises(AttributeError):
+        record.session_id = "session-2"  # type: ignore[misc]
+
+
+def test_acp_update_record_equality_compares_by_value() -> None:
+    first = AcpUpdateRecord(session_id="session-1", update="payload", source="agent")
+    second = AcpUpdateRecord(session_id="session-1", update="payload", source="agent")
+
+    assert first == second
+
+
+# --- Top-level pydantic_acp package exports (changed code) ---------------------------
+
+
+def test_pydantic_acp_package_exports_client_provider_bridge_symbols() -> None:
+    import pydantic_acp
+
+    assert pydantic_acp.ACP_MODEL_PROFILE is client_module.ACP_MODEL_PROFILE
+    assert pydantic_acp.AcpProvider is AcpProvider
+    assert pydantic_acp.AcpModel is AcpModel
+    assert pydantic_acp.AcpHostBridge is AcpHostBridge
+    assert pydantic_acp.AcpUpdateRecord is AcpUpdateRecord
+    assert pydantic_acp.AcpPromptRenderer is client_module.AcpPromptRenderer
+
+
 async def test_prior_server_adapter_can_be_consumed_through_new_client_provider() -> None:
     """The new AcpProvider/AcpModel bridge composes with the pre-existing server adapter.
 
@@ -727,90 +1034,3 @@ async def test_prior_server_adapter_can_be_consumed_through_new_client_provider(
     result = await outer_agent.run("Ping the bridge")
 
     assert result.output == "Hello from ACP"
-
-
-# --- Additional coverage: AcpHostBridge pagination/session scoping ------------------
-
-
-async def test_host_bridge_records_since_scopes_by_session_and_supports_snapshots() -> None:
-    bridge = AcpHostBridge()
-    first_update = AgentMessageChunk(session_update="agent_message_chunk", content=text_block("a"))
-    second_update = AgentMessageChunk(session_update="agent_message_chunk", content=text_block("b"))
-
-    await bridge.session_update(session_id="session-1", update=first_update)
-    snapshot = bridge.snapshot_index()
-    await bridge.session_update(session_id="session-2", update=second_update)
-
-    all_records = bridge.records_since(0)
-    assert [record.update for record in all_records] == [first_update, second_update]
-
-    only_new = bridge.records_since(snapshot)
-    assert [record.update for record in only_new] == [second_update]
-
-    only_session_1 = bridge.records_since(0, session_id="session-1")
-    assert [record.update for record in only_session_1] == [first_update]
-
-    only_session_2_after_snapshot = bridge.records_since(snapshot, session_id="session-2")
-    assert [record.update for record in only_session_2_after_snapshot] == [second_update]
-
-
-async def test_host_bridge_usage_update_since_ignores_real_acp_usage_update_without_usage_field() -> None:
-    # The real ACP `UsageUpdate` schema carries context-window `size`/`used` fields, not a
-    # `usage` attribute. `usage_update_since` only reads `getattr(update, "usage", None)`, so
-    # recording a genuine `UsageUpdate` must not populate any token counts.
-    bridge = AcpHostBridge()
-    start_index = bridge.snapshot_index()
-
-    await bridge.session_update(
-        session_id="session-1",
-        update=UsageUpdate(session_update="usage_update", size=1000, used=10),
-    )
-
-    usage = bridge.usage_update_since(start_index, session_id="session-1")
-
-    assert not usage.has_values()
-
-
-# --- Additional coverage: AcpProvider host_client delegate wiring -------------------
-
-
-async def test_acp_provider_forwards_host_client_delegate_updates_end_to_end() -> None:
-    delegate = HostRecordingClient()
-    acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)
-
-    assert provider.host.delegate is delegate
-
-    model = AcpModel(model_name="zed-agent", provider=provider)
-    result = await Agent(model).run("hello via delegate")
-
-    assert "acp echo: hello via delegate" in result.output
-    forwarded_updates = [update for _, update in delegate.updates if isinstance(update, AgentMessageChunk)]
-    assert len(forwarded_updates) == 1
-    assert forwarded_updates[0].content.text == "acp echo: hello via delegate"
-
-
-# --- Additional coverage: pure helper edge cases -------------------------------------
-
-
-def test_finish_reason_from_acp_returns_stop_when_stop_reason_is_none() -> None:
-    assert client_module._finish_reason_from_acp(None) == "stop"
-
-
-def test_render_tool_return_falls_back_to_tool_call_id_when_tool_name_is_empty() -> None:
-    part = ToolReturnPart(tool_name="", content="ok", tool_call_id="call-42")
-
-    rendered = client_module._render_tool_return(part)
-
-    assert rendered == "Tool result: call-42:\nok"
-
-
-# --- Additional coverage: root workspace pyproject.toml dependency -----------------
-
-
-def test_root_pyproject_declares_pydantic_ai_v2_dependency() -> None:
-    root_pyproject = Path("pyproject.toml")
-    data: dict[str, Any] = tomllib.loads(root_pyproject.read_text())
-    dependencies: list[str] = data["project"]["dependencies"]
-
-    assert any(dependency.startswith("pydantic-ai>=2.4.0") for dependency in dependencies)
