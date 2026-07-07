@@ -332,7 +332,7 @@ def _build_llms_index() -> str:
                     f"- [{page.title}]({page.url})",
                     f"  Source: `{page.path}`",
                     f"  Summary: {page.summary}",
-                )
+                ),
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
@@ -365,7 +365,7 @@ def _build_llms_full() -> str:
                 f"Source: `{page.path}`",
                 "",
                 _load_doc_source(page),
-            )
+            ),
         )
     return "\n".join(lines).rstrip() + "\n"
 

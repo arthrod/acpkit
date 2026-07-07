@@ -64,7 +64,7 @@ def enabled_hook_events(bridge: HookBridge) -> list[str]:
                 "wrap_tool_execute",
                 "after_tool_execute",
                 "on_tool_execute_error",
-            ]
+            ],
         )
     if bridge._output_validation_enabled:
         enabled.extend(
@@ -73,7 +73,7 @@ def enabled_hook_events(bridge: HookBridge) -> list[str]:
                 "wrap_output_validate",
                 "after_output_validate",
                 "on_output_validate_error",
-            ]
+            ],
         )
     if bridge._output_processing_enabled:
         enabled.extend(
@@ -82,7 +82,7 @@ def enabled_hook_events(bridge: HookBridge) -> list[str]:
                 "wrap_output_process",
                 "after_output_process",
                 "on_output_process_error",
-            ]
+            ],
         )
     if bridge._deferred_tool_calls_enabled:
         enabled.append("handle_deferred_tool_calls")

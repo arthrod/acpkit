@@ -94,7 +94,7 @@ __all__ = (
 class AcpUpdateRecord:
     """A host-side ACP update observed while an ACP-backed model request runs."""
 
-    __slots__ = ("session_id", "update", "source")
+    __slots__ = ("session_id", "source", "update")
 
     def __init__(self, *, session_id: str, update: Any, source: str | None = None) -> None:
         self.session_id = session_id
@@ -177,7 +177,7 @@ class AcpHostBridge:
                 session_id=session_id,
                 update=update,
                 source=kwargs.get("source"),
-            )
+            ),
         )
         if self.delegate is not None and hasattr(self.delegate, "session_update"):
             await self._call_delegate("session_update", session_id=session_id, update=update, **kwargs)
@@ -307,7 +307,7 @@ class AcpHostBridge:
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         if self.delegate is None or not hasattr(self.delegate, "ext_notification"):
-            return None
+            return
         await self._call_delegate("ext_notification", method=method, params=params)
 
     def on_connect(self, conn: AcpAgent) -> None:
@@ -321,7 +321,7 @@ class AcpHostBridge:
         if method is None:
             raise RuntimeError(
                 f"ACP agent requested host method {method_name!r}, but no host client delegate "
-                "was supplied to AcpProvider."
+                "was supplied to AcpProvider.",
             )
         result = method(**kwargs)
         if inspect.isawaitable(result):
@@ -334,7 +334,7 @@ class AcpHostBridge:
 # ---------------------------------------------------------------------------
 
 class _AcpPromptResult:
-    __slots__ = ("text", "usage", "stop_reason", "session_id")
+    __slots__ = ("session_id", "stop_reason", "text", "usage")
 
     def __init__(
         self,
@@ -438,6 +438,7 @@ class AcpProvider(Provider[AcpAgent]):
             history_mode: Controls how previous messages are rendered into
                 the ACP prompt. ``"latest_user"`` (default) sends only the
                 latest user turn; ``"full"`` sends the entire conversation.
+
         """
         if acp_client is not None:
             assert agent is None, "Cannot provide both `acp_client` and `agent`"
@@ -562,7 +563,7 @@ class AcpProvider(Provider[AcpAgent]):
         if not usage.has_values():
             usage = self._host.usage_update_since(start_index, session_id=session_id)
         stop_reason = getattr(prompt_response, "stop_reason", None) or getattr(
-            prompt_response, "stopReason", None
+            prompt_response, "stopReason", None,
         )
         return _AcpPromptResult(
             text=text,
@@ -706,17 +707,17 @@ class AcpModel(Model):
             raise UserError(
                 "AcpModel delegates a model turn to an ACP agent and cannot execute "
                 f"Pydantic AI function tools directly: {tool_names}. Register tools on "
-                "the ACP agent or provide them through an ACP host bridge instead."
+                "the ACP agent or provide them through an ACP host bridge instead.",
             )
         if params.native_tools:
             raise UserError(
                 "AcpModel does not expose Pydantic AI native tools directly; use the "
-                "ACP agent/provider side for native capabilities."
+                "ACP agent/provider side for native capabilities.",
             )
         if params.output_tools or not params.allow_text_output:
             raise UserError(
                 "AcpModel is a text-response provider bridge. Structured/tool-only "
-                "output must be implemented by the ACP agent or validated after the run."
+                "output must be implemented by the ACP agent or validated after the run.",
             )
 
 
@@ -725,6 +726,8 @@ class AcpModel(Model):
 # ---------------------------------------------------------------------------
 
 class _AcpBufferedStreamedResponse(StreamedResponse):
+    __slots__ = ("_response", "_usage", "finish_reason", "provider_details", "provider_response_id")
+
     def __init__(
         self,
         *,

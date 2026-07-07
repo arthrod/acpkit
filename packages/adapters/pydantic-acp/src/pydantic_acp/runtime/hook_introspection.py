@@ -167,7 +167,7 @@ def list_agent_hooks(agent: PydanticAgent[Any, Any]) -> list[RegisteredHookInfo]
                         event_id=event_id,
                         hook_name=getattr(func, "__name__", "") or event_id,
                         tool_filters=_tool_filters(entry),
-                    )
+                    ),
                 )
     return sorted(
         hook_infos,

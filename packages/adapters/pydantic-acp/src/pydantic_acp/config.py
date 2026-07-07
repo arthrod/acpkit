@@ -56,7 +56,7 @@ class AdapterConfig:
     native_plan_persistence_provider: NativePlanPersistenceProvider | None = None
     plan_provider: PlanProvider | None = None
     prompt_capabilities: AdapterPromptCapabilities = field(
-        default_factory=AdapterPromptCapabilities
+        default_factory=AdapterPromptCapabilities,
     )
     prompt_model_override_provider: PromptModelOverrideProvider | None = None
     replay_history_on_load: bool = True

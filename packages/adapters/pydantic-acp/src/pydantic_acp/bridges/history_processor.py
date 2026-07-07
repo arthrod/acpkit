@@ -17,10 +17,10 @@ ModelMessages: TypeAlias = list[ModelMessage]
 HistoryProcessorNoContextSync: TypeAlias = Callable[[ModelMessages], ModelMessages]
 HistoryProcessorNoContextAsync: TypeAlias = Callable[[ModelMessages], Awaitable[ModelMessages]]
 HistoryProcessorWithContextSync: TypeAlias = Callable[
-    [RunContext[AgentDepsT], ModelMessages], ModelMessages
+    [RunContext[AgentDepsT], ModelMessages], ModelMessages,
 ]
 HistoryProcessorWithContextAsync: TypeAlias = Callable[
-    [RunContext[AgentDepsT], ModelMessages], Awaitable[ModelMessages]
+    [RunContext[AgentDepsT], ModelMessages], Awaitable[ModelMessages],
 ]
 HistoryProcessorPlain: TypeAlias = HistoryProcessorNoContextSync | HistoryProcessorNoContextAsync
 HistoryProcessorContextual: TypeAlias = (
@@ -29,8 +29,8 @@ HistoryProcessorContextual: TypeAlias = (
 HistoryProcessorCallable: TypeAlias = HistoryProcessorPlain | HistoryProcessorContextual[AgentDepsT]
 
 __all__ = (
-    "HistoryProcessorCallable",
     "HistoryProcessorBridge",
+    "HistoryProcessorCallable",
     "HistoryProcessorContextual",
     "HistoryProcessorPlain",
     "HistoryProcessorWithContextAsync",

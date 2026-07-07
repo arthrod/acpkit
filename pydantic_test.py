@@ -4,8 +4,8 @@ from pathlib import Path
 
 import acp.utils as _acp_utils
 from acpremote import CommandOptions, connect_acp, serve_stdio_command
-from pydantic_ai import Agent
 from pydantic_acp import AcpProvider
+from pydantic_ai import Agent
 
 # MODEL: any id pi exposes works here. Alternatives (from pi's new_session response):
 #   "MiniMax-M2.7" / "MiniMax-M2.7-highspeed" / "MiniMax-M3"        (minimax-coding-plan, needs MINIMAX_API_KEY)

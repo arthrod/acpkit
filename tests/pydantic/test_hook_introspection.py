@@ -99,7 +99,7 @@ def test_existing_before_model_request_hook_emits_acp_updates(tmp_path) -> None:
         adapter.prompt(
             prompt=[text_block("Trigger the hook.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     start_updates = [
@@ -158,7 +158,7 @@ def test_wrap_run_event_stream_hook_requires_async_iterable_and_emits_failed_upd
     with pytest.raises(TypeError, match="async iterable"):
 
         async def consume() -> None:
-            async for _ in cast(Any, wrapped_entry).func(cast(Any, None), stream=empty_stream()):
+            async for _ in cast("Any", wrapped_entry).func(cast("Any", None), stream=empty_stream()):
                 pass  # pragma: no cover
 
         asyncio.run(consume())
@@ -195,7 +195,7 @@ def test_multiple_registered_hook_callbacks_each_emit_updates(tmp_path) -> None:
         adapter.prompt(
             prompt=[text_block("Trigger the registered hooks.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     start_titles = [
@@ -241,7 +241,7 @@ def test_tool_filtered_hook_preserves_tool_metadata(tmp_path) -> None:
         adapter.prompt(
             prompt=[text_block("Call the echo tool.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     start_updates = [
@@ -290,7 +290,7 @@ def test_custom_hook_projection_map_can_hide_and_relabel_events(tmp_path) -> Non
                 event_labels={"before_model_request": "Model Hook"},
                 show_hook_name_in_title=False,
                 include_tool_filters=False,
-            )
+            ),
         ],
     )
     client = RecordingClient()
@@ -301,7 +301,7 @@ def test_custom_hook_projection_map_can_hide_and_relabel_events(tmp_path) -> Non
         adapter.prompt(
             prompt=[text_block("Trigger the hook.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     start_update = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
@@ -347,8 +347,8 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
         pass
 
     invalid_agent = Agent(TestModel(custom_output_text="invalid"))
-    cast(Any, invalid_agent)._root_capability = _INVALID_HOOK_VALUE
-    cast(Any, invalid_agent)._override_root_capability = _INVALID_HOOK_VALUE
+    cast("Any", invalid_agent)._root_capability = _INVALID_HOOK_VALUE
+    cast("Any", invalid_agent)._override_root_capability = _INVALID_HOOK_VALUE
     with observe_agent_hooks(
         invalid_agent,
         write_update=write_update,
@@ -378,14 +378,13 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
 
     async def delta(ctx, *, requests):
         del ctx, requests  # pragma: no cover
-        return None  # pragma: no cover
 
     skipped = _TestHookEntry(skipped_alpha)
     skipped.func.__module__ = "pydantic_acp.bridges.hooks"
     tool_entry = _TestHookEntry(beta, tools=frozenset({"z", "a"}))
     broken_entry = _TestHookEntry(alpha)
-    cast(Any, broken_entry).func = None
-    cast(Any, hooks)._registry = {
+    cast("Any", broken_entry).func = None
+    cast("Any", hooks)._registry = {
         1: [],
         "before_model_request": ["bad", broken_entry, skipped, _TestHookEntry(alpha)],
         "before_tool_execute": [tool_entry],
@@ -400,7 +399,7 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
         ("deferred_tool_calls", "delta", ()),
         ("output_validate", "gamma", ()),
     ]
-    assert _tool_filters(cast(Any, SimpleNamespace(tools=None))) == ()
+    assert _tool_filters(cast("Any", SimpleNamespace(tools=None))) == ()
     assert _tool_name({"call": _INVALID_HOOK_VALUE}) is None
 
     class SilentError(Exception):
@@ -414,25 +413,25 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
     assert _summarize_result(ModelResponse(parts=[])) == "parts=0"
 
     invalid_registry_hooks = Hooks[Any]()
-    cast(Any, invalid_registry_hooks)._registry = _INVALID_HOOK_VALUE
+    cast("Any", invalid_registry_hooks)._registry = _INVALID_HOOK_VALUE
     wrapped_hooks, changed = _wrap_hooks(invalid_registry_hooks, emitter=hidden_emitter)
     assert wrapped_hooks is invalid_registry_hooks
     assert changed is False
 
     bad_key_hooks = Hooks[Any]()
-    cast(Any, bad_key_hooks)._registry = {1: []}
+    cast("Any", bad_key_hooks)._registry = {1: []}
     wrapped_hooks, changed = _wrap_hooks(bad_key_hooks, emitter=hidden_emitter)
     assert wrapped_hooks is bad_key_hooks
     assert changed is False
 
     bad_entry_hooks = Hooks[Any]()
-    cast(Any, bad_entry_hooks)._registry = {"before_run": ["bad"]}
+    cast("Any", bad_entry_hooks)._registry = {"before_run": ["bad"]}
     wrapped_hooks, changed = _wrap_hooks(bad_entry_hooks, emitter=hidden_emitter)
     assert wrapped_hooks is bad_entry_hooks
     assert changed is False
 
     non_callable_entry = _TestHookEntry(alpha)
-    cast(Any, non_callable_entry).func = None
+    cast("Any", non_callable_entry).func = None
     wrapped_entry, changed = _wrap_hook_entry(
         "before_run",
         non_callable_entry,
@@ -474,12 +473,12 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
     assert changed is True
     with pytest.raises(RuntimeError, match="boom"):
         asyncio.run(
-            cast(Any, wrapped_error_entry).func(
-                cast(Any, None),
+            cast("Any", wrapped_error_entry).func(
+                cast("Any", None),
                 call=ToolCallPart("echo", {"text": "ok"}),
-                tool_def=cast(Any, _INVALID_HOOK_VALUE),
+                tool_def=cast("Any", _INVALID_HOOK_VALUE),
                 args={"text": "ok"},
-            )
+            ),
         )
     assert any(getattr(update, "status", None) == "failed" for update in visible_updates)
 
@@ -495,8 +494,8 @@ def test_hook_introspection_private_helpers_cover_noops_invalid_entries_and_time
         capabilities=[Hooks[None]()],
     )
     override_var = ContextVar("_override_root_capability", default=None)
-    cast(Any, real_agent)._override_root_capability = override_var
-    cast(Any, real_agent)._root_capability = CombinedCapability(capabilities=[])
+    cast("Any", real_agent)._override_root_capability = override_var
+    cast("Any", real_agent)._root_capability = CombinedCapability(capabilities=[])
     with observe_agent_hooks(
         real_agent,
         write_update=write_update,
@@ -522,7 +521,7 @@ def test_wrap_hooks_preserves_hook_ordering() -> None:
         return request_context  # pragma: no cover
 
     hooks = Hooks[Any](ordering=CapabilityOrdering(position="outermost"))
-    cast(Any, hooks)._registry = {"before_model_request": [_TestHookEntry(alpha)]}
+    cast("Any", hooks)._registry = {"before_model_request": [_TestHookEntry(alpha)]}
 
     wrapped_hooks, changed = _wrap_hooks(hooks, emitter=emitter)
 
@@ -553,18 +552,18 @@ def test_hook_introspection_handles_missing_registry_and_unreplaceable_entries()
                     tool_filters=(),
                     status=None,
                 ),
-            )
+            ),
         )
         is None
     )
     assert recorded_updates == []
 
     invalid_agent = Agent(TestModel(custom_output_text="plain"))
-    cast(Any, invalid_agent)._root_capability = _INVALID_HOOK_VALUE
+    cast("Any", invalid_agent)._root_capability = _INVALID_HOOK_VALUE
     assert list_agent_hooks(invalid_agent) == []
 
     hooks = Hooks[Any]()
-    cast(Any, hooks)._registry = _INVALID_HOOK_VALUE
+    cast("Any", hooks)._registry = _INVALID_HOOK_VALUE
     agent = Agent(TestModel(custom_output_text="hooked"), capabilities=[hooks])
     assert list_agent_hooks(agent) == []
 

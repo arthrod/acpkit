@@ -238,7 +238,7 @@ def test_client_terminal_backend_enforces_denying_policy() -> None:
             host.terminal.create_terminal(
                 "python",
                 args=["/tmp/outside.py"],
-            )
+            ),
         )
 
     assert client.create_calls == []

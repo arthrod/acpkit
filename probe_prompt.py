@@ -4,9 +4,9 @@ from pathlib import Path
 
 import acp.utils as _acp_utils
 from acpremote import connect_acp
-from pydantic_ai import Agent
 from pydantic_acp import AcpProvider
 from pydantic_acp.client import AcpHostBridge
+from pydantic_ai import Agent
 
 MODEL_ID = "MiniMax-M2.7"
 WORKSPACE = Path("/Users/arthrod/temp/T/acpkit")
@@ -71,7 +71,7 @@ async def main():
         text = self._host.agent_message_text_since(start_index, session_id=session_id)
         print("HOST TEXT:", repr(text))
         usage = getattr(self, "_usage_from_acp", None)
-        from pydantic_acp.client import _usage_from_acp, _finish_reason_from_acp
+        from pydantic_acp.client import _usage_from_acp
 
         usage = _usage_from_acp(getattr(prompt_response, "usage", None))
         if not usage.has_values():

@@ -96,9 +96,9 @@ def build_available_commands(
                 name=MODEL_COMMAND_NAME,
                 description="Show the current session model, or set it with a provider:model value.",
                 input=AvailableCommandInput(
-                    root=UnstructuredCommandInput(hint="provider:model or codex:model")
+                    root=UnstructuredCommandInput(hint="provider:model or codex:model"),
                 ),
-            )
+            ),
         )
     if _has_config_option(config_options, THINKING_COMMAND_NAME):
         commands.append(
@@ -106,9 +106,9 @@ def build_available_commands(
                 name=THINKING_COMMAND_NAME,
                 description="Show or set the current thinking effort.",
                 input=AvailableCommandInput(
-                    root=UnstructuredCommandInput(hint="default|off|minimal|low|medium|high|xhigh")
+                    root=UnstructuredCommandInput(hint="default|off|minimal|low|medium|high|xhigh"),
                 ),
-            )
+            ),
         )
     commands.extend(
         [
@@ -124,7 +124,7 @@ def build_available_commands(
                 name=MCP_SERVERS_COMMAND_NAME,
                 description="List MCP servers extracted from the active agent and session metadata.",
             ),
-        ]
+        ],
     )
     if custom_commands:
         validate_custom_commands(custom_commands, mode_state=mode_state)
@@ -143,7 +143,7 @@ def validate_custom_commands(
         if command.name != normalized_name:
             raise ValueError(
                 f"Slash command name {command.name!r} must already be normalized as "
-                "a lowercase slash command id."
+                "a lowercase slash command id.",
             )
         if not _COMMAND_NAME_PATTERN.fullmatch(normalized_name):
             raise ValueError(f"Slash command name {command.name!r} must match ^[a-z][a-z0-9-]*$.")
@@ -154,13 +154,13 @@ def validate_custom_commands(
     if duplicate_names:
         raise ValueError(
             "Custom slash command names must be unique after normalization. "
-            f"Duplicate ids: {', '.join(duplicate_names)}."
+            f"Duplicate ids: {', '.join(duplicate_names)}.",
         )
     reserved_names = sorted(set(normalized_names) & RESERVED_SLASH_COMMAND_NAMES)
     if reserved_names:
         raise ValueError(
             "Custom slash command names cannot reuse reserved slash command names "
-            f"({', '.join(reserved_names)})."
+            f"({', '.join(reserved_names)}).",
         )
     if mode_state is None:
         return
@@ -169,7 +169,7 @@ def validate_custom_commands(
     if conflicting_mode_ids:
         raise ValueError(
             "Custom slash command names cannot reuse active mode ids "
-            f"({', '.join(conflicting_mode_ids)})."
+            f"({', '.join(conflicting_mode_ids)}).",
         )
 
 
@@ -243,7 +243,7 @@ def list_agent_tools(agent: PydanticAgent[Any, Any]) -> list[ToolInfo]:
                 name=name,
                 description=description,
                 requires_approval=tool.requires_approval,
-            )
+            ),
         )
     return tool_infos
 
@@ -359,7 +359,7 @@ def render_mcp_server_listing(server_infos: list[McpServerInfo]) -> str:
     for server_info in server_infos:
         lines.append(
             f"- {server_info.name} ({server_info.transport}, {server_info.source}): "
-            f"{server_info.target}"
+            f"{server_info.target}",
         )
     return "\n".join(lines)
 

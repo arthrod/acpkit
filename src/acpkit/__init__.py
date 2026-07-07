@@ -22,7 +22,6 @@ from .runtime import (
 __all__ = (
     "AcpKitError",
     "CompatibilityManifest",
-    "connect_acp",
     "MissingAdapterError",
     "SurfaceOwner",
     "SurfaceStatus",
@@ -31,6 +30,7 @@ __all__ = (
     "TargetResolutionError",
     "UnsupportedAgentError",
     "__version__",
+    "connect_acp",
     "launch_command",
     "launch_target",
     "load_target",

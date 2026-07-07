@@ -24,7 +24,7 @@ __all__ = ("FileSessionStore", "MemorySessionStore", "SessionStore")
 
 _MAX_SESSION_ID_LENGTH = 128
 _SESSION_ID_SAFE_CHARS = frozenset(
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-"
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-",
 )
 _STORE_LOCKS: dict[str, threading.RLock] = {}
 _STORE_LOCKS_GUARD = threading.Lock()
@@ -34,7 +34,7 @@ class SessionStore(Protocol):
     def delete(self, session_id: str) -> None: ...
 
     def fork(
-        self, session_id: str, *, new_session_id: str, cwd: Path
+        self, session_id: str, *, new_session_id: str, cwd: Path,
     ) -> AcpSessionContext | None: ...
 
     def get(self, session_id: str) -> AcpSessionContext | None: ...

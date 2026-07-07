@@ -48,7 +48,7 @@ class CapabilityBridge:
         return None
 
     def get_interrupt_configuration(
-        self, session: AcpSessionContext
+        self, session: AcpSessionContext,
     ) -> dict[str, JsonValue] | None:
         del session
         return None
@@ -189,6 +189,6 @@ class BufferedCapabilityBridge(CapabilityBridge):
                     kind=kind,
                     status=status,
                     raw_output=raw_output,
-                )
+                ),
             ],
         )

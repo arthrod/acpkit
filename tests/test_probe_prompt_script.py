@@ -67,7 +67,7 @@ def test_pi_compat_validate_converts_list_models_into_available_models_state(
         "models": [
             {"id": "model-a", "name": "Model A", "provider": "provider-a"},
             {"id": "model-b", "name": "Model B", "provider": "provider-b"},
-        ]
+        ],
     }
 
     result = script._pi_compat_validate(payload, _FakeNewSessionResponseType())
@@ -89,7 +89,7 @@ def test_pi_compat_validate_converts_list_modes_using_slug_as_id(
         "modes": [
             {"slug": "chat", "name": "Chat", "description": "Conversational mode"},
             {"id": "review-id", "name": "Review", "description": "Review mode"},
-        ]
+        ],
     }
 
     result = script._pi_compat_validate(payload, _FakeNewSessionResponseType())

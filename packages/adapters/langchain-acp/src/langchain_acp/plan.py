@@ -74,7 +74,7 @@ def _bind_native_plan_context(
     session: AcpSessionContext,
 ) -> Iterator[None]:
     token: Token[_BoundPlanContext | None] = _ACTIVE_PLAN_CONTEXT.set(
-        _BoundPlanContext(runtime=runtime, session=session)
+        _BoundPlanContext(runtime=runtime, session=session),
     )
     try:
         yield

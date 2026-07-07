@@ -27,7 +27,7 @@ class CodexAuthStore:
             raw = json.loads(text)
         except JSONDecodeError as exc:
             raise ValueError(
-                f"Codex auth file at `{self.path}` does not contain valid JSON."
+                f"Codex auth file at `{self.path}` does not contain valid JSON.",
             ) from exc
 
         if not isinstance(raw, dict):

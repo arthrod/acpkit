@@ -195,7 +195,7 @@ class BufferedCapabilityBridge(CapabilityBridge):
                     kind=kind,
                     status="in_progress",
                     raw_input=raw_input,
-                )
+                ),
             ],
         )
         return event_id
@@ -220,7 +220,7 @@ class BufferedCapabilityBridge(CapabilityBridge):
                     kind=kind,
                     status=status,
                     raw_output=raw_output,
-                )
+                ),
             ],
         )
 

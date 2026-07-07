@@ -65,18 +65,18 @@ _DEFAULT_WEB_SEARCH_TOOL_NAMES: Final[frozenset[str]] = frozenset(
         "exa_search",
         "tavily_search",
         "web_search",
-    }
+    },
 )
 _DEFAULT_WEB_FETCH_TOOL_NAMES: Final[frozenset[str]] = frozenset({"web_fetch"})
 _DEFAULT_IMAGE_GENERATION_TOOL_NAMES: Final[frozenset[str]] = frozenset(
-    {"generate_image", "image_generation"}
+    {"generate_image", "image_generation"},
 )
 _DEFAULT_MCP_TOOL_NAME_PREFIXES: Final[frozenset[str]] = frozenset({"mcp_server:"})
 _DEFAULT_HARNESS_FILESYSTEM_TOOL_NAMES: Final[frozenset[str]] = frozenset(
-    {"create_directory", "edit_file", "list_directory", "read_file", "search_files", "write_file"}
+    {"create_directory", "edit_file", "list_directory", "read_file", "search_files", "write_file"},
 )
 _DEFAULT_HARNESS_SHELL_TOOL_NAMES: Final[frozenset[str]] = frozenset(
-    {"check_command", "run_command", "start_command", "stop_command"}
+    {"check_command", "run_command", "start_command", "stop_command"},
 )
 _DEFAULT_HARNESS_CODE_MODE_TOOL_NAMES: Final[frozenset[str]] = frozenset({"run_code"})
 
@@ -85,7 +85,7 @@ def _missing_harness_dependency(extra: str | None = None) -> ImportError:
     suffix = f"[{extra}]" if extra else ""
     return ImportError(
         "pydantic-ai-harness is required for this bridge. "
-        f"Install `pydantic-ai-harness{suffix}` alongside `pydantic-acp`."
+        f"Install `pydantic-ai-harness{suffix}` alongside `pydantic-acp`.",
     )
 
 
@@ -241,7 +241,7 @@ class HarnessFileSystemBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
         if self.protected_patterns is not None:
             kwargs["protected_patterns"] = list(self.protected_patterns)
-        return cast(AbstractCapability[AgentDepsT], FileSystem(**kwargs))
+        return cast("AbstractCapability[AgentDepsT]", FileSystem(**kwargs))
 
     def build_agent_capabilities(
         self,
@@ -320,7 +320,7 @@ class HarnessShellBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
         if self.denied_commands is not None:
             kwargs["denied_commands"] = list(self.denied_commands)
-        return cast(AbstractCapability[AgentDepsT], Shell(**kwargs))
+        return cast("AbstractCapability[AgentDepsT]", Shell(**kwargs))
 
     def build_agent_capabilities(
         self,
@@ -377,9 +377,9 @@ class HarnessCodeModeBridge(CapabilityBridge, Generic[AgentDepsT]):
         except ImportError as exc:
             raise _missing_harness_dependency("code-mode") from exc
         return cast(
-            AbstractCapability[AgentDepsT],
+            "AbstractCapability[AgentDepsT]",
             CodeMode(
-                tools=cast(Any, self.tools),
+                tools=cast("Any", self.tools),
                 max_retries=self.max_retries,
                 os_access=self.os_access,
                 mount=self.mount,
@@ -468,7 +468,7 @@ class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
             "aspect_ratio": _json_string(self.aspect_ratio),
             "background": _json_string(self.background),
             "fallback_model": _json_string(
-                self.fallback_model if isinstance(self.fallback_model, str) else None
+                self.fallback_model if isinstance(self.fallback_model, str) else None,
             ),
             "input_fidelity": _json_string(self.input_fidelity),
             "moderation": _json_string(self.moderation),
@@ -480,7 +480,7 @@ class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self, tool_name: str, raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return "execute" if tool_name in self.tool_names else None
@@ -538,7 +538,7 @@ class McpCapabilityBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self, tool_name: str, raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return (
@@ -610,7 +610,7 @@ class PrefixToolsBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self, tool_name: str, raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return "execute" if tool_name.startswith(f"{self.prefix}_") else None
@@ -833,7 +833,7 @@ class WebSearchBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self, tool_name: str, raw_input: JsonValue | None = None,
     ) -> Literal["search"] | None:
         del raw_input
         return "search" if tool_name in self.tool_names else None
@@ -888,7 +888,7 @@ class WebFetchBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self, tool_name: str, raw_input: JsonValue | None = None,
     ) -> Literal["fetch"] | None:
         del raw_input
         return "fetch" if tool_name in self.tool_names else None

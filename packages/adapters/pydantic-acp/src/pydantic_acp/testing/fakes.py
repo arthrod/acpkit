@@ -57,7 +57,7 @@ class RecordingACPClient:
     updates: list[UpdateRecord] = field(default_factory=list)
     permission_option_ids: list[tuple[str, list[str], ToolCallUpdate]] = field(default_factory=list)
     permission_option_names: list[tuple[str, list[str], ToolCallUpdate]] = field(
-        default_factory=list
+        default_factory=list,
     )
     permission_responses: list[RequestPermissionResponse] = field(default_factory=list)
     read_calls: list[tuple[str, str, int | None, int | None]] = field(default_factory=list)
@@ -78,26 +78,26 @@ class RecordingACPClient:
     kill_calls: list[tuple[str, str]] = field(default_factory=list)
     write_response: WriteTextFileResponse | None = field(default_factory=WriteTextFileResponse)
     release_response: ReleaseTerminalResponse | None = field(
-        default_factory=ReleaseTerminalResponse
+        default_factory=ReleaseTerminalResponse,
     )
     kill_response: KillTerminalResponse | None = field(default_factory=KillTerminalResponse)
     wait_response: WaitForTerminalExitResponse = field(
-        default_factory=lambda: WaitForTerminalExitResponse(exit_code=0)
+        default_factory=lambda: WaitForTerminalExitResponse(exit_code=0),
     )
     terminal_output_response: TerminalOutputResponse = field(
-        default_factory=lambda: TerminalOutputResponse(output="terminal-output", truncated=False)
+        default_factory=lambda: TerminalOutputResponse(output="terminal-output", truncated=False),
     )
 
     def queue_permission_selected(self, option_id: str) -> None:
         self.permission_responses.append(
             RequestPermissionResponse(
                 outcome=AllowedOutcome(outcome="selected", option_id=option_id),
-            )
+            ),
         )
 
     def queue_permission_cancelled(self) -> None:
         self.permission_responses.append(
-            RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+            RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled")),
         )
 
     async def request_permission(
@@ -109,10 +109,10 @@ class RecordingACPClient:
     ) -> RequestPermissionResponse:
         del kwargs
         self.permission_option_ids.append(
-            (session_id, [option.option_id for option in options], tool_call)
+            (session_id, [option.option_id for option in options], tool_call),
         )
         self.permission_option_names.append(
-            (session_id, [option.name for option in options], tool_call)
+            (session_id, [option.name for option in options], tool_call),
         )
         if not self.permission_responses:
             raise AssertionError("unexpected permission request")

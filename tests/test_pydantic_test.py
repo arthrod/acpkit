@@ -3,7 +3,6 @@ from __future__ import annotations as _annotations
 from pathlib import Path
 from typing import Any
 
-import pydantic_test
 import pytest
 from acp.helpers import text_block
 from acp.schema import (
@@ -15,6 +14,8 @@ from acp.schema import (
     NewSessionResponse,
     PromptResponse,
 )
+
+import pydantic_test
 
 
 class FakeRemoteAcpAgent:
@@ -90,7 +91,7 @@ def test_append_changelog_writes_header_only_on_first_call(tmp_path: Path, monke
 
 
 def test_append_changelog_does_not_duplicate_header_on_later_calls(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     changelog = tmp_path / "changelog.md"
     monkeypatch.setattr(pydantic_test, "CHANGELOG", changelog)

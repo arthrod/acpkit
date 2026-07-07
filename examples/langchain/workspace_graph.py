@@ -23,8 +23,8 @@ __all__ = (
     "MODEL_NAME",
     "WORKSPACE_ROOT",
     "acp_agent",
-    "config",
     "codex_instructions",
+    "config",
     "describe_workspace_surface",
     "graph",
     "graph_from_session",
@@ -56,7 +56,6 @@ AVAILABLE_MODES = (
 
 def codex_instructions(*, mode_id: str) -> str:
     """Return the Codex Responses instructions used by the workspace graph."""
-
     base = (
         "You are a careful workspace assistant operating inside a small demo workspace. "
         "Prefer reading files before changing them, keep edits focused, "
@@ -111,13 +110,12 @@ def _workspace_surface_summary() -> str:
             "- session-aware `graph_from_session(...)` for per-session graph construction",
             "- file read and write projection through `FileSystemProjectionMap`",
             "- a seeded workspace that keeps ACP rendering deterministic",
-        )
+        ),
     )
 
 
 def list_workspace_files() -> str:
     """List seeded workspace files that the demo graph can read."""
-
     root = _ensure_workspace()
     files = sorted(path.relative_to(root).as_posix() for path in root.rglob("*") if path.is_file())
     return "\n".join(files)
@@ -125,13 +123,11 @@ def list_workspace_files() -> str:
 
 def describe_workspace_surface() -> str:
     """Summarize the ACP-facing features exposed by the workspace graph example."""
-
     return _workspace_surface_summary()
 
 
 def read_workspace_note(path: str) -> str:
     """Read a workspace note and return its text content."""
-
     note_path = _resolve_workspace_path(path)
     if not note_path.exists():
         raise ValueError(f"File not found: {path}")
@@ -140,7 +136,6 @@ def read_workspace_note(path: str) -> str:
 
 def write_workspace_note(path: str, content: str) -> str:
     """Write a workspace note and return the saved relative path."""
-
     root = _ensure_workspace()
     return _write_workspace_note(root, path, content)
 

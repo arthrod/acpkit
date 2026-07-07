@@ -21,6 +21,6 @@ def is_resolved(value: ValueT | Awaitable[ValueT]) -> TypeIs[ValueT]:
 
 async def resolve_value(value: ValueT | Awaitable[ValueT]) -> ValueT:
     if is_awaitable(value):
-        return await cast(Awaitable[ValueT], value)
+        return await cast("Awaitable[ValueT]", value)
     assert is_resolved(value)
     return value

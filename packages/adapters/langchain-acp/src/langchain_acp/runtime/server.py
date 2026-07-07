@@ -68,7 +68,7 @@ def _resolve_graph_source(
     provided_count = sum(provided is not None for provided in (graph, graph_factory, graph_source))
     if provided_count != 1:
         raise ValueError(
-            "Exactly one of `graph`, `graph_factory`, or `graph_source` must be provided."
+            "Exactly one of `graph`, `graph_factory`, or `graph_source` must be provided.",
         )
     if graph is not None:
         return StaticGraphSource(graph)
@@ -92,10 +92,10 @@ def _resolve_config(
             event_projection_maps=tuple(
                 event_projection_maps
                 if event_projection_maps is not None
-                else resolved_config.event_projection_maps
+                else resolved_config.event_projection_maps,
             ),
             projection_maps=tuple(
-                projection_maps if projection_maps is not None else resolved_config.projection_maps
+                projection_maps if projection_maps is not None else resolved_config.projection_maps,
             ),
         )
     if graph_name is None or resolved_config.agent_name != DEFAULT_AGENT_NAME:

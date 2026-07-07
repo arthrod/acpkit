@@ -83,7 +83,7 @@ async def test_black_box_harness_covers_initialize_mode_model_and_default_filter
         ),
     )
     missing_session_harness = BlackBoxHarness.create(
-        agent=Agent(TestModel(custom_output_text="unused"))
+        agent=Agent(TestModel(custom_output_text="unused")),
     )
 
     initialize_response = await harness.initialize()

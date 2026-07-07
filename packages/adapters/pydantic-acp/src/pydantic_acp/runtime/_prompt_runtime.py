@@ -30,7 +30,7 @@ AgentDepsT = TypeVar("AgentDepsT", contravariant=True)
 OutputDataT = TypeVar("OutputDataT", covariant=True)
 RunOutputType: TypeAlias = OutputSpec[Any]
 
-__all__ = ("TaskPlan", "NativePlanGeneration", "_PromptRuntime")
+__all__ = ("NativePlanGeneration", "TaskPlan", "_PromptRuntime")
 
 
 class TaskPlan(BaseModel):

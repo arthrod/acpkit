@@ -92,7 +92,7 @@ def test_prompt_projects_filesystem_write_diff_content(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Update the file.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_updates = [
@@ -141,7 +141,7 @@ def test_prompt_projects_filesystem_read_diff_content(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Read the file.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_updates = [
@@ -185,7 +185,7 @@ def test_projection_map_miss_keeps_generic_projection_fallback(tmp_path: Path) -
         adapter.prompt(
             prompt=[text_block("Read the file.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_updates = [
@@ -228,7 +228,7 @@ def test_composite_projection_map_supports_read_and_write_rules(tmp_path: Path) 
         adapter.prompt(
             prompt=[text_block("Update the file.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
@@ -260,7 +260,7 @@ def test_prompt_projects_bash_command_preview_content(tmp_path: Path) -> None:
             FileSystemProjectionMap(
                 default_bash_tool="run_shell",
                 command_arg="script",
-            )
+            ),
         ],
     )
     client = RecordingClient()
@@ -271,7 +271,7 @@ def test_prompt_projects_bash_command_preview_content(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Run the shell command.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_updates = [
@@ -309,7 +309,7 @@ def test_prompt_projects_bash_command_preview_content(tmp_path: Path) -> None:
             "```text",
             "hello",
             "```",
-        )
+        ),
     )
     assert tool_progress.status == "completed"
 
@@ -337,7 +337,7 @@ def test_prompt_projects_bash_command_failure_sets_failed_status(
             FileSystemProjectionMap(
                 default_bash_tool="run_shell",
                 command_arg="script",
-            )
+            ),
         ],
     )
     client = RecordingClient()
@@ -348,7 +348,7 @@ def test_prompt_projects_bash_command_failure_sets_failed_status(
         adapter.prompt(
             prompt=[text_block("Run the shell command.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_progress = next(
@@ -371,7 +371,7 @@ def test_prompt_projects_bash_command_failure_sets_failed_status(
             "```text",
             "boom",
             "```",
-        )
+        ),
     )
 
 
@@ -403,7 +403,7 @@ def test_builtin_web_search_projection_renders_query_and_results() -> None:
                     "title": "ACP Kit",
                     "url": "https://example.com/acpkit",
                     "snippet": "Adapter toolkit for truthful ACP servers.",
-                }
+                },
             ],
         ),
         classifier=classifier,
@@ -507,8 +507,8 @@ def test_build_tool_updates_supports_builtin_tool_call_and_return_parts() -> Non
                         tool_name="web_search",
                         args={"query": "acpkit"},
                         tool_call_id="search-1",
-                    )
-                ]
+                    ),
+                ],
             ),
             ModelResponse(
                 parts=[
@@ -516,8 +516,8 @@ def test_build_tool_updates_supports_builtin_tool_call_and_return_parts() -> Non
                         tool_name="web_search",
                         tool_call_id="search-1",
                         content={"results": [{"title": "ACP Kit", "href": "https://example.com"}]},
-                    )
-                ]
+                    ),
+                ],
             ),
         ],
         classifier=DefaultToolClassifier(),
@@ -668,10 +668,10 @@ def test_build_compaction_updates_renders_anthropic_summary() -> None:
                     CompactionPart(
                         content="Summary of prior conversation.",
                         provider_name="anthropic",
-                    )
-                ]
-            )
-        ]
+                    ),
+                ],
+            ),
+        ],
     )
 
     assert len(updates) == 2
@@ -688,7 +688,7 @@ def test_build_compaction_updates_renders_anthropic_summary() -> None:
             "",
             "Summary:",
             "Summary of prior conversation.",
-        )
+        ),
     )
 
 
@@ -709,7 +709,7 @@ def test_prompt_projects_bash_terminal_reference_when_tool_returns_terminal_id(
             FileSystemProjectionMap(
                 default_bash_tool="run_shell",
                 command_arg="script",
-            )
+            ),
         ],
     )
     client = RecordingClient()
@@ -720,7 +720,7 @@ def test_prompt_projects_bash_terminal_reference_when_tool_returns_terminal_id(
         adapter.prompt(
             prompt=[text_block("Run the shell command.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_progress = next(
@@ -902,7 +902,7 @@ def test_projection_helper_edges_cover_binary_command_and_mcp_fallbacks(
             "```bash",
             "echo hello",
             "```",
-        )
+        ),
     )
 
     assert "User location: Istanbul, TR, Europe/Istanbul" in _format_web_search_start(
@@ -913,7 +913,7 @@ def test_projection_helper_edges_cover_binary_command_and_mcp_fallbacks(
                 "country": "TR",
                 "timezone": "Europe/Istanbul",
             },
-        }
+        },
     )
     assert (
         _format_web_search_progress(
@@ -928,7 +928,7 @@ def test_projection_helper_edges_cover_binary_command_and_mcp_fallbacks(
     ) == ("Fetched binary content.")
     assert _format_image_generation_start({}) == "Generating image."
     assert _format_mcp_start("mcp_server:repo", {"action": "list_tools"}) == "\n".join(
-        ("Server: repo", "Action: list_tools")
+        ("Server: repo", "Action: list_tools"),
     )
     assert _format_mcp_progress({"tools": [{"id": "search"}]}, "fallback") == "Tools listed: 1"
     assert _format_mcp_progress("invalid", "fallback") == "fallback"
@@ -986,14 +986,14 @@ def test_compaction_helpers_cover_skips_collisions_and_payload_variants() -> Non
         "compaction_id": "cmp-1",
     }
     assert _format_compaction_progress(
-        provider_details_part, provider_name="anthropic"
+        provider_details_part, provider_name="anthropic",
     ) == "\n".join(
         (
             "Provider: anthropic",
             "Status: history compacted",
             "Compaction payload stored for round-trip.",
             "Compaction id: cmp-1",
-        )
+        ),
     )
     assert _format_compaction_progress(completed_part, provider_name="anthropic") == "\n".join(
         (
@@ -1001,7 +1001,7 @@ def test_compaction_helpers_cover_skips_collisions_and_payload_variants() -> Non
             "Status: history compacted",
             "Compaction completed.",
             "Compaction id: cmp-2",
-        )
+        ),
     )
 
     collision_updates = build_compaction_updates(
@@ -1060,7 +1060,7 @@ def test_build_tool_updates_skips_final_result_and_projects_retry_prompts() -> N
                         tool_call_id="out-1",
                         content="done",
                     ),
-                ]
+                ],
             ),
             ModelRequest(
                 parts=[
@@ -1068,8 +1068,8 @@ def test_build_tool_updates_skips_final_result_and_projects_retry_prompts() -> N
                         "retry search",
                         tool_name="web_search",
                         tool_call_id="retry-1",
-                    )
-                ]
+                    ),
+                ],
             ),
         ],
         classifier=DefaultToolClassifier(),
@@ -1384,7 +1384,7 @@ def test_projection_aware_tool_classifier_uses_filesystem_projection_names() -> 
                 default_write_tool="save_document",
                 default_bash_tool="run_command",
                 default_search_tool="list_files",
-            )
+            ),
         ],
     )
 
@@ -1448,10 +1448,10 @@ def test_projection_aware_tool_classifier_recurses_into_composite_maps() -> None
                             FileSystemProjectionMap(default_read_tool="nested_read"),
                             FileSystemProjectionMap(default_write_tool="nested_write"),
                             FileSystemProjectionMap(default_bash_tool="nested_command"),
-                        )
+                        ),
                     ),
-                )
-            )
+                ),
+            ),
         ],
     )
 

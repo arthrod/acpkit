@@ -43,7 +43,7 @@ def write_auth_file(
                     "exp": int(expires_at.timestamp()),
                     "https://api.openai.com/auth": auth_claims,
                     "sub": "user_123",
-                }
+                },
             ),
             "account_id": account_id,
             "id_token": _jwt(
@@ -52,7 +52,7 @@ def write_auth_file(
                     "exp": int(expires_at.timestamp()),
                     "https://api.openai.com/auth": auth_claims,
                     "sub": "user_123",
-                }
+                },
             ),
             "refresh_token": refresh_token,
         },

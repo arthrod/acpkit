@@ -70,7 +70,7 @@ def _resolve_agent_source(
     provided_count = sum(provided is not None for provided in (agent, agent_factory, agent_source))
     if provided_count != 1:
         raise ValueError(
-            "Exactly one of `agent`, `agent_factory`, or `agent_source` must be provided."
+            "Exactly one of `agent`, `agent_factory`, or `agent_source` must be provided.",
         )
     if agent is not None:
         return StaticAgentSource(agent)

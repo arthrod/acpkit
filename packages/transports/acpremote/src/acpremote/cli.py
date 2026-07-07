@@ -258,7 +258,7 @@ def _load_native_agent_target(target: str, *, import_roots: Sequence[str]) -> Ag
         return loaded_target
     raise AcpRemoteCliError(
         "Target must resolve to a native `acp.interfaces.Agent`. "
-        "Use `acpkit serve` for Pydantic or LangChain targets."
+        "Use `acpkit serve` for Pydantic or LangChain targets.",
     )
 
 
@@ -274,7 +274,7 @@ def _parse_target_ref(target: str) -> _TargetRef:
     module_name, separator, attribute_path = target.partition(":")
     if not module_name:
         raise AcpRemoteCliError(
-            "Target must include a module name, for example `my_app` or `my_app:agent`."
+            "Target must include a module name, for example `my_app` or `my_app:agent`.",
         )
     if separator and not attribute_path:
         raise AcpRemoteCliError("Target attribute cannot be empty.")
@@ -298,7 +298,7 @@ def _import_target_module(
         return importlib.import_module(reference.module_name)
     except ImportError as exc:
         raise AcpRemoteCliError(
-            f"Could not import module `{reference.module_name}` from target `{target}`."
+            f"Could not import module `{reference.module_name}` from target `{target}`.",
         ) from exc
 
 
@@ -310,7 +310,7 @@ def _resolve_latest_native_agent(module: ModuleType, target: str) -> Agent:
     if latest_target is None:
         raise AcpRemoteCliError(
             f"Target `{target}` did not resolve to a native ACP agent and the module defines no "
-            "native ACP agent instance."
+            "native ACP agent instance.",
         )
     return latest_target
 
@@ -322,7 +322,7 @@ def _resolve_attribute(module: ModuleType, attribute_path: str, *, target: str) 
             value = getattr(value, attribute_name)
         except AttributeError as exc:
             raise AcpRemoteCliError(
-                f"Target `{target}` is missing attribute `{attribute_name}`."
+                f"Target `{target}` is missing attribute `{attribute_name}`.",
             ) from exc
     return value
 

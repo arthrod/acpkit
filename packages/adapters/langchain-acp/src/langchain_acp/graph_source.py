@@ -22,7 +22,7 @@ CompiledAgentGraph = CompiledStateGraph[Any, Any, Any, Any]
 
 class GraphFactory(Protocol):
     def __call__(
-        self, session: AcpSessionContext
+        self, session: AcpSessionContext,
     ) -> CompiledAgentGraph | Awaitable[CompiledAgentGraph]: ...
 
 
@@ -46,5 +46,5 @@ class FactoryGraphSource:
     async def get_graph(self, session: AcpSessionContext) -> CompiledAgentGraph:
         candidate = self.factory(session)
         if isawaitable(candidate):
-            return cast(CompiledAgentGraph, await candidate)
-        return cast(CompiledAgentGraph, candidate)
+            return cast("CompiledAgentGraph", await candidate)
+        return cast("CompiledAgentGraph", candidate)

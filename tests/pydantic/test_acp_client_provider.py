@@ -4,6 +4,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import pydantic_acp
 import pytest
 from acp import PROTOCOL_VERSION
 from acp.helpers import text_block
@@ -21,7 +22,6 @@ from acp.schema import (
     Usage,
     UsageUpdate,
 )
-import pydantic_acp
 from pydantic_acp import AcpHostBridge, AcpModel, AcpProvider, AcpUpdateRecord, create_acp_agent
 from pydantic_acp import client as client_module
 from pydantic_ai import Agent
@@ -247,7 +247,7 @@ async def test_acp_provider_prefers_prompt_response_usage_over_host_updates() ->
             cached_write_tokens=1,
             thought_tokens=3,
             total_tokens=24,
-        )
+        ),
     )
     _provider, model = _build_provider_and_model(acp_agent)
     agent = Agent(model)
@@ -273,7 +273,7 @@ async def test_acp_provider_prefers_prompt_response_usage_over_host_updates() ->
     ],
 )
 async def test_acp_provider_maps_acp_stop_reasons_to_finish_reasons(
-    stop_reason: str, expected_finish_reason: str
+    stop_reason: str, expected_finish_reason: str,
 ) -> None:
     acp_agent = EchoACPAgent(stop_reason=stop_reason)
     _provider, model = _build_provider_and_model(acp_agent)
@@ -410,7 +410,7 @@ class NoHandshakeACPAgent:
         )
 
     async def new_session(
-        self, cwd: str, mcp_servers: list[Any] | None = None, **kwargs: Any
+        self, cwd: str, mcp_servers: list[Any] | None = None, **kwargs: Any,
     ) -> NewSessionResponse:
         del cwd, mcp_servers, kwargs
         return NewSessionResponse(session_id="session-1")
@@ -458,7 +458,7 @@ async def test_host_bridge_records_updates_without_a_delegate() -> None:
             session_id="session-1",
             update=bridge.updates[0].update,
             source=None,
-        )
+        ),
     ]
     assert bridge.agent_message_text_since(0, session_id="session-1") == "hi"
 
@@ -602,7 +602,7 @@ def test_usage_from_acp_extracts_token_counts_and_reasoning_tokens() -> None:
             cached_write_tokens=1,
             thought_tokens=4,
             total_tokens=18,
-        )
+        ),
     )
 
     assert usage.input_tokens == 10
@@ -625,7 +625,7 @@ def test_default_render_prompt_blocks_covers_system_tool_and_retry_parts() -> No
             UserPromptPart("What is the status?"),
             ToolReturnPart(tool_name="check_status", content="ok", tool_call_id="call-1"),
             RetryPromptPart(content="please retry", tool_name="check_status", tool_call_id="call-1"),
-        ]
+        ],
     )
 
     blocks = client_module._default_render_prompt_blocks([request], ModelRequestParameters())
@@ -647,9 +647,9 @@ def test_default_render_prompt_blocks_covers_media_user_content() -> None:
                     ImageUrl(url="https://example.com/x.png"),
                     BinaryContent(data=b"abc", media_type="text/plain"),
                     UploadedFile(file_id="file-1", provider_name="openai"),
-                ]
-            )
-        ]
+                ],
+            ),
+        ],
     )
 
     blocks = client_module._default_render_prompt_blocks([request], ModelRequestParameters())

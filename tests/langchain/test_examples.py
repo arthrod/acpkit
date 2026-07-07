@@ -457,7 +457,7 @@ def test_deepagents_example_graph_factory_builds_graph_from_lazy_import(
     monkeypatch.setitem(
         sys.modules,
         "deepagents",
-        cast(Any, SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
+        cast("Any", SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
     )
 
     session = AcpSessionContext(
@@ -471,7 +471,7 @@ def test_deepagents_example_graph_factory_builds_graph_from_lazy_import(
     assert graph is not None
     assert captured["interrupt_on"] == {"write_file": True}
     assert captured["name"] == "deepagents-ask-.deepagents-graph"
-    tool_names = {tool.__name__ for tool in cast(list[Any], captured["tools"])}
+    tool_names = {tool.__name__ for tool in cast("list[Any]", captured["tools"])}
     assert {
         "list_workspace_files",
         "read_file",
@@ -499,7 +499,7 @@ def test_deepagents_example_graph_factory_builds_graph_when_dependency_is_mocked
     monkeypatch.setitem(
         sys.modules,
         "deepagents",
-        cast(Any, SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
+        cast("Any", SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
     )
 
     session = AcpSessionContext(
@@ -512,7 +512,7 @@ def test_deepagents_example_graph_factory_builds_graph_when_dependency_is_mocked
     )
 
     assert deepagents_graph.graph_from_session(session) is fake_graph
-    tool_names = {tool.__name__ for tool in cast(list[Any], captured["tools"])}
+    tool_names = {tool.__name__ for tool in cast("list[Any]", captured["tools"])}
     assert {
         "list_workspace_files",
         "read_file",

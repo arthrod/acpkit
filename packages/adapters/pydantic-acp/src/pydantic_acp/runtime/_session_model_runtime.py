@@ -70,12 +70,12 @@ class _SessionModelRuntime(Generic[AgentDepsT, OutputDataT]):
         if command_name == "thinking":
             if argument is None:
                 return render_thinking_message(
-                    self._runtime._current_thinking_value(session, agent)
+                    self._runtime._current_thinking_value(session, agent),
                 )
             normalized_argument = argument.strip().lower()
             if (
                 await self._runtime.set_config_option(
-                    "thinking", session.session_id, normalized_argument
+                    "thinking", session.session_id, normalized_argument,
                 )
                 is None
             ):

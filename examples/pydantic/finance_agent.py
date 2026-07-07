@@ -171,7 +171,6 @@ agent = Agent(
 @agent.tool_plain
 def describe_finance_surface() -> str:
     """Summarize the ACP-facing features available in this finance example."""
-
     return "\n".join(
         (
             "Finance example features:",
@@ -179,27 +178,25 @@ def describe_finance_surface() -> str:
             "- structured native plan generation in plan mode",
             "- approval-gated note writes with ACP file diffs",
             "- persisted plan snapshots under .acpkit/plans/",
-        )
+        ),
     )
 
 
 @agent.tool_plain(name=_WATCHLIST_TOOL)
 def list_watchlist() -> str:
     """List the seeded watchlist and workspace note files."""
-
     finance_root = _finance_root(Path.cwd())
     return "\n\n".join(
         (
             "Seeded symbols:\n" + "\n".join(f"- {symbol}" for symbol in sorted(_QUOTE_BOOK)),
             "Workspace files:\n" + _list_market_files(finance_root),
-        )
+        ),
     )
 
 
 @agent.tool_plain(name=_QUOTE_TOOL)
 def quote_symbol(symbol: str) -> str:
     """Return a deterministic demo quote for a watchlist symbol."""
-
     normalized_symbol = symbol.strip().upper()
     try:
         return _QUOTE_BOOK[normalized_symbol]
@@ -210,14 +207,12 @@ def quote_symbol(symbol: str) -> str:
 @agent.tool_plain(name=_READ_NOTE_TOOL)
 def read_market_note(path: str, max_chars: int = _READ_PREVIEW_CHARS) -> str:
     """Read a finance workspace note relative to the current working directory."""
-
     return _read_market_note(_finance_root(Path.cwd()), path, max_chars=max_chars)
 
 
 @agent.tool_plain(name=_WRITE_NOTE_TOOL, requires_approval=True)
 def save_market_note(path: str, content: str) -> str:
     """Write a finance note inside the local workspace."""
-
     return _save_market_note(_finance_root(Path.cwd()), path, content)
 
 
@@ -258,7 +253,7 @@ config = AdapterConfig(
         FileSystemProjectionMap(
             default_read_tool=_READ_NOTE_TOOL,
             default_write_tool=_WRITE_NOTE_TOOL,
-        )
+        ),
     ],
 )
 acp_agent = create_acp_agent(agent=agent, config=config)

@@ -37,7 +37,7 @@ def test_auth_state_helpers_cover_required_optional_and_mapping_paths() -> None:
     assert _optional_str({"token": "value"}, "token") == "value"
     assert _optional_str({"token": ""}, "token") is None
     assert _as_string_mapping(None) is None
-    assert _as_string_mapping(cast(Any, {"ok": 1, 2: "ignored"})) == {"ok": 1}
+    assert _as_string_mapping(cast("Any", {"ok": 1, 2: "ignored"})) == {"ok": 1}
 
 
 def test_auth_state_parses_timestamps_claims_and_account_fallbacks() -> None:
@@ -52,13 +52,13 @@ def test_auth_state_parses_timestamps_claims_and_account_fallbacks() -> None:
         {
             "exp": int((now + timedelta(hours=1)).timestamp()),
             "organizations": [{"id": "org_123"}],
-        }
+        },
     )
     id_token = write_auth_file.__globals__["_jwt"](
         {
             "exp": int((now + timedelta(hours=2)).timestamp()),
             "https://api.openai.com/auth": {"chatgpt_account_id": "acct_nested"},
-        }
+        },
     )
 
     assert _parse_jwt_claims("not-a-jwt") is None
@@ -115,7 +115,7 @@ def test_auth_state_helper_edge_paths_cover_missing_nested_claims() -> None:
     invalid_exp_token = write_auth_file.__globals__["_jwt"]({"exp": "not-an-int"})
     fallback_exp_token = write_auth_file.__globals__["_jwt"]({"exp": 1})
     assert _extract_expiry(
-        access_token=fallback_exp_token, id_token=invalid_exp_token
+        access_token=fallback_exp_token, id_token=invalid_exp_token,
     ) == datetime.fromtimestamp(
         1,
         tz=UTC,
@@ -128,7 +128,7 @@ def test_auth_state_json_round_trip_and_invalid_payloads() -> None:
         {
             "exp": int((now + timedelta(hours=1)).timestamp()),
             "chatgpt_account_id": "acct_direct",
-        }
+        },
     )
     state = CodexAuthState.from_json_dict(
         {
@@ -139,13 +139,13 @@ def test_auth_state_json_round_trip_and_invalid_payloads() -> None:
                 "access_token": access_token,
                 "refresh_token": "refresh-token",
             },
-        }
+        },
     )
 
     assert state.account_id == "acct_direct"
     assert state.openai_api_key == "sk-demo"
-    payload = cast(dict[str, Any], state.to_json_dict())
-    tokens = cast(dict[str, Any], payload["tokens"])
+    payload = cast("dict[str, Any]", state.to_json_dict())
+    tokens = cast("dict[str, Any]", payload["tokens"])
     assert tokens["account_id"] == "acct_direct"
 
     with pytest.raises(ValueError, match="Expected `tokens`"):
@@ -458,7 +458,7 @@ def test_token_manager_sync_refresh_real_path(
             "client_id=app_EMoamEEZ73f0CkXaXp7hrann&"
             "grant_type=refresh_token&refresh_token=refresh_before",
             {"Content-Type": "application/x-www-form-urlencoded"},
-        )
+        ),
     ]
     persisted_state = CodexAuthStore(auth_path).read_state()
     assert persisted_state.access_token == "sync_refreshed_access"

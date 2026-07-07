@@ -88,7 +88,7 @@ def supports_projection_aware_approval_bridge(
 class NativeApprovalBridge:
     enable_persistent_choices: bool = False
     tool_call_builder: PermissionToolCallBuilder = field(
-        default_factory=DefaultPermissionToolCallBuilder
+        default_factory=DefaultPermissionToolCallBuilder,
     )
     policy_store: ApprovalPolicyStore = field(default_factory=SessionMetadataApprovalPolicyStore)
     option_set: PermissionOptionSet = field(default_factory=PermissionOptionSet)
@@ -109,7 +109,7 @@ class NativeApprovalBridge:
             remembered_policy = self._get_remembered_policy(session, approval_policy_key)
             if remembered_policy is not None:
                 deferred_results.approvals[tool_call.tool_call_id] = self._policy_to_result(
-                    remembered_policy
+                    remembered_policy,
                 )
                 continue
 
@@ -124,7 +124,7 @@ class NativeApprovalBridge:
                         cwd=session.cwd,
                         classifier=classifier,
                         projection_map=projection_map,
-                    )
+                    ),
                 ),
             )
             outcome = permission_response.outcome

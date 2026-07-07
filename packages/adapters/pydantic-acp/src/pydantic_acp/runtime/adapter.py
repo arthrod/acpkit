@@ -44,7 +44,7 @@ from .hook_introspection import list_agent_hooks
 AgentDepsT = TypeVar("AgentDepsT", contravariant=True)
 OutputDataT = TypeVar("OutputDataT", covariant=True)
 
-__all__ = ("TaskPlan", "NativePlanGeneration", "PydanticAcpAgent")
+__all__ = ("NativePlanGeneration", "PydanticAcpAgent", "TaskPlan")
 
 
 class PydanticAcpAgent(
@@ -131,7 +131,6 @@ class PydanticAcpAgent(
     async def authenticate(self, method_id: str, **kwargs: Any) -> None:
         """Accept ACP auth handshakes when the host does not require extra auth."""
         del method_id, kwargs
-        return None
 
     async def fork_session(
         self,

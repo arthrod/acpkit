@@ -22,7 +22,7 @@ _ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 _VERSION_PATTERN: Final[re.Pattern[str]] = re.compile(r'__version__\s*=\s*"(?P<version>[^"]+)"')
 _SUPPORTED_VERSION_PATTERN: Final[re.Pattern[str]] = re.compile(
     r"^(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)\.(?P<patch>0|[1-9]\d*)"
-    r"(?:(?:a|b|rc)\d+)?$"
+    r"(?:(?:a|b|rc)\d+)?$",
 )
 _RELEASE_DATE_PATTERN: Final[re.Pattern[str]] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
@@ -61,7 +61,7 @@ _PROJECTS: Final[tuple[Project, ...]] = (
     ),
     Project(
         name="acpkit",
-        directory=Path("."),
+        directory=Path(),
         version_file=Path("src/acpkit/_version.py"),
     ),
 )
@@ -83,7 +83,7 @@ def _workspace_version(root: Path) -> str:
     version = unique_versions.pop()
     if _SUPPORTED_VERSION_PATTERN.fullmatch(version) is None:
         raise ReleaseValidationError(
-            f"Unsupported release version {version!r}; expected X.Y.Z or X.Y.ZrcN."
+            f"Unsupported release version {version!r}; expected X.Y.Z or X.Y.ZrcN.",
         )
     return version
 
@@ -106,7 +106,7 @@ def _check_changelog(root: Path, version: str) -> None:
     heading = re.compile(rf"^## \[{re.escape(version)}\](?:\s|$)", re.MULTILINE)
     if heading.search(changelog_path.read_text(encoding="utf-8")) is None:
         raise ReleaseValidationError(
-            f"CHANGELOG.md does not contain a [{version}] release heading."
+            f"CHANGELOG.md does not contain a [{version}] release heading.",
         )
 
 
@@ -126,7 +126,7 @@ def _check_root_extras(root: Path, version: str) -> None:
     for extra, requirement in expected.items():
         if requirement not in optional.get(extra, []):
             raise ReleaseValidationError(
-                f"Root extra {extra!r} must require the synchronized package as {requirement!r}."
+                f"Root extra {extra!r} must require the synchronized package as {requirement!r}.",
             )
 
 
@@ -148,7 +148,7 @@ def _check_release_tag(tag: str, version: str) -> None:
 
     raise ReleaseValidationError(
         f"Release tag {tag!r} does not match workspace version {version!r}; "
-        f"expected {version_tag!r} or {version_tag + '_YYYY-MM-DD'!r}."
+        f"expected {version_tag!r} or {version_tag + '_YYYY-MM-DD'!r}.",
     )
 
 
@@ -240,7 +240,7 @@ def _validate_root_requirements(metadata: Message, version: str) -> None:
         ]
         if not matching:
             raise ReleaseValidationError(
-                f"acpkit wheel does not declare its {package_name} integration dependency."
+                f"acpkit wheel does not declare its {package_name} integration dependency.",
             )
         if _is_prerelease(version):
             valid_requirement = any(f"=={version}" in requirement for requirement in matching)
@@ -251,7 +251,7 @@ def _validate_root_requirements(metadata: Message, version: str) -> None:
             )
         if not valid_requirement:
             raise ReleaseValidationError(
-                f"acpkit wheel does not constrain {package_name} to the synchronized release."
+                f"acpkit wheel does not constrain {package_name} to the synchronized release.",
             )
 
 
@@ -266,7 +266,7 @@ def _validate_artifacts(*, output_dir: Path, version: str) -> None:
     ]
     if unexpected:
         raise ReleaseValidationError(
-            f"Unexpected files in release directory: {', '.join(unexpected)}."
+            f"Unexpected files in release directory: {', '.join(unexpected)}.",
         )
     artifacts = [
         path for path in files if path.name.endswith(".whl") or path.name.endswith(".tar.gz")
@@ -274,7 +274,7 @@ def _validate_artifacts(*, output_dir: Path, version: str) -> None:
     expected_count = len(_PROJECTS) * 2
     if len(artifacts) != expected_count:
         raise ReleaseValidationError(
-            f"Expected {expected_count} release artifacts, found {len(artifacts)}."
+            f"Expected {expected_count} release artifacts, found {len(artifacts)}.",
         )
     observed: dict[str, set[str]] = {}
     root_wheel_metadata: Message | None = None
@@ -287,7 +287,7 @@ def _validate_artifacts(*, output_dir: Path, version: str) -> None:
             raise ReleaseValidationError(f"Unexpected package name {name!r} in {artifact.name}.")
         if artifact_version != version:
             raise ReleaseValidationError(
-                f"{artifact.name} reports version {artifact_version!r}, expected {version!r}."
+                f"{artifact.name} reports version {artifact_version!r}, expected {version!r}.",
             )
         observed.setdefault(name, set()).add(artifact_kind)
         if name == "acpkit" and artifact_kind == "wheel":
@@ -296,7 +296,7 @@ def _validate_artifacts(*, output_dir: Path, version: str) -> None:
     for project in _PROJECTS:
         if observed.get(project.name) != expected_kinds:
             raise ReleaseValidationError(
-                f"{project.name} must provide exactly one wheel and one source distribution."
+                f"{project.name} must provide exactly one wheel and one source distribution.",
             )
     if root_wheel_metadata is None:
         raise ReleaseValidationError("The acpkit wheel metadata was not found.")
@@ -351,7 +351,7 @@ def smoke_test_artifacts(*, root: Path, dist_dir: Path) -> None:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Validate and build synchronized ACP Kit releases."
+        description="Validate and build synchronized ACP Kit releases.",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -365,12 +365,12 @@ def _parser() -> argparse.ArgumentParser:
     build_parser.add_argument("--output-dir", type=Path, default=Path("dist"))
 
     smoke_parser = subparsers.add_parser(
-        "smoke", help="Install built artifacts in a clean environment."
+        "smoke", help="Install built artifacts in a clean environment.",
     )
     smoke_parser.add_argument("--dist-dir", type=Path, default=Path("dist"))
 
     prepare_parser = subparsers.add_parser(
-        "prepare", help="Validate, build, and smoke test a tagged release."
+        "prepare", help="Validate, build, and smoke test a tagged release.",
     )
     prepare_parser.add_argument(
         "--tag",

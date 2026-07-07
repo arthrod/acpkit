@@ -32,8 +32,8 @@ __all__ = (
     "MODEL_NAME",
     "WORKSPACE_ROOT",
     "acp_agent",
-    "config",
     "codex_instructions",
+    "config",
     "graph",
     "graph_from_session",
     "list_workspace_files",
@@ -74,7 +74,6 @@ DEFAULT_MODE_ID = AVAILABLE_MODES[0].id
 
 def codex_instructions(*, mode_id: str) -> str:
     """Return the Codex Responses instructions used by the DeepAgents example."""
-
     base = (
         "You are a workspace agent that can inspect and update files in the current demo workspace. "
         "Use tools for concrete file work, keep changes scoped, and summarize what changed."
@@ -126,7 +125,7 @@ def _resolve_workspace_path(path: str, *, root: Path | None = None) -> Path:
                         if relative_to_parent.parts
                         and relative_to_parent.parts[0] == workspace_root.name
                         else relative_to_parent.parts
-                    )
+                    ),
                 )
                 candidate = (workspace_root / relative_to_parent).resolve()
         else:
@@ -152,13 +151,11 @@ def _normalized_mock_path(path: str) -> str:
 
 def list_workspace_files() -> str:
     """List mocked workspace files exposed by the DeepAgents example."""
-
     return "\n".join(sorted(MOCK_WORKSPACE_FILES))
 
 
 def read_file(path: str) -> str:
     """Read a mocked file from the DeepAgents example workspace."""
-
     normalized = _normalized_mock_path(path)
     content = MOCK_WORKSPACE_FILES.get(normalized)
     if content is None:
@@ -168,7 +165,6 @@ def read_file(path: str) -> str:
 
 def write_file(path: str, content: str) -> str:
     """Pretend to write a file in the DeepAgents example workspace."""
-
     normalized = _normalized_mock_path(path)
     del content
     return f"Mock write accepted for {normalized}"
@@ -212,7 +208,7 @@ def _bind_workspace_tools(
 def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     if not _deepagents_available():
         raise RuntimeError(
-            'Install the optional DeepAgents dependency first: uv add "langchain-acp[deepagents]"'
+            'Install the optional DeepAgents dependency first: uv add "langchain-acp[deepagents]"',
         )
     workspace_root = _ensure_workspace(_session_workspace_root(session)).resolve()
     model_name = session.session_model_id or DEFAULT_MODEL_ID or MODEL_NAME
@@ -221,7 +217,7 @@ def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
 
     tools: Sequence[DeepAgentTool] = [
         *_bind_workspace_tools(workspace_root),
-        *cast(Sequence[DeepAgentTool], native_plan_tools()),
+        *cast("Sequence[DeepAgentTool]", native_plan_tools()),
     ]
     return create_deep_agent(
         model=create_codex_chat_openai(
