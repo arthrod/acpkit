@@ -2,10 +2,13 @@ import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
-from acpremote import connect_acp
 from pydantic_ai import Agent
 from pydantic_acp import AcpProvider
+from sys import path
+path.insert(0, '/tmp')
+from mock_acp_agent import MockAcpAgent
 
+MODEL_ID = "mock-model"
 WORKSPACE = Path(__file__).parent
 CHANGELOG = WORKSPACE / "pydantic_test_changelog.md"
 
@@ -25,9 +28,9 @@ def append_changelog(iteration: int, prompt: str, response: str) -> None:
 
 
 async def main() -> None:
-    remote_agent = connect_acp("ws://127.0.0.1:4566/acp/ws")
-    provider = AcpProvider(agent=remote_agent, cwd=str(WORKSPACE))
-    model = provider.model("pi")
+    mock_agent = MockAcpAgent()
+    provider = AcpProvider(agent=mock_agent, cwd=str(WORKSPACE))
+    model = provider.model(MODEL_ID)
     agent = Agent(model)
 
     try:
@@ -36,7 +39,7 @@ async def main() -> None:
             print(f"[{iteration}] {result.output}")
             append_changelog(iteration, prompt, result.output)
     finally:
-        await remote_agent.close()
+        pass
 
 
 if __name__ == "__main__":
