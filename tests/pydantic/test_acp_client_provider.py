@@ -22,7 +22,7 @@ from acp.schema import (
     Usage,
     UsageUpdate,
 )
-from pydantic_acp import AcpHostBridge, AcpModel, AcpProvider, AcpUpdateRecord, create_acp_agent
+from pydantic_acp import AcpHostBridge, AcpModel, AcpProvider, create_acp_agent
 from pydantic_acp import client as client_module
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UserError
@@ -386,7 +386,8 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
 
 
 def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
-    assert AcpProvider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
+    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")
+    assert provider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
 
 
 def test_acp_model_supported_native_tools_is_empty() -> None:
@@ -457,13 +458,9 @@ async def test_host_bridge_records_updates_without_a_delegate() -> None:
         update=AgentMessageChunk(session_update="agent_message_chunk", content=text_block("hi")),
     )
 
-    assert bridge.updates == [
-        AcpUpdateRecord(
-            session_id="session-1",
-            update=bridge.updates[0].update,
-            source=None,
-        ),
-    ]
+    assert len(bridge.updates) == 1
+    assert bridge.updates[0].session_id == "session-1"
+    assert bridge.updates[0].source is None
     assert bridge.agent_message_text_since(0, session_id="session-1") == "hi"
 
 
