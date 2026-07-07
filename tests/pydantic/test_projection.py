@@ -986,7 +986,8 @@ def test_compaction_helpers_cover_skips_collisions_and_payload_variants() -> Non
         "compaction_id": "cmp-1",
     }
     assert _format_compaction_progress(
-        provider_details_part, provider_name="anthropic",
+        provider_details_part,
+        provider_name="anthropic",
     ) == "\n".join(
         (
             "Provider: anthropic",

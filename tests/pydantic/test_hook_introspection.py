@@ -158,7 +158,9 @@ def test_wrap_run_event_stream_hook_requires_async_iterable_and_emits_failed_upd
     with pytest.raises(TypeError, match="async iterable"):
 
         async def consume() -> None:
-            async for _ in cast("Any", wrapped_entry).func(cast("Any", None), stream=empty_stream()):
+            async for _ in cast("Any", wrapped_entry).func(
+                cast("Any", None), stream=empty_stream()
+            ):
                 pass  # pragma: no cover
 
         asyncio.run(consume())

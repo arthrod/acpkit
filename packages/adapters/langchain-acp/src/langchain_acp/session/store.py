@@ -34,7 +34,11 @@ class SessionStore(Protocol):
     def delete(self, session_id: str) -> None: ...
 
     def fork(
-        self, session_id: str, *, new_session_id: str, cwd: Path,
+        self,
+        session_id: str,
+        *,
+        new_session_id: str,
+        cwd: Path,
     ) -> AcpSessionContext | None: ...
 
     def get(self, session_id: str) -> AcpSessionContext | None: ...

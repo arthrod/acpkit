@@ -715,7 +715,8 @@ def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
 
     with pytest.raises(ValueError, match="already be normalized"):
         validate_custom_commands(
-            [AvailableCommand(name=" Ping ", description="x")], mode_state=None,
+            [AvailableCommand(name=" Ping ", description="x")],
+            mode_state=None,
         )
     with pytest.raises(ValueError, match=r"\^\[a-z\]\[a-z0-9-\]\*\$"):
         validate_custom_commands([AvailableCommand(name="9ping", description="x")], mode_state=None)
@@ -731,7 +732,8 @@ def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
         validate_custom_commands([AvailableCommand(name="tools", description="x")], mode_state=None)
     with pytest.raises(ValueError, match="active mode ids"):
         validate_custom_commands(
-            [AvailableCommand(name="ask", description="x")], mode_state=mode_state,
+            [AvailableCommand(name="ask", description="x")],
+            mode_state=mode_state,
         )
     validate_custom_commands([AvailableCommand(name="ping", description="x")], mode_state=None)
 
@@ -932,7 +934,9 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
             self.result = result
 
         def available_commands(
-            self, session: AcpSessionContext, graph: Any,
+            self,
+            session: AcpSessionContext,
+            graph: Any,
         ) -> list[AvailableCommand]:
             del session, graph
             return [AvailableCommand(name="ping", description="pong")]
@@ -1009,7 +1013,8 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
         cast("Any", _NullGraphSource()),
         config=AdapterConfig(
             slash_command_provider=cast(
-                "Any", _CustomProvider(SlashCommandResult(handled=False, text="ignored")),
+                "Any",
+                _CustomProvider(SlashCommandResult(handled=False, text="ignored")),
             ),
         ),
     )
@@ -1645,7 +1650,9 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
         hide_dot_directories=False,
     )
     assert _render_path_tree(
-        ".hidden/file.py\n", root_label=".", hide_dot_directories=False,
+        ".hidden/file.py\n",
+        root_label=".",
+        hide_dot_directories=False,
     ).startswith("Tree: .")
     assert _render_path_tree("/", root_label=".", hide_dot_directories=False).startswith("Tree: .")
     flat_search_progress = search_projection_with_default.project_progress(
@@ -2236,7 +2243,8 @@ def test_projection_maps_cover_negative_and_default_paths() -> None:
     assert copy_start.title == "Copy `a.txt` -> `b.txt`"
     assert file_projection_map.project_start("copy_file", raw_input={"source_path": "a"}) is None
     delete_start = file_projection_map.project_start(
-        "file_delete", raw_input={"file_path": "a.txt"},
+        "file_delete",
+        raw_input={"file_path": "a.txt"},
     )
     assert delete_start is not None
     assert delete_start.title == "Delete `a.txt`"
@@ -2754,7 +2762,9 @@ def test_stored_session_update_round_trips_all_supported_update_kinds() -> None:
         stored = StoredSessionUpdate.from_update(cast("Any", update))
         restored = stored.to_update()
         assert restored.model_dump(
-            mode="json", by_alias=True, exclude_none=True,
+            mode="json",
+            by_alias=True,
+            exclude_none=True,
         ) == update.model_dump(
             mode="json",
             by_alias=True,
@@ -2855,7 +2865,9 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
     session.updated_at = utc_now()
     file_store.save(session)
     session_copy = file_store.fork(
-        session.session_id, new_session_id="fork-file", cwd=tmp_path / "fork",
+        session.session_id,
+        new_session_id="fork-file",
+        cwd=tmp_path / "fork",
     )
     assert session_copy is not None
     assert session_copy.cwd == tmp_path / "fork"
@@ -3493,7 +3505,9 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     generic_block = EmbeddedResourceContentBlock(
         type="resource",
         resource=BlobResourceContents(
-            uri="file:///blob", mime_type="application/octet-stream", blob="AA==",
+            uri="file:///blob",
+            mime_type="application/octet-stream",
+            blob="AA==",
         ),
     )
     content = prompt_to_langchain_content(
@@ -3737,7 +3751,9 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     assert (
         asyncio.run(
             adapter._handle_update_payload(
-                client=cast("AcpClient", client), session=session, payload="bad",
+                client=cast("AcpClient", client),
+                session=session,
+                payload="bad",
             ),
         )
         is None

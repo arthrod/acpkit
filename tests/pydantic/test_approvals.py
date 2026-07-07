@@ -486,7 +486,8 @@ async def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
             raise AssertionError("remembered policy should not be rewritten")
 
         def export_state(
-            self, session: AcpSessionContext,
+            self,
+            session: AcpSessionContext,
         ) -> dict[str, JsonValue]:  # pragma: no cover
             del session
             raise AssertionError("export_state is metadata-only, not live approval lookup")

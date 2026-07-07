@@ -42,7 +42,8 @@ def _latest_user_prompt(messages: list[ModelRequest | ModelResponse]) -> str:
 
 
 def _travel_demo_model(
-    messages: list[ModelRequest | ModelResponse], info: AgentInfo,
+    messages: list[ModelRequest | ModelResponse],
+    info: AgentInfo,
 ) -> ModelResponse:
     del info
     latest_message = messages[-1]

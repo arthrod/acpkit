@@ -91,6 +91,7 @@ __all__ = (
 # AcpUpdateRecord
 # ---------------------------------------------------------------------------
 
+
 class AcpUpdateRecord:
     """A host-side ACP update observed while an ACP-backed model request runs."""
 
@@ -105,6 +106,7 @@ class AcpUpdateRecord:
 # ---------------------------------------------------------------------------
 # AcpHostBridge
 # ---------------------------------------------------------------------------
+
 
 class AcpHostBridge:
     """Minimal ACP host/client implementation used by :class:`AcpProvider`.
@@ -180,7 +182,9 @@ class AcpHostBridge:
             ),
         )
         if self.delegate is not None and hasattr(self.delegate, "session_update"):
-            await self._call_delegate("session_update", session_id=session_id, update=update, **kwargs)
+            await self._call_delegate(
+                "session_update", session_id=session_id, update=update, **kwargs
+            )
 
     async def request_permission(
         self,
@@ -333,6 +337,7 @@ class AcpHostBridge:
 # Internal result type
 # ---------------------------------------------------------------------------
 
+
 class _AcpPromptResult:
     __slots__ = ("session_id", "stop_reason", "text", "usage")
 
@@ -353,6 +358,7 @@ class _AcpPromptResult:
 # ---------------------------------------------------------------------------
 # AcpProvider
 # ---------------------------------------------------------------------------
+
 
 class AcpProvider(Provider[AcpAgent]):
     """Pydantic AI provider that treats an ACP agent as the model backend.
@@ -563,7 +569,9 @@ class AcpProvider(Provider[AcpAgent]):
         if not usage.has_values():
             usage = self._host.usage_update_since(start_index, session_id=session_id)
         stop_reason = getattr(prompt_response, "stop_reason", None) or getattr(
-            prompt_response, "stopReason", None,
+            prompt_response,
+            "stopReason",
+            None,
         )
         return _AcpPromptResult(
             text=text,
@@ -627,6 +635,7 @@ class AcpProvider(Provider[AcpAgent]):
 # ---------------------------------------------------------------------------
 # AcpModel
 # ---------------------------------------------------------------------------
+
 
 class AcpModel(Model[AcpAgent]):
     """Pydantic AI ``Model`` backed by an ACP agent provider."""
@@ -727,6 +736,7 @@ class AcpModel(Model[AcpAgent]):
 # _AcpBufferedStreamedResponse
 # ---------------------------------------------------------------------------
 
+
 class _AcpBufferedStreamedResponse(StreamedResponse):
     __slots__ = ("_response", "_usage", "finish_reason", "provider_details", "provider_response_id")
 
@@ -776,6 +786,7 @@ class _AcpBufferedStreamedResponse(StreamedResponse):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _default_render_prompt_blocks(
     messages: Sequence[ModelMessage],
@@ -872,7 +883,10 @@ def _section(title: str, content: str) -> str:
 
 
 def _is_agent_message_chunk(update: Any) -> bool:
-    return isinstance(update, AgentMessageChunk) or getattr(update, "session_update", None) == "agent_message_chunk"
+    return (
+        isinstance(update, AgentMessageChunk)
+        or getattr(update, "session_update", None) == "agent_message_chunk"
+    )
 
 
 def _usage_from_acp(value: Any) -> RequestUsage:

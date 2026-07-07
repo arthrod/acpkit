@@ -42,7 +42,8 @@ def test_root_adapter_detects_langchain_graph_targets() -> None:
 
 
 def test_load_target_resolves_langchain_graph_targets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -74,7 +75,8 @@ def test_load_target_resolves_langchain_graph_targets(
 
 
 def test_load_target_uses_latest_langchain_graph_when_attribute_is_omitted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,

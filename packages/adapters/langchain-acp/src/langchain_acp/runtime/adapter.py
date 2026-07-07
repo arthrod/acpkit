@@ -348,7 +348,10 @@ class LangChainAcpAgent(AcpAgent):
             return slash_response
         await self._drain_bridge_updates(client=client, session=session)
         await self._emit_user_prompt(
-            client=client, session=session, prompt=prompt, message_id=message_id,
+            client=client,
+            session=session,
+            prompt=prompt,
+            message_id=message_id,
         )
         active_tool_calls: dict[str, dict[str, Any]] = {}
         tool_call_accumulator: dict[int, dict[str, str | int | None]] = {}
@@ -1190,7 +1193,8 @@ class LangChainAcpAgent(AcpAgent):
         return builder.compile(checkpointer=MemorySaver(), name=getattr(graph, "name", None))
 
     async def _resolved_model_selection_state(
-        self, session: AcpSessionContext,
+        self,
+        session: AcpSessionContext,
     ) -> ModelSelectionState | None:
         return await self._await_maybe(self._bridge_manager.get_model_state(session))
 
@@ -1210,7 +1214,9 @@ class LangChainAcpAgent(AcpAgent):
         return mode_state.current_mode_id
 
     async def _set_model(
-        self, session: AcpSessionContext, model_id: str,
+        self,
+        session: AcpSessionContext,
+        model_id: str,
     ) -> ModelSelectionState | None:
         return await self._await_maybe(self._bridge_manager.set_model(session, model_id))
 

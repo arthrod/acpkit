@@ -250,7 +250,9 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
             return ReleaseTerminalResponse()
 
         async def wait_for_terminal_exit(
-            self, *args: Any, **kwargs: Any,
+            self,
+            *args: Any,
+            **kwargs: Any,
         ) -> WaitForTerminalExitResponse:
             self.calls.append(("wait_for_terminal_exit", args, dict(kwargs)))
             return WaitForTerminalExitResponse(exit_code=0)
@@ -303,9 +305,12 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
         is None
     )
     assert (
-        asyncio.run(cast("Any", TerminalBackend.create_terminal)(_LOW_LEVEL_SENTINEL, "bash")) is None
+        asyncio.run(cast("Any", TerminalBackend.create_terminal)(_LOW_LEVEL_SENTINEL, "bash"))
+        is None
     )
-    assert asyncio.run(cast("Any", TerminalBackend.terminal_output)(_LOW_LEVEL_SENTINEL, "t")) is None
+    assert (
+        asyncio.run(cast("Any", TerminalBackend.terminal_output)(_LOW_LEVEL_SENTINEL, "t")) is None
+    )
     assert (
         asyncio.run(cast("Any", TerminalBackend.release_terminal)(_LOW_LEVEL_SENTINEL, "t")) is None
     )
@@ -316,31 +321,43 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
     assert asyncio.run(cast("Any", TerminalBackend.kill_terminal)(_LOW_LEVEL_SENTINEL, "t")) is None
     assert (
         cast("Any", SessionModelsProvider.get_model_state)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL,
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
     assert (
         cast("Any", SessionModelsProvider.set_model)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL, "m",
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
+            "m",
         )
         is None
     )
     assert (
         cast("Any", SessionModesProvider.get_mode_state)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL,
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
     assert (
         cast("Any", SessionModesProvider.set_mode)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL, "plan",
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
+            "plan",
         )
         is None
     )
     assert (
         cast("Any", ConfigOptionsProvider.get_config_options)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL,
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
@@ -355,11 +372,14 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
         is None
     )
     assert (
-        cast("Any", PlanProvider.get_plan)(_LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL) is None
+        cast("Any", PlanProvider.get_plan)(_LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL)
+        is None
     )
     assert (
         cast("Any", ApprovalStateProvider.get_approval_state)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL,
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
