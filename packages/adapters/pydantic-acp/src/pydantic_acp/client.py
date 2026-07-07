@@ -80,21 +80,21 @@ class ACPClientConnection(Protocol):
     async def close_session(self, session_id: str, **kwargs: Any) -> Any: ...
 
 
+_UNCONFIGURED_CLIENT_ERROR = "ACPProvider has no ACP client connection configured."
+
+
+async def _raise_unconfigured_client(*_: Any, **__: Any) -> Any:
+    raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
+
+
 class _UnconfiguredACPClient:
-    async def initialize(self, **_: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+    """Placeholder client connection used until a real ACP client is configured."""
 
-    async def new_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
-
-    async def prompt(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
-
-    async def cancel(self, *_: Any, **__: Any) -> None:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
-
-    async def close_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+    initialize = _raise_unconfigured_client
+    new_session = _raise_unconfigured_client
+    prompt = _raise_unconfigured_client
+    cancel = _raise_unconfigured_client
+    close_session = _raise_unconfigured_client
 
 
 class _DirectACPConnection:
@@ -144,10 +144,7 @@ class _DirectACPConnection:
         await self._agent.cancel(session_id=session_id, **kwargs)
 
     async def close_session(self, session_id: str, **kwargs: Any) -> Any:
-        close_session = getattr(self._agent, "close_session", None)
-        if close_session is None:
-            return None
-        return await close_session(session_id=session_id, **kwargs)
+        return await _call_optional_close_session(self._agent, session_id=session_id, **kwargs)
 
 
 class ACPProvider(Provider[ACPClientConnection]):
@@ -263,9 +260,7 @@ class ACPProvider(Provider[ACPClientConnection]):
         if session_id is None:
             return
         self._session_id = None
-        close_session = getattr(self._client, "close_session", None)
-        if close_session is not None:
-            await close_session(session_id=session_id)
+        await _call_optional_close_session(self._client, session_id=session_id)
 
     async def prompt_text(
         self,
@@ -415,6 +410,14 @@ class ACPModel(Model[ACPClientConnection]):
                 "Register tools, native tools, and structured-output behavior on the "
                 f"ACP-side agent instead of passing them through the model ({joined})."
             )
+
+
+async def _call_optional_close_session(target: Any, *, session_id: str, **kwargs: Any) -> Any:
+    """Call `target.close_session(...)` if it defines one, else no-op."""
+    close_session = getattr(target, "close_session", None)
+    if close_session is None:
+        return None
+    return await close_session(session_id=session_id, **kwargs)
 
 
 def _response_field(response: Any, *names: str) -> Any:
