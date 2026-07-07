@@ -167,8 +167,13 @@ class AcpHostBridge:
                 source=kwargs.get("source"),
             )
         )
-        if self.delegate is not None and hasattr(self.delegate, "session_update"):
-            await self._call_delegate("session_update", session_id=session_id, update=update, **kwargs)
+        await self._call_delegate(
+            "session_update",
+            required=False,
+            session_id=session_id,
+            update=update,
+            **kwargs,
+        )
 
     async def request_permission(
         self,
@@ -294,19 +299,20 @@ class AcpHostBridge:
         return await self._call_delegate("ext_method", method=method, params=params)
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
-        if self.delegate is None or not hasattr(self.delegate, "ext_notification"):
-            return None
-        await self._call_delegate("ext_notification", method=method, params=params)
+        await self._call_delegate("ext_notification", required=False, method=method, params=params)
 
     def on_connect(self, conn: AcpAgent) -> None:
         """Forward reverse connections to a delegate host client when it supports them."""
-        if self.delegate is not None and hasattr(self.delegate, "on_connect"):
-            self.delegate.on_connect(conn)
+        delegate = self.delegate
+        if delegate is not None and hasattr(delegate, "on_connect"):
+            delegate.on_connect(conn)
 
-    async def _call_delegate(self, method_name: str, **kwargs: Any) -> Any:
+    async def _call_delegate(self, method_name: str, *, required: bool = True, **kwargs: Any) -> Any:
         delegate = self.delegate
         method = getattr(delegate, method_name, None) if delegate is not None else None
         if method is None:
+            if not required:
+                return None
             raise RuntimeError(
                 f"ACP agent requested host method {method_name!r}, but no host client delegate "
                 "was supplied to AcpProvider."
