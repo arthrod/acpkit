@@ -9,14 +9,10 @@ from uuid import uuid4
 from acp import PROTOCOL_VERSION
 from acp.interfaces import Agent as ACPAgent
 from acp.schema import (
-    AudioContentBlock,
     ClientCapabilities,
-    EmbeddedResourceContentBlock,
     HttpMcpServer,
-    ImageContentBlock,
     Implementation,
     McpServerStdio,
-    ResourceContentBlock,
     SseMcpServer,
     TextContentBlock,
 )
@@ -26,13 +22,11 @@ from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.providers import Provider
 from pydantic_ai.settings import ModelSettings
 
-ACPPromptBlock: TypeAlias = (
-    TextContentBlock
-    | ImageContentBlock
-    | AudioContentBlock
-    | ResourceContentBlock
-    | EmbeddedResourceContentBlock
-)
+from .types import AgentPromptBlock
+
+# `AgentPromptBlock` (pydantic_acp.types) is the single source of truth for the
+# ACP content-block union; re-exported here under the client-facing name.
+ACPPromptBlock: TypeAlias = AgentPromptBlock
 ACPServerDefinition: TypeAlias = HttpMcpServer | McpServerStdio | SseMcpServer
 HistoryMode: TypeAlias = Literal["latest_user", "full"]
 PermissionHandler: TypeAlias = Callable[..., Any | Awaitable[Any]]
@@ -80,21 +74,24 @@ class ACPClientConnection(Protocol):
     async def close_session(self, session_id: str, **kwargs: Any) -> Any: ...
 
 
+_UNCONFIGURED_CLIENT_MESSAGE = "ACPProvider has no ACP client connection configured."
+
+
 class _UnconfiguredACPClient:
     async def initialize(self, **_: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_MESSAGE)
 
     async def new_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_MESSAGE)
 
     async def prompt(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_MESSAGE)
 
     async def cancel(self, *_: Any, **__: Any) -> None:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_MESSAGE)
 
     async def close_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_MESSAGE)
 
 
 class _DirectACPConnection:
@@ -144,10 +141,7 @@ class _DirectACPConnection:
         await self._agent.cancel(session_id=session_id, **kwargs)
 
     async def close_session(self, session_id: str, **kwargs: Any) -> Any:
-        close_session = getattr(self._agent, "close_session", None)
-        if close_session is None:
-            return None
-        return await close_session(session_id=session_id, **kwargs)
+        return await _call_optional_close_session(self._agent, session_id, **kwargs)
 
 
 class ACPProvider(Provider[ACPClientConnection]):
@@ -263,9 +257,7 @@ class ACPProvider(Provider[ACPClientConnection]):
         if session_id is None:
             return
         self._session_id = None
-        close_session = getattr(self._client, "close_session", None)
-        if close_session is not None:
-            await close_session(session_id=session_id)
+        await _call_optional_close_session(self._client, session_id)
 
     async def prompt_text(
         self,
@@ -415,6 +407,19 @@ class ACPModel(Model[ACPClientConnection]):
                 "Register tools, native tools, and structured-output behavior on the "
                 f"ACP-side agent instead of passing them through the model ({joined})."
             )
+
+
+async def _call_optional_close_session(target: Any, session_id: str, **kwargs: Any) -> Any:
+    """Invoke `target.close_session(...)` if present, otherwise no-op.
+
+    Shared by `_DirectACPConnection` (closing an in-process ACP agent's session)
+    and `ACPProvider.close` (closing a client connection's session), since
+    `close_session` is optional on both.
+    """
+    close_session = getattr(target, "close_session", None)
+    if close_session is None:
+        return None
+    return await close_session(session_id=session_id, **kwargs)
 
 
 def _response_field(response: Any, *names: str) -> Any:
