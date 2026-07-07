@@ -11,6 +11,7 @@ from typing import Any, TypeAlias
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
+from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
@@ -442,6 +443,25 @@ class AcpProvider(Provider[AcpAgent]):
             message_id=uuid4().hex,
         )
         text = self._host.agent_message_text_since(start_index, session_id=session_id)
+
+        # Fallback for ACP servers (like pi) that don't send agent message chunks
+        # Check if the response itself contains text in alternative fields
+        if not text:
+            # Try common alternative field names where some ACP implementations might send text
+            for field in ["message", "content", "text", "response", "data"]:
+                field_value = getattr(prompt_response, field, None)
+                if field_value:
+                    if isinstance(field_value, str):
+                        text = field_value
+                        break
+                    elif hasattr(field_value, "text"):
+                        text = getattr(field_value, "text", "")
+                        break
+                    elif isinstance(field_value, dict):
+                        text = field_value.get("text", field_value.get("content", ""))
+                        if text:
+                            break
+
         usage = _usage_from_acp(getattr(prompt_response, "usage", None))
         if not usage.has_values():
             usage = self._host.usage_update_since(start_index, session_id=session_id)
@@ -477,12 +497,24 @@ class AcpProvider(Provider[AcpAgent]):
             if self._current_model_name != model_name:
                 set_session_model = getattr(self._client, "set_session_model", None)
                 if set_session_model is not None:
-                    result = set_session_model(
-                        model_id=model_name,
-                        session_id=self._session_id,
-                    )
-                    if inspect.isawaitable(result):
-                        await result
+                    try:
+                        result = set_session_model(
+                            model_id=model_name,
+                            session_id=self._session_id,
+                        )
+                        if inspect.isawaitable(result):
+                            await result
+                    except RequestError as exc:
+                        # Some ACP servers do not implement session/set_model.
+                        # If the method is missing, assume the model was already
+                        # configured at session creation and continue.
+                        if exc.code != -32601:
+                            raise
+                        if not (
+                            (exc.data or {}).get("method") == "session/set_model"
+                            or "session/set_model" in str(exc)
+                        ):
+                            raise
                 self._current_model_name = model_name
 
             return self._session_id
