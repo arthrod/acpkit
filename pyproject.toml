@@ -17,6 +17,7 @@ classifiers = [
 keywords = ["acp", "agents", "protocol", "pydantic-ai"]
 dependencies = [
     "click>=8.1.8",
+    "pydantic-ai>=2.4.0",
     "typing-extensions>=4.12.0",
 ]
 
@@ -36,7 +37,7 @@ dev = [
     "langchain-openai>=0.3.26",
     "langchain-acp[deepagents]",
     "python-dotenv",
-    "pydantic-acp",
+    #"pydantic-acp",
     "pydantic-ai-harness[code-mode]==0.4.0",
     "pydantic-ai-slim>=2.0.0,<=2.4.0",
     "pydantic-graph",
@@ -81,10 +82,10 @@ members = [
 ]
 
 [tool.uv.sources]
-acpremote = { workspace = true }
 codex-auth-helper = { workspace = true }
 langchain-acp = { workspace = true }
 pydantic-acp = { workspace = true }
+acpremote = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/acpkit"]
