@@ -433,7 +433,7 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
 
 async def test_acp_provider_does_not_require_the_agent_to_support_on_connect() -> None:
     acp_agent = NoHandshakeACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore[arg-type]
     model = AcpModel(model_name="agent", provider=provider)
 
     response = await model.request(
