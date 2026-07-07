@@ -46,6 +46,9 @@ __all__ = (
     "HistoryMode",
 )
 
+_UNCONFIGURED_CLIENT_ERROR = "ACPProvider has no ACP client connection configured."
+_TEXT_FIELD_NAMES: tuple[str, ...] = ("text", "output_text", "delta", "message")
+
 
 class ACPClientConnection(Protocol):
     """Minimal ACP client-side connection needed by the Pydantic AI provider."""
@@ -82,19 +85,19 @@ class ACPClientConnection(Protocol):
 
 class _UnconfiguredACPClient:
     async def initialize(self, **_: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def new_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def prompt(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def cancel(self, *_: Any, **__: Any) -> None:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
     async def close_session(self, *_: Any, **__: Any) -> Any:
-        raise RuntimeError("ACPProvider has no ACP client connection configured.")
+        raise RuntimeError(_UNCONFIGURED_CLIENT_ERROR)
 
 
 class _DirectACPConnection:
@@ -144,10 +147,7 @@ class _DirectACPConnection:
         await self._agent.cancel(session_id=session_id, **kwargs)
 
     async def close_session(self, session_id: str, **kwargs: Any) -> Any:
-        close_session = getattr(self._agent, "close_session", None)
-        if close_session is None:
-            return None
-        return await close_session(session_id=session_id, **kwargs)
+        return await _call_optional_close_session(self._agent, session_id, **kwargs)
 
 
 class ACPProvider(Provider[ACPClientConnection]):
@@ -263,9 +263,7 @@ class ACPProvider(Provider[ACPClientConnection]):
         if session_id is None:
             return
         self._session_id = None
-        close_session = getattr(self._client, "close_session", None)
-        if close_session is not None:
-            await close_session(session_id=session_id)
+        await _call_optional_close_session(self._client, session_id)
 
     async def prompt_text(
         self,
@@ -288,7 +286,7 @@ class ACPProvider(Provider[ACPClientConnection]):
                 streamed_text = "".join(self._active_text.get(session_id, ()))
                 if streamed_text:
                     return streamed_text
-                response_text = _extract_response_text(response)
+                response_text = _extract_text(response)
                 if response_text:
                     return response_text
                 return ""
@@ -302,7 +300,7 @@ class ACPProvider(Provider[ACPClientConnection]):
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self._updates.append((session_id, update, dict(kwargs)))
-        text = _extract_update_text(update)
+        text = _extract_text(update)
         if text:
             self._active_text.setdefault(session_id, []).append(text)
 
@@ -426,23 +424,21 @@ def _response_field(response: Any, *names: str) -> Any:
     return None
 
 
-def _extract_update_text(update: Any) -> str:
-    parts: list[str] = []
-    for candidate in _walk_text_candidates(update):
-        if isinstance(candidate, str):
-            parts.append(candidate)
-    return "".join(parts)
+async def _call_optional_close_session(target: Any, session_id: str, **kwargs: Any) -> Any:
+    """Invoke `close_session` on `target` if it defines one, otherwise no-op.
+
+    Shared by `_DirectACPConnection` (closing the wrapped ACP agent's session) and
+    `ACPProvider` (closing the underlying client connection's session).
+    """
+    close_session = getattr(target, "close_session", None)
+    if close_session is None:
+        return None
+    return await close_session(session_id=session_id, **kwargs)
 
 
-def _extract_response_text(response: Any) -> str:
-    if response is None:
-        return ""
-    parts: list[str] = []
-    for name in ("text", "output_text", "content", "message"):
-        value = _response_field(response, name)
-        if isinstance(value, str):
-            parts.append(value)
-    return "".join(parts)
+def _extract_text(value: Any) -> str:
+    """Single source of truth for pulling display text out of an ACP update or response."""
+    return "".join(candidate for candidate in _walk_text_candidates(value) if isinstance(candidate, str))
 
 
 def _walk_text_candidates(value: Any) -> list[Any]:
@@ -459,11 +455,11 @@ def _walk_text_candidates(value: Any) -> list[Any]:
         return items
 
     candidates: list[Any] = []
-    content = getattr(value, "content", None)
+    content = _response_field(value, "content")
     if content is not None and content is not value:
         candidates.extend(_walk_text_candidates(content))
-    for name in ("text", "delta", "message", "output_text"):
-        attr = getattr(value, name, None)
+    for name in _TEXT_FIELD_NAMES:
+        attr = _response_field(value, name)
         if isinstance(attr, str):
             candidates.append(attr)
     return candidates
