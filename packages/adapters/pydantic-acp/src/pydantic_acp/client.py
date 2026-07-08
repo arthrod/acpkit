@@ -69,13 +69,13 @@ AcpPromptRenderer: TypeAlias = Callable[
     Sequence[AgentPromptBlock] | Awaitable[Sequence[AgentPromptBlock]],
 ]
 
-ACP_MODEL_PROFILE: ModelProfile = {
-    "supports_tools": False,
-    "supports_json_schema_output": False,
-    "supports_json_object_output": False,
-    "supports_image_output": False,
-    "supported_native_tools": frozenset(),
-}
+ACP_MODEL_PROFILE: ModelProfile = ModelProfile(
+    supports_tools=False,
+    supports_json_schema_output=False,
+    supports_json_object_output=False,
+    supports_image_output=False,
+    supported_native_tools=frozenset[type[AbstractNativeTool]](),
+)
 
 __all__ = (
     "ACP_MODEL_PROFILE",
@@ -601,30 +601,32 @@ class AcpProvider(Provider[AcpAgent]):
                 )
                 self._session_id = session.session_id
 
-            if self._current_model_name != model_name:
-                set_session_model = getattr(self._client, "set_session_model", None)
-                if set_session_model is not None:
-                    try:
-                        result = set_session_model(
-                            model_id=model_name,
-                            session_id=self._session_id,
-                        )
-                        if inspect.isawaitable(result):
-                            await result
-                        self._current_model_name = model_name
-                    except RequestError as exc:
-                        if exc.code != -32601:
-                            raise
-                        if not (
-                            (exc.data or {}).get("method") == "session/set_model"
-                            or "session/set_model" in str(exc)
-                        ):
-                            raise
-                        # Method not found - assume model was set during session creation
-                        self._current_model_name = model_name
-                else:
-                    # Method doesn't exist - assume model was set during session creation
+            if self._current_model_name == model_name:
+                return self._session_id
+
+            set_session_model = getattr(self._client, "set_session_model", None)
+            if set_session_model is not None:
+                try:
+                    result = set_session_model(
+                        model_id=model_name,
+                        session_id=self._session_id,
+                    )
+                    if inspect.isawaitable(result):
+                        await result
                     self._current_model_name = model_name
+                except RequestError as exc:
+                    if exc.code != -32601:
+                        raise
+                    if not (
+                        (exc.data or {}).get("method") == "session/set_model"
+                        or "session/set_model" in str(exc)
+                    ):
+                        raise
+                    # Method not found - assume model was set during session creation
+                    self._current_model_name = model_name
+            else:
+                # Method doesn't exist - assume model was set during session creation
+                self._current_model_name = model_name
 
         return self._session_id
 

@@ -7,8 +7,10 @@ from typing import Any, Literal, cast
 import pydantic_acp
 import pytest
 from acp import PROTOCOL_VERSION
+from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
+from acp.interfaces import Client as AcpClient
 from acp.schema import (
     AgentCapabilities,
     AgentMessageChunk,
@@ -30,11 +32,14 @@ from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import (
     BinaryContent,
     ImageUrl,
+    InstructionPart,
     ModelRequest,
     ModelResponse,
     RetryPromptPart,
     SystemPromptPart,
+    TextContent,
     TextPart,
+    ToolCallPart,
     ToolReturnPart,
     UploadedFile,
     UserPromptPart,
@@ -72,60 +77,6 @@ class EchoACPAgent:  # type: ignore[misc]
 
     def on_connect(self, conn: Any) -> None:
         self.client = conn
-
-    async def authenticate(self, method_id: str, **kwargs: Any) -> Any:
-        del method_id, kwargs
-        return None
-
-    async def cancel(self, session_id: str, **kwargs: Any) -> None:
-        del session_id, kwargs
-
-    async def close_session(self, session_id: str, **kwargs: Any) -> Any:
-        del session_id, kwargs
-        return None
-
-    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        del method, params
-        return {}
-
-    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
-        del method, params
-
-    async def fork_session(
-        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
-    ) -> Any:
-        del cwd, session_id, mcp_servers, kwargs
-        return None
-
-    async def list_sessions(
-        self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any
-    ) -> Any:
-        del cursor, cwd, kwargs
-        return None
-
-    async def load_session(
-        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
-    ) -> Any:
-        del cwd, session_id, mcp_servers, kwargs
-        return None
-
-    async def resume_session(
-        self,
-        cwd: str,
-        session_id: str,
-        mcp_servers: list[Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        del cwd, session_id, mcp_servers, kwargs
-        return None
-
-    async def set_config_option(
-        self, config_id: str, session_id: str, value: Any, **kwargs: Any
-    ) -> None:
-        del config_id, session_id, value, kwargs
-
-    async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
-        del mode_id, session_id, kwargs
 
     async def initialize(
         self,
@@ -200,6 +151,21 @@ def _build_provider_and_model(
     return provider, model
 
 
+class SetModelErrorACPAgent(EchoACPAgent):
+    def __init__(self, error: RequestError) -> None:
+        super().__init__()
+        self.error = error
+
+    async def set_session_model(
+        self,
+        model_id: str,
+        session_id: str,
+        **kwargs: Any,
+    ) -> None:
+        del model_id, session_id, kwargs
+        raise self.error
+
+
 def test_acp_client_provider_is_plain_pydantic_ai_provider() -> None:
     acp_agent = EchoACPAgent()
     provider, model = _build_provider_and_model(acp_agent)
@@ -244,6 +210,39 @@ def test_pydantic_acp_requires_pydantic_ai_v2() -> None:
 # --- AcpProvider / AcpModel behavior (changed code) ---------------------------------
 
 
+def test_acp_provider_accepts_acp_client_directly_and_exposes_accessors() -> None:
+    acp_agent = EchoACPAgent()
+
+    provider = AcpProvider(acp_client=cast(AcpAgent, acp_agent))
+    model = provider.model(history_mode="full")
+
+    assert provider.client is acp_agent
+    assert provider.host.delegate is None
+    assert provider.name == "acp"
+    assert provider.base_url == "acp://local"
+    assert provider.session_id is None
+    assert provider.updates == []
+    assert model.provider is provider
+
+
+def test_acp_provider_rejects_ambiguous_client_construction() -> None:
+    acp_agent = EchoACPAgent()
+
+    with pytest.raises(AssertionError, match="both `acp_client` and `agent`"):
+        cast(Any, AcpProvider)(
+            acp_client=acp_agent,
+            agent=EchoACPAgent(),
+            cwd="/workspace",
+        )
+
+    with pytest.raises(AssertionError, match="both `acp_client` and `host_client`"):
+        cast(Any, AcpProvider)(
+            acp_client=acp_agent,
+            host_client=HostRecordingClient(),
+            cwd="/workspace",
+        )
+
+
 async def test_acp_provider_reuses_session_and_model_across_multiple_requests() -> None:
     acp_agent = EchoACPAgent()
     _provider, model = _build_provider_and_model(acp_agent)
@@ -260,12 +259,84 @@ async def test_acp_provider_reuses_session_and_model_across_multiple_requests() 
 
 def test_acp_provider_model_factory_uses_default_model_name() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    provider = AcpProvider(agent=cast(AcpAgent, acp_agent), cwd="/workspace")
 
     model = provider.model()
 
     assert model.model_name == "agent"
     assert model.provider is provider
+
+
+async def test_acp_provider_accepts_sync_set_session_model_hooks() -> None:
+    acp_agent = EchoACPAgent()
+    set_model_calls: list[tuple[str, str]] = []
+
+    def set_session_model(model_id: str, session_id: str, **kwargs: Any) -> None:
+        del kwargs
+        set_model_calls.append((session_id, model_id))
+
+    cast(Any, acp_agent).set_session_model = set_session_model
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    await Agent(model).run("sync model hook")
+
+    assert set_model_calls == [("session-1", "zed-agent")]
+
+
+async def test_acp_provider_ensure_session_returns_existing_session_for_same_model() -> None:
+    acp_agent = EchoACPAgent()
+    provider = AcpProvider(agent=cast(AcpAgent, acp_agent), cwd="/workspace")
+
+    first_session_id = await provider._ensure_session(model_name="zed-agent")
+    second_session_id = await provider._ensure_session(model_name="zed-agent")
+
+    assert first_session_id == "session-1"
+    assert second_session_id == "session-1"
+    assert acp_agent.session_models == [("session-1", "zed-agent")]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RequestError(-32601, "Method not found", {"method": "session/set_model"}),
+        RequestError(-32601, "session/set_model is unavailable"),
+    ],
+)
+async def test_acp_provider_treats_missing_set_model_as_supported_fallback(
+    error: RequestError,
+) -> None:
+    acp_agent = SetModelErrorACPAgent(error)
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("hello")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert response.provider_details == {"acp_session_id": "session-1"}
+    assert acp_agent.prompts == [("session-1", "hello")]
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        RequestError(-32000, "backend failed"),
+        RequestError(-32601, "different missing method", {"method": "session/load"}),
+    ],
+)
+async def test_acp_provider_reraises_unexpected_set_model_errors(
+    error: RequestError,
+) -> None:
+    acp_agent = SetModelErrorACPAgent(error)
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    with pytest.raises(RequestError):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("hello")])],
+            None,
+            ModelRequestParameters(),
+        )
 
 
 async def test_acp_provider_custom_prompt_renderer_is_used_instead_of_default() -> None:
@@ -387,6 +458,14 @@ async def test_acp_model_rejects_native_tools() -> None:
     assert acp_agent.prompts == []
 
 
+def test_acp_model_own_guard_rejects_native_tools() -> None:
+    acp_agent = EchoACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    with pytest.raises(UserError, match="native tools directly"):
+        model._ensure_supported_request(ModelRequestParameters(native_tools=[WebSearchTool()]))
+
+
 async def test_acp_model_rejects_disallowed_text_output() -> None:
     acp_agent = EchoACPAgent()
     _provider, model = _build_provider_and_model(acp_agent)
@@ -419,9 +498,26 @@ async def test_acp_model_request_stream_yields_the_buffered_response_text() -> N
     assert streamed_response.finish_reason == "stop"
 
 
+async def test_acp_buffered_stream_skips_non_text_response_parts() -> None:
+    response = ModelResponse(
+        parts=[ToolCallPart(tool_name="lookup", args={})],
+        model_name="agent",
+    )
+    stream = client_module._AcpBufferedStreamedResponse(
+        model_request_parameters=ModelRequestParameters(),
+        response=response,
+    )
+
+    events = [event async for event in stream]
+    await stream.close_stream()
+
+    assert events == []
+    assert stream.model_name == "agent"
+
+
 async def test_acp_provider_switches_session_model_when_model_name_changes() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
+    provider = AcpProvider(agent=cast(AcpAgent, acp_agent), cwd="/workspace")
     first_model = AcpModel(model_name="model-a", provider=provider)
     second_model = AcpModel(model_name="model-b", provider=provider)
 
@@ -440,7 +536,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
     mcp_servers = [{"name": "demo"}]
 
     provider = AcpProvider(
-        agent=acp_agent,
+        agent=cast(AcpAgent, acp_agent),
         cwd="/workspace",
         client_capabilities=capabilities,
         client_info=client_info,
@@ -456,7 +552,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
 
 
 def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
-    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")
+    provider = AcpProvider(agent=cast(AcpAgent, EchoACPAgent()), cwd="/workspace")
     assert provider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
 
 
@@ -472,60 +568,6 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
     and usable; the agent simply never observes host updates, so the resulting
     model response carries no text.
     """
-
-    async def authenticate(self, method_id: str, **kwargs: Any) -> Any:
-        del method_id, kwargs
-        return None
-
-    async def cancel(self, session_id: str, **kwargs: Any) -> None:
-        del session_id, kwargs
-
-    async def close_session(self, session_id: str, **kwargs: Any) -> Any:
-        del session_id, kwargs
-        return None
-
-    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
-        del method, params
-        return {}
-
-    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
-        del method, params
-
-    async def fork_session(
-        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
-    ) -> Any:
-        del cwd, session_id, mcp_servers, kwargs
-        return None
-
-    async def list_sessions(
-        self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any
-    ) -> Any:
-        del cursor, cwd, kwargs
-        return None
-
-    async def load_session(
-        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
-    ) -> Any:
-        del cwd, session_id, mcp_servers, kwargs
-        return None
-
-    async def resume_session(
-        self,
-        cwd: str,
-        session_id: str,
-        mcp_servers: list[Any] | None = None,
-        **kwargs: Any,
-    ) -> Any:
-        del cwd, session_id, mcp_servers, kwargs
-        return None
-
-    async def set_config_option(
-        self, config_id: str, session_id: str, value: Any, **kwargs: Any
-    ) -> None:
-        del config_id, session_id, value, kwargs
-
-    async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
-        del mode_id, session_id, kwargs
 
     async def initialize(
         self,
@@ -577,6 +619,13 @@ async def test_acp_provider_does_not_require_the_agent_to_support_on_connect() -
     assert response.provider_details == {"acp_session_id": "session-1"}
 
 
+async def test_echo_acp_agent_requires_a_connected_host_client() -> None:
+    acp_agent = EchoACPAgent()
+
+    with pytest.raises(AssertionError, match="connected to a host client"):
+        await acp_agent.prompt(prompt=[text_block("hello")], session_id="session-1")
+
+
 # --- AcpHostBridge behavior (changed code) -------------------------------------------
 
 
@@ -592,6 +641,21 @@ async def test_host_bridge_records_updates_without_a_delegate() -> None:
     assert bridge.updates[0].session_id == "session-1"
     assert bridge.updates[0].source is None
     assert bridge.agent_message_text_since(0, session_id="session-1") == "hi"
+
+
+async def test_host_bridge_ignores_agent_message_chunks_without_text_content() -> None:
+    class FakeChunk:
+        session_update = "agent_message_chunk"
+        content = object()
+
+    bridge = AcpHostBridge()
+
+    await bridge.session_update(
+        session_id="session-1",
+        update=FakeChunk(),
+    )
+
+    assert bridge.agent_message_text_since(0, session_id="session-1") == ""
 
 
 async def test_host_bridge_forwards_session_update_to_delegate_when_present() -> None:
@@ -632,6 +696,19 @@ async def test_host_bridge_ext_notification_is_a_noop_without_a_delegate() -> No
     bridge = AcpHostBridge()
 
     await bridge.ext_notification(method="custom/notify", params={})
+
+
+async def test_host_bridge_supports_sync_delegate_methods() -> None:
+    class SyncExtensionClient:
+        def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+            return {"method": method, "params": params}
+
+    bridge = AcpHostBridge(delegate=cast(AcpClient, SyncExtensionClient()))
+
+    result = await bridge.ext_method(method="custom/sync", params={"x": 1})
+    bridge.on_connect(cast(AcpAgent, object()))
+
+    assert result == {"method": "custom/sync", "params": {"x": 1}}
 
 
 async def test_host_bridge_delegates_filesystem_and_terminal_calls_to_host_client() -> None:
@@ -779,12 +856,34 @@ def test_default_render_prompt_blocks_covers_system_tool_and_retry_parts() -> No
     assert "please retry" in rendered
 
 
+def test_default_render_prompt_blocks_covers_instructions_and_full_history_roles() -> None:
+    request = ModelRequest(
+        parts=[UserPromptPart("What changed?")],
+        instructions="Answer as release notes.",
+    )
+    response = ModelResponse(parts=[TextPart("The bridge was added.")])
+
+    blocks = client_module._default_render_prompt_blocks(
+        [request, response],
+        ModelRequestParameters(),
+        history_mode="full",
+    )
+
+    assert len(blocks) == 1
+    rendered = blocks[0].text
+    assert "<user>" in rendered
+    assert "Instructions:\nAnswer as release notes." in rendered
+    assert "<assistant>" in rendered
+    assert "The bridge was added." in rendered
+
+
 def test_default_render_prompt_blocks_covers_media_user_content() -> None:
     request = ModelRequest(
         parts=[
             UserPromptPart(
                 content=[
                     "Look at this:",
+                    TextContent("typed text"),
                     ImageUrl(url="https://example.com/x.png"),
                     BinaryContent(data=b"abc", media_type="text/plain"),
                     UploadedFile(file_id="file-1", provider_name="openai"),
@@ -797,6 +896,7 @@ def test_default_render_prompt_blocks_covers_media_user_content() -> None:
 
     rendered = blocks[0].text
     assert "Look at this:" in rendered
+    assert "typed text" in rendered
     assert "[image-url:https://example.com/x.png]" in rendered
     assert "[binary:text/plain:3 bytes]" in rendered
     assert "[uploaded-file:openai:file-1]" in rendered
@@ -817,12 +917,84 @@ def test_default_render_prompt_blocks_returns_nothing_for_empty_messages() -> No
     assert client_module._default_render_prompt_blocks([], ModelRequestParameters()) == []
 
 
+def test_default_render_prompt_blocks_returns_nothing_for_blank_latest_message() -> None:
+    response = ModelResponse(parts=[TextPart("   ")])
+
+    blocks = client_module._default_render_prompt_blocks([response], ModelRequestParameters())
+
+    assert len(blocks) == 1
+    assert blocks[0].text == "<assistant>\n   \nassistant>"
+
+
+def test_default_render_prompt_blocks_ignores_unrendered_request_parts() -> None:
+    request = ModelRequest(parts=cast(Any, [InstructionPart("internal instruction")]))
+
+    assert client_module._default_render_prompt_blocks([request], ModelRequestParameters()) == []
+
+
+def test_default_render_prompt_blocks_returns_nothing_for_blank_full_history() -> None:
+    response = ModelResponse(parts=[])
+
+    assert (
+        client_module._default_render_prompt_blocks(
+            [response],
+            ModelRequestParameters(),
+            history_mode="full",
+        )
+        == []
+    )
+
+
+def test_render_user_content_item_falls_back_to_runtime_kind() -> None:
+    class UnknownContent:
+        kind = "custom-content"
+
+    assert (
+        client_module._render_user_content_item(cast(Any, UnknownContent())) == "[custom-content]"
+    )
+
+
+def test_section_returns_empty_text_for_blank_content() -> None:
+    assert client_module._section("Empty", " \n ") == ""
+
+
 def test_is_agent_message_chunk_supports_duck_typed_updates() -> None:
     class FakeChunkLike:
         session_update = "agent_message_chunk"
 
     assert client_module._is_agent_message_chunk(FakeChunkLike()) is True
     assert client_module._is_agent_message_chunk(object()) is False
+
+
+def test_extract_text_recursively_collects_supported_response_shapes() -> None:
+    class AttrResponse:
+        response = "attr text"
+
+    chunk = AgentMessageChunk(
+        session_update="agent_message_chunk",
+        content=text_block("chunk text"),
+    )
+
+    extracted = client_module._extract_text(
+        [
+            None,
+            "literal text",
+            chunk,
+            {"content": ["nested text", {"text": "dict text"}]},
+            AttrResponse(),
+        ],
+    )
+
+    assert extracted == "literal textchunk textnested textdict textattr text"
+
+
+def test_response_field_supports_dict_attr_and_missing_values() -> None:
+    class AttrResponse:
+        message = "attr message"
+
+    assert client_module._response_field({"message": "dict message"}, "message") == "dict message"
+    assert client_module._response_field(AttrResponse(), "message") == "attr message"
+    assert client_module._response_field(object(), "message") is None
 
 
 # --- Prior (pre-existing) server adapter behavior path --------------------------------
@@ -923,7 +1095,11 @@ async def test_host_bridge_usage_update_since_ignores_real_acp_usage_update_with
 async def test_acp_provider_forwards_host_client_delegate_updates_end_to_end() -> None:
     delegate = HostRecordingClient()
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)
+    provider = AcpProvider(
+        agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        host_client=delegate,
+    )
 
     assert provider.host.delegate is delegate
 
