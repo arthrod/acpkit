@@ -237,7 +237,7 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
         is response
     )
     assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [
-        tool_def
+        tool_def,
     ]
     assert asyncio.run(
         registry["before_tool_validate"][0].func(
@@ -333,7 +333,7 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
     assert asyncio.run(partially_registry["before_run"][0].func(cast("Any", None))) is None
     assert (
         asyncio.run(
-            partially_registry["before_node_run"][0].func(cast("Any", None), node=tool_call)
+            partially_registry["before_node_run"][0].func(cast("Any", None), node=tool_call),
         )
         is tool_call
     )
@@ -793,7 +793,7 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
         is response
     )
     assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [
-        tool_def
+        tool_def,
     ]
     assert asyncio.run(
         registry["before_tool_validate"][0].func(
