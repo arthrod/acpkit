@@ -133,6 +133,10 @@ Current supported target families:
 - LangGraph / LangChain compiled graphs
 - native ACP agents
 
+Prefer explicit `:acp_agent` targets for maintained examples when the exported ACP object carries
+custom adapter configuration. Raw `:agent` or `:graph` targets are only appropriate when default
+adapter dispatch is intentionally enough.
+
 When debugging target resolution:
 
 1. inspect import roots first
@@ -191,19 +195,19 @@ It should stay intentionally ignorant about:
 Pydantic:
 
 ```bash
-acpkit run examples.pydantic.finance_agent:agent
+acpkit run examples.pydantic.finance_agent:acp_agent
 ```
 
 LangChain:
 
 ```bash
-acpkit run examples.langchain.workspace_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
 ```
 
 ### Expose a remote ACP host
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 ### Mirror a remote ACP host back into a local ACP boundary
@@ -215,8 +219,8 @@ acpkit run --addr ws://127.0.0.1:8080/acp/ws
 ### Launch through Toad
 
 ```bash
-acpkit launch examples.pydantic.finance_agent:agent
-acpkit launch examples.langchain.workspace_graph:graph
+acpkit launch examples.pydantic.finance_agent:acp_agent
+acpkit launch examples.langchain.workspace_graph:acp_agent
 ```
 
 ### Launch a script that already starts ACP itself
@@ -290,5 +294,7 @@ Stay in this skill when:
   documentation, coverage, artifact metadata, and clean-install smoke checks.
 - A release tag must exactly match every package `_version.py` and the corresponding
   `CHANGELOG.md` heading.
+- Keep every package-level `VERSION` file synchronized with the root `VERSION` and package
+  `_version.py` files; release validation treats mismatches as blocking.
 - Public v1 compatibility applies to top-level `__all__`, documented CLI behavior, and documented
   configuration contracts. Do not promote private helpers into that contract accidentally.

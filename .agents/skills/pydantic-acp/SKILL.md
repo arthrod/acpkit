@@ -109,6 +109,9 @@ High-value public seams:
 
 - `run_acp(agent=...)`
 - `create_acp_agent(...)`
+- `AcpProvider`
+- `AcpModel`
+- `AcpHostBridge`
 - `AdapterConfig(...)`
 - `MemorySessionStore`
 - `FileSessionStore`
@@ -318,6 +321,23 @@ run_acp(agent=agent)
 
 Use `create_acp_agent(...)` when another runner or transport layer should own startup.
 
+### ACP-backed Pydantic AI provider
+
+Use `AcpProvider(acp_agent=...)` when the runtime you have is already an ACP agent and the host
+application needs to consume it through normal Pydantic AI v2 provider/model APIs.
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import AcpProvider
+
+provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
+agent = Agent(provider.model())
+```
+
+`provider.model()` leaves ACP model selection to the wrapped ACP agent's session default. Pass a
+model id only when that ACP agent accepts the concrete `session/set_model` id. Do not use this as a
+replacement for `create_acp_agent(...)`; it is the inverse bridge.
+
 ### Session-aware construction
 
 Use `agent_factory=` when session state should change the built agent.
@@ -337,6 +357,7 @@ Maintained public examples:
 - [Pydantic public examples](https://raw.githubusercontent.com/vcoderun/acpkit/main/examples/pydantic/README.md)
 - [Finance agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py)
 - [Travel agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py)
+- [Harness agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py)
 
 Use `finance_agent.py` for:
 
@@ -350,6 +371,12 @@ Use `travel_agent.py` for:
 - hook projection
 - prompt-model overrides
 - media prompt behavior
+
+Use `mock_harness_agent.py` for:
+
+- `pydantic-ai-harness` filesystem and shell capability bridges
+- optional CodeMode capability wiring through `--codemode`
+- bounded workspace behavior under `agent_demos/harness-agent/`
 
 Skill-local example index:
 
@@ -405,5 +432,7 @@ Stay in this skill when the main issue is:
   filtering.
 - Export a configured `acp_agent = create_acp_agent(...)` when root CLI or remote hosting must
   preserve custom bridges, projections, providers, and persistence.
+- Maintained examples write generated workspaces and local sessions under `agent_demos/`; do not
+  reintroduce per-example hidden directories as default runtime output.
 - Validate supported Pydantic AI versions with `make check-pydantic-ai-matrix`; dependency
   resolution alone is not compatibility evidence.

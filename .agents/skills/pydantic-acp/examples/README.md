@@ -7,6 +7,7 @@ reference set.
 
 - [`examples/pydantic/finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py)
 - [`examples/pydantic/travel_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py)
+- [`examples/pydantic/mock_harness_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py)
 - [`examples/pydantic/README.md`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/README.md)
 
 ## When To Use Which
@@ -24,6 +25,14 @@ Use `travel_agent.py` for:
 - prompt-model overrides
 - media prompt behavior
 - approval-gated trip files
+
+Use `mock_harness_agent.py` for:
+
+- `pydantic-ai-harness` filesystem and shell capability bridges
+- optional CodeMode through `--codemode`
+- bounded demo output under `agent_demos/harness-agent/`
+
+All maintained examples write generated files and sessions under `agent_demos/`.
 
 ## Cross-Package Example
 

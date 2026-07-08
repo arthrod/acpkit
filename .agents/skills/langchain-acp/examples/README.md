@@ -21,15 +21,20 @@ Use `codex_graph.py` for:
 Use `workspace_graph.py` for:
 
 - module-level `graph`
+- configured `acp_agent`
 - session-aware `graph_from_session(...)`
 - filesystem projection
 - `acpkit run ...` and `acpkit serve ...` integration
+- generated files under `agent_demos/workspace-graph/`
 
 Use `deepagents_graph.py` for:
 
 - DeepAgents compatibility
 - `DeepAgentsCompatibilityBridge`
 - `DeepAgentsProjectionMap`
+- configured `acp_agent`
+
+All maintained examples write generated files and sessions under `agent_demos/`.
 
 ## Cross-Package Example
 
