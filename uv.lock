@@ -138,9 +138,8 @@ requires-dist = [
     { name = "pydantic-acp", marker = "extra == 'dev'", editable = "packages/adapters/pydantic-acp" },
     { name = "pydantic-acp", marker = "extra == 'dev-all'", editable = "packages/adapters/pydantic-acp" },
     { name = "pydantic-acp", marker = "extra == 'pydantic'", editable = "packages/adapters/pydantic-acp" },
-    { name = "pydantic-ai", specifier = ">=2.4.0" },
-    { name = "pydantic-ai-harness", extras = ["code-mode"], marker = "extra == 'dev'", specifier = "==0.4.0" },
-    { name = "pydantic-ai-harness", extras = ["code-mode"], marker = "extra == 'dev-all'", specifier = "==0.4.0" },
+    { name = "pydantic-ai-harness", extras = ["code-mode"], marker = "extra == 'dev'", specifier = "==0.5.0" },
+    { name = "pydantic-ai-harness", extras = ["code-mode"], marker = "extra == 'dev-all'", specifier = "==0.5.0" },
     { name = "pydantic-ai-slim", marker = "extra == 'dev'", specifier = ">=2.0.0,<=2.4.0" },
     { name = "pydantic-ai-slim", marker = "extra == 'dev-all'", specifier = ">=2.0.0,<=2.4.0" },
     { name = "pydantic-graph", marker = "extra == 'dev'" },
@@ -182,7 +181,7 @@ perf = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-client-protocol", specifier = ">=0.9.0" },
+    { name = "agent-client-protocol", specifier = "==0.9.0" },
     { name = "typing-extensions", specifier = ">=4.12.0" },
     { name = "uvloop", marker = "sys_platform != 'win32' and extra == 'perf'", specifier = ">=0.21.0" },
     { name = "websockets", specifier = ">=15.0,<16.0" },
@@ -1346,7 +1345,7 @@ deepagents = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-client-protocol", specifier = ">=0.9.0" },
+    { name = "agent-client-protocol", specifier = "==0.9.0" },
     { name = "deepagents", marker = "extra == 'deepagents'", specifier = ">=0.6.12" },
     { name = "langchain", specifier = ">=1.3.11" },
     { name = "langgraph", specifier = ">=1.2.7" },
@@ -2297,15 +2296,15 @@ wheels = [
 
 [[package]]
 name = "pydantic-ai-harness"
-version = "0.4.0"
+version = "0.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic-ai-slim" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c1/7b/b0ec85f6a7d62e19524753715ff77046a9fce3a3e1a98df858bf5cde8151/pydantic_ai_harness-0.4.0.tar.gz", hash = "sha256:78daa5a9d3289e2c90deae140c2ed59617cc91a945726b8aad70a8fa15348387", size = 733974, upload-time = "2026-06-17T11:07:42.577Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/49/38/dfe7450ec63bf82993bb344b8870e3bc44064cb678dfc1200573040c62e7/pydantic_ai_harness-0.5.0.tar.gz", hash = "sha256:f423d3da7e633b3c619903ad89e82f264667c93ebf8751e6f8d1bfc8abfb926f", size = 771399, upload-time = "2026-07-01T01:59:48.68Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c2/8b/fe2e9b3053f1a5f9278eadc80da9898154b2542bbbac4ee74f544001484a/pydantic_ai_harness-0.4.0-py3-none-any.whl", hash = "sha256:cf231f8c5b4dcf5096f9f318459ee97f1c8dc8dc50b8b26a7abc71dfcf7c74be", size = 164741, upload-time = "2026-06-17T11:07:41.258Z" },
+    { url = "https://files.pythonhosted.org/packages/77/c8/d2c637cda69404a8f0a8b8076cdc314bf1ad55511217ad9309c330525718/pydantic_ai_harness-0.5.0-py3-none-any.whl", hash = "sha256:223e09f121172f62d11bd72f2898042b1d58d23cd8322560302e8c45002c3c16", size = 199754, upload-time = "2026-07-01T01:59:47.193Z" },
 ]
 
 [package.optional-dependencies]
