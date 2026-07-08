@@ -3,6 +3,26 @@
 ACP Kit uses synchronized versions for `acpkit`, `pydantic-acp`, `langchain-acp`,
 `codex-auth-helper`, and `acpremote`.
 
+## [1.1.0] - 2026-07-07
+
+### Added
+
+- Pydantic AI v2 ACP client provider bridge (`AcpProvider`, `AcpModel`,
+  `AcpHostBridge`) in `pydantic-acp`, enabling ACP agents to be consumed as
+  Pydantic AI providers with model profiles, streaming, tool calls, approvals,
+  sessions, and projections.
+- Public export of the provider bridge surface from `pydantic_acp`.
+
+### Changed
+
+- `pydantic-acp` now requires Pydantic AI v2.
+- Dev dependency aligned with Pydantic AI v2.
+- Workspace packages synchronized to `1.1.0`.
+
+### Fixed
+
+- Type-safety and forward-reference handling in the ACP provider bridge.
+
 ## [1.0.0] - 2026-07-03
 
 This is the first stable release of the synchronized ACP Kit workspace.
@@ -46,4 +66,5 @@ This is the first stable release of the synchronized ACP Kit workspace.
   failure paths close every owned resource deterministically.
 - CLI target import failures retain actionable root-cause details.
 
+[1.1.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.0.0

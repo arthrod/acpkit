@@ -177,6 +177,7 @@ def test_load_target_reports_missing_langchain_adapter_from_import_error(
     )
 
     from acpkit import adapters as adapters_module
+
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     original_find_spec = adapters_module.find_spec
     monkeypatch.setattr(

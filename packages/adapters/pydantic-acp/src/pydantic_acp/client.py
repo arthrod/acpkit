@@ -183,7 +183,10 @@ class AcpHostBridge:
         )
         if self.delegate is not None and hasattr(self.delegate, "session_update"):
             await self._call_delegate(
-                "session_update", session_id=session_id, update=update, **kwargs,
+                "session_update",
+                session_id=session_id,
+                update=update,
+                **kwargs,
             )
 
     async def request_permission(
@@ -546,7 +549,7 @@ class AcpProvider(Provider[AcpAgent]):
         rendered = self._prompt_renderer(messages, model_request_parameters)
         if inspect.isawaitable(rendered):
             rendered = await rendered
-        return list(cast("Sequence[AgentPromptBlock]", rendered))
+        return list(cast(Sequence[AgentPromptBlock], rendered))
 
     async def request_prompt(
         self,
@@ -683,7 +686,7 @@ class AcpModel(Model[AcpAgent]):
         )
         del model_settings
         self._ensure_supported_request(model_request_parameters)
-        provider = cast("AcpProvider", self._provider)
+        provider = cast(AcpProvider, self._provider)
         prompt = await provider.render_prompt_blocks(messages, model_request_parameters)
         acp_result = await provider.request_prompt(
             model_name=self.model_name,

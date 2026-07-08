@@ -52,7 +52,9 @@ class EchoACPAgent:  # type: ignore[misc]
     def __init__(
         self,
         *,
-        stop_reason: Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"] = "end_turn",
+        stop_reason: Literal[
+            "end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"
+        ] = "end_turn",
         usage: Usage | None = None,
     ) -> None:
         self.client: Any | None = None
@@ -60,7 +62,9 @@ class EchoACPAgent:  # type: ignore[misc]
         self.session_cwds: list[str] = []
         self.session_models: list[tuple[str, str]] = []
         self.prompts: list[tuple[str, str]] = []
-        self.stop_reason: Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"] = stop_reason
+        self.stop_reason: Literal[
+            "end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"
+        ] = stop_reason
         self.usage = usage
         self.client_capabilities: ClientCapabilities | None = None
         self.client_info: Implementation | None = None
@@ -87,15 +91,21 @@ class EchoACPAgent:  # type: ignore[misc]
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         del method, params
 
-    async def fork_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+    async def fork_session(
+        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
+    ) -> Any:
         del cwd, session_id, mcp_servers, kwargs
         return None
 
-    async def list_sessions(self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any) -> Any:
+    async def list_sessions(
+        self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any
+    ) -> Any:
         del cursor, cwd, kwargs
         return None
 
-    async def load_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+    async def load_session(
+        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
+    ) -> Any:
         del cwd, session_id, mcp_servers, kwargs
         return None
 
@@ -109,7 +119,9 @@ class EchoACPAgent:  # type: ignore[misc]
         del cwd, session_id, mcp_servers, kwargs
         return None
 
-    async def set_config_option(self, config_id: str, session_id: str, value: Any, **kwargs: Any) -> None:
+    async def set_config_option(
+        self, config_id: str, session_id: str, value: Any, **kwargs: Any
+    ) -> None:
         del config_id, session_id, value, kwargs
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
@@ -328,7 +340,12 @@ async def test_acp_provider_maps_acp_stop_reasons_to_finish_reasons(
     stop_reason: str,
     expected_finish_reason: str,
 ) -> None:
-    acp_agent = EchoACPAgent(stop_reason=cast(Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"], stop_reason))
+    acp_agent = EchoACPAgent(
+        stop_reason=cast(
+            Literal["end_turn", "max_tokens", "max_turn_requests", "refusal", "cancelled"],
+            stop_reason,
+        )
+    )
     _provider, model = _build_provider_and_model(acp_agent)
 
     response = await model.request(
@@ -474,15 +491,21 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         del method, params
 
-    async def fork_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+    async def fork_session(
+        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
+    ) -> Any:
         del cwd, session_id, mcp_servers, kwargs
         return None
 
-    async def list_sessions(self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any) -> Any:
+    async def list_sessions(
+        self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any
+    ) -> Any:
         del cursor, cwd, kwargs
         return None
 
-    async def load_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+    async def load_session(
+        self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any
+    ) -> Any:
         del cwd, session_id, mcp_servers, kwargs
         return None
 
@@ -496,7 +519,9 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
         del cwd, session_id, mcp_servers, kwargs
         return None
 
-    async def set_config_option(self, config_id: str, session_id: str, value: Any, **kwargs: Any) -> None:
+    async def set_config_option(
+        self, config_id: str, session_id: str, value: Any, **kwargs: Any
+    ) -> None:
         del config_id, session_id, value, kwargs
 
     async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
