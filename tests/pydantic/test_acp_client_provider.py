@@ -76,6 +76,45 @@ class EchoACPAgent:  # type: ignore[misc]
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         del session_id, kwargs
 
+    async def close_session(self, session_id: str, **kwargs: Any) -> Any:
+        del session_id, kwargs
+        return None
+
+    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        del method, params
+        return {}
+
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        del method, params
+
+    async def fork_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def list_sessions(self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any) -> Any:
+        del cursor, cwd, kwargs
+        return None
+
+    async def load_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def resume_session(
+        self,
+        cwd: str,
+        session_id: str,
+        mcp_servers: list[Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def set_config_option(self, config_id: str, session_id: str, value: Any, **kwargs: Any) -> None:
+        del config_id, session_id, value, kwargs
+
+    async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
+        del mode_id, session_id, kwargs
+
     async def initialize(
         self,
         protocol_version: int,
@@ -209,7 +248,7 @@ async def test_acp_provider_reuses_session_and_model_across_multiple_requests() 
 
 def test_acp_provider_model_factory_uses_default_model_name() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore[arg-type]
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
 
     model = provider.model()
 
@@ -365,7 +404,7 @@ async def test_acp_model_request_stream_yields_the_buffered_response_text() -> N
 
 async def test_acp_provider_switches_session_model_when_model_name_changes() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore[arg-type]
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")
     first_model = AcpModel(model_name="model-a", provider=provider)
     second_model = AcpModel(model_name="model-b", provider=provider)
 
@@ -384,7 +423,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
     mcp_servers = [{"name": "demo"}]
 
     provider = AcpProvider(
-        agent=acp_agent,  # type: ignore[arg-type]
+        agent=acp_agent,
         cwd="/workspace",
         client_capabilities=capabilities,
         client_info=client_info,
@@ -400,7 +439,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
 
 
 def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
-    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")  # type: ignore[arg-type]
+    provider = AcpProvider(agent=EchoACPAgent(), cwd="/workspace")
     assert provider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
 
 
@@ -424,8 +463,53 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         del session_id, kwargs
 
-    async def initialize(self, protocol_version: int, **kwargs: Any) -> InitializeResponse:
-        del kwargs
+    async def close_session(self, session_id: str, **kwargs: Any) -> Any:
+        del session_id, kwargs
+        return None
+
+    async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        del method, params
+        return {}
+
+    async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
+        del method, params
+
+    async def fork_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def list_sessions(self, cursor: str | None = None, cwd: str | None = None, **kwargs: Any) -> Any:
+        del cursor, cwd, kwargs
+        return None
+
+    async def load_session(self, cwd: str, session_id: str, mcp_servers: list[Any] | None = None, **kwargs: Any) -> Any:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def resume_session(
+        self,
+        cwd: str,
+        session_id: str,
+        mcp_servers: list[Any] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        del cwd, session_id, mcp_servers, kwargs
+        return None
+
+    async def set_config_option(self, config_id: str, session_id: str, value: Any, **kwargs: Any) -> None:
+        del config_id, session_id, value, kwargs
+
+    async def set_session_mode(self, mode_id: str, session_id: str, **kwargs: Any) -> None:
+        del mode_id, session_id, kwargs
+
+    async def initialize(
+        self,
+        protocol_version: int,
+        client_capabilities: ClientCapabilities | None = None,
+        client_info: Implementation | None = None,
+        **kwargs: Any,
+    ) -> InitializeResponse:
+        del client_capabilities, client_info, kwargs
         return InitializeResponse(
             protocol_version=protocol_version,
             agent_info=Implementation(name="no-handshake-agent", version="test"),
@@ -454,7 +538,7 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
 
 async def test_acp_provider_does_not_require_the_agent_to_support_on_connect() -> None:
     acp_agent = NoHandshakeACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore[arg-type]
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore
     model = AcpModel(model_name="agent", provider=provider)
 
     response = await model.request(
@@ -814,7 +898,7 @@ async def test_host_bridge_usage_update_since_ignores_real_acp_usage_update_with
 async def test_acp_provider_forwards_host_client_delegate_updates_end_to_end() -> None:
     delegate = HostRecordingClient()
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)  # type: ignore[arg-type]
+    provider = AcpProvider(agent=acp_agent, cwd="/workspace", host_client=delegate)
 
     assert provider.host.delegate is delegate
 

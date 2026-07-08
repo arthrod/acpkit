@@ -627,7 +627,7 @@ def test_runtime_model_restore_and_error_paths_are_handled(
 
     with pytest.raises(RequestError):
         asyncio.run(
-            adapter._resolve_deferred_approvals(session=session, requests=cast("Any", None))
+            adapter._resolve_deferred_approvals(session=session, requests=cast("Any", None)),
         )
 
     assert asyncio.run(adapter._record_cancelled_approval(session, None)) is None
