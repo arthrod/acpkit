@@ -87,10 +87,10 @@ the Codex system behavior explicit in the factory instead of relying on an impli
 ```python
 from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext
+from langchain_acp import AcpSessionContext, CompiledAgentGraph
 
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     mode_name = session.session_mode_id or "ask"
     model_name = session.session_model_id or "gpt-5.4-mini"
     model = create_codex_chat_openai(
@@ -104,10 +104,10 @@ If ACP session state should affect graph construction, use `graph_factory=`:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, create_acp_agent
+from langchain_acp import AcpSessionContext, CompiledAgentGraph, create_acp_agent
 
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     mode_name = session.session_mode_id or "default"
     return create_agent(model="openai:gpt-5", tools=[], name=f"graph-{mode_name}")
 
@@ -204,10 +204,16 @@ If ACP session state should decide which graph gets built, `graph_factory=` is t
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, AdapterConfig, MemorySessionStore, run_acp
+from langchain_acp import (
+    AcpSessionContext,
+    AdapterConfig,
+    CompiledAgentGraph,
+    MemorySessionStore,
+    run_acp,
+)
 
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     mode_name = session.session_mode_id or "default"
     model_name = session.session_model_id or "openai:gpt-5-mini"
     return create_agent(

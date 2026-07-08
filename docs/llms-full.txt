@@ -801,9 +801,9 @@ If the ACP session should affect graph construction, use `graph_factory=`:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, run_acp
+from langchain_acp import AcpSessionContext, CompiledAgentGraph, run_acp
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     mode_name = session.session_mode_id or "default"
     return create_agent(
@@ -1576,9 +1576,9 @@ Session-aware graph factory:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, run_acp
+from langchain_acp import AcpSessionContext, CompiledAgentGraph, run_acp
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     mode_name = session.session_mode_id or "default"
     return create_agent(
@@ -1625,6 +1625,8 @@ This is the kind of shape the adapter is built for:
 from langchain.agents import create_agent
 from langchain_acp import (
     AdapterConfig,
+    AcpSessionContext,
+    CompiledAgentGraph,
     DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     FileSessionStore,
@@ -1633,7 +1635,7 @@ from langchain_acp import (
     run_acp,
 )
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     return create_agent(
         model=model_name,
@@ -3163,7 +3165,6 @@ from acp.schema import (
     SessionConfigOptionBoolean,
     SessionMode,
 )
-from pydantic_ai import Agent
 from pydantic_acp import (
     AcpSessionContext,
     AdapterConfig,
@@ -3171,6 +3172,7 @@ from pydantic_acp import (
     ConfigOption,
     ModelSelectionState,
     ModeState,
+    RuntimeAgent,
 )
 
 @dataclass(slots=True)
@@ -3187,7 +3189,7 @@ class ModelsProvider:
     def get_model_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> ModelSelectionState:
         config = self.state.config_for(session)
         return ModelSelectionState(
@@ -3211,7 +3213,7 @@ class ModelsProvider:
     def set_model(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         model_id: str,
     ) -> ModelSelectionState:
         config = self.state.config_for(session)
@@ -3225,7 +3227,7 @@ class ModesProvider:
     def get_mode_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> ModeState:
         config = self.state.config_for(session)
         return ModeState(
@@ -3239,7 +3241,7 @@ class ModesProvider:
     def set_mode(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         mode_id: str,
     ) -> ModeState:
         config = self.state.config_for(session)
@@ -3253,7 +3255,7 @@ class ConfigProvider:
     def get_config_options(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> list[ConfigOption]:
         config = self.state.config_for(session)
         return [
@@ -3270,7 +3272,7 @@ class ConfigProvider:
     def set_config_option(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         config_id: str,
         value: str | bool,
     ) -> list[ConfigOption] | None:
@@ -3287,7 +3289,7 @@ class PlanProvider:
     def get_plan(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> list[PlanEntry]:
         config = self.state.config_for(session)
         return [
@@ -3305,7 +3307,7 @@ class ApprovalMetadataProvider:
     def get_approval_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> dict[str, str | bool]:
         config = self.state.config_for(session)
         return {
@@ -4529,9 +4531,15 @@ custom `GraphSource`.
 from pathlib import Path
 
 from langchain.agents import create_agent
-from langchain_acp import AdapterConfig, FileSessionStore, run_acp
+from langchain_acp import (
+    AcpSessionContext,
+    AdapterConfig,
+    CompiledAgentGraph,
+    FileSessionStore,
+    run_acp,
+)
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     return create_agent(model=model_name, tools=[])
 
@@ -4633,9 +4641,9 @@ providers and graph factories:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AdapterConfig, run_acp
+from langchain_acp import AcpSessionContext, AdapterConfig, CompiledAgentGraph, run_acp
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_id = session.session_model_id or "openai:gpt-5-mini"
     mode_id = session.session_mode_id or "default"
     return create_agent(

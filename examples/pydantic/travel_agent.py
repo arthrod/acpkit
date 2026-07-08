@@ -3,13 +3,15 @@ from __future__ import annotations as _annotations
 import os
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from pydantic_acp import (
+    AcpSessionContext,
     AdapterConfig,
     FileSessionStore,
     FileSystemProjectionMap,
     HookProjectionMap,
+    RuntimeAgent,
     create_acp_agent,
     run_acp,
 )
@@ -23,9 +25,11 @@ from pydantic_acp.types import (
     ResourceContentBlock,
 )
 from pydantic_ai import Agent
-from pydantic_ai.capabilities import Hooks
+from pydantic_ai.capabilities import Hooks, ValidatedToolArgs
+from pydantic_ai.messages import ModelResponse, ToolCallPart
+from pydantic_ai.models import ModelRequestContext
 from pydantic_ai.models.test import TestModel
-from pydantic_ai.tools import DeferredToolRequests
+from pydantic_ai.tools import DeferredToolRequests, RunContext, ToolDefinition
 
 __all__ = ("TravelPromptModelProvider", "acp_agent", "agent", "config", "main")
 
@@ -135,8 +139,8 @@ def _prompt_has_image_media(prompt: Sequence[AgentPromptBlock]) -> bool:
 class TravelPromptModelProvider:
     def get_prompt_model_override(
         self,
-        session: Any,
-        agent: Any,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
         prompt: Sequence[AgentPromptBlock],
         model_override: ModelOverride | None,
     ) -> ModelOverride | None:
@@ -150,43 +154,58 @@ hooks = Hooks[None]()
 
 
 @hooks.on.before_model_request
-async def observe_before_model_request(ctx: Any, request_context: Any) -> Any:
+async def observe_before_model_request(
+    ctx: RunContext[None],
+    request_context: ModelRequestContext,
+) -> ModelRequestContext:
     del ctx
     return request_context
 
 
 @hooks.on.after_model_request
 async def observe_after_model_request(
-    ctx: Any,
+    ctx: RunContext[None],
     *,
-    request_context: Any,
-    response: Any,
-) -> Any:
+    request_context: ModelRequestContext,
+    response: ModelResponse,
+) -> ModelResponse:
     del ctx, request_context
     return response
 
 
 @hooks.on.before_tool_execute(tools=[_READ_TOOL])
-async def observe_read_tool(ctx: Any, *, call: Any, tool_def: Any, args: Any) -> Any:
+async def observe_read_tool(
+    ctx: RunContext[None],
+    *,
+    call: ToolCallPart,
+    tool_def: ToolDefinition,
+    args: ValidatedToolArgs,
+) -> ValidatedToolArgs:
     del ctx, call, tool_def
     return args
 
 
 @hooks.on.before_tool_execute(tools=[_WRITE_TOOL])
-async def observe_write_tool(ctx: Any, *, call: Any, tool_def: Any, args: Any) -> Any:
+async def observe_write_tool(
+    ctx: RunContext[None],
+    *,
+    call: ToolCallPart,
+    tool_def: ToolDefinition,
+    args: ValidatedToolArgs,
+) -> ValidatedToolArgs:
     del ctx, call, tool_def
     return args
 
 
 @hooks.on.after_tool_execute(tools=[_WRITE_TOOL])
 async def observe_write_result(
-    ctx: Any,
+    ctx: RunContext[None],
     *,
-    call: Any,
-    tool_def: Any,
-    args: Any,
-    result: Any,
-) -> Any:
+    call: ToolCallPart,
+    tool_def: ToolDefinition,
+    args: ValidatedToolArgs,
+    result: object,
+) -> object:
     del ctx, call, tool_def, args
     return result
 

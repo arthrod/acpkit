@@ -106,10 +106,10 @@ If the ACP session should affect graph construction, use `graph_factory=`:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, run_acp
+from langchain_acp import AcpSessionContext, CompiledAgentGraph, run_acp
 
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     mode_name = session.session_mode_id or "default"
     return create_agent(

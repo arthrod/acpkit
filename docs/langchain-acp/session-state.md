@@ -77,10 +77,16 @@ custom `GraphSource`.
 from pathlib import Path
 
 from langchain.agents import create_agent
-from langchain_acp import AdapterConfig, FileSessionStore, run_acp
+from langchain_acp import (
+    AcpSessionContext,
+    AdapterConfig,
+    CompiledAgentGraph,
+    FileSessionStore,
+    run_acp,
+)
 
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     return create_agent(model=model_name, tools=[])
 

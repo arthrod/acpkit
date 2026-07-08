@@ -64,10 +64,10 @@ providers and graph factories:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AdapterConfig, run_acp
+from langchain_acp import AcpSessionContext, AdapterConfig, CompiledAgentGraph, run_acp
 
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_id = session.session_model_id or "openai:gpt-5-mini"
     mode_id = session.session_mode_id or "default"
     return create_agent(

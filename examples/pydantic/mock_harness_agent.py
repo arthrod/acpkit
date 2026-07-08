@@ -5,7 +5,7 @@ import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Final
+from typing import TYPE_CHECKING, Final
 
 from pydantic_acp import (
     AcpSessionContext,
@@ -21,7 +21,9 @@ from pydantic_acp import (
     run_acp,
 )
 from pydantic_ai import Agent
-from pydantic_ai.models import Model
+
+if TYPE_CHECKING:
+    from codex_auth_helper import CodexResponsesModel
 
 __all__ = ("acp_agent", "agent_factory", "config", "main")
 
@@ -99,7 +101,7 @@ def _instructions(*, include_code_mode: bool) -> str:
     return _INSTRUCTIONS
 
 
-def _harness_model(*, instructions: str = _INSTRUCTIONS) -> str | Model[Any]:
+def _harness_model(*, instructions: str = _INSTRUCTIONS) -> str | CodexResponsesModel:
     configured_model = os.getenv("ACP_HARNESS_MODEL", "").strip()
     if configured_model:
         return configured_model

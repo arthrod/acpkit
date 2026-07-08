@@ -49,6 +49,7 @@ from langchain_acp import (
     CapabilityBridge,
     CommandProjectionMap,
     CommunityFileManagementProjectionMap,
+    CompiledAgentGraph,
     CompositeProjectionMap,
     ConfigOptionsBridge,
     DeepAgentsCompatibilityBridge,
@@ -825,6 +826,7 @@ def test_slash_command_helpers_cover_graph_tool_and_mcp_server_edge_paths() -> N
 
 
 def test_static_slash_command_provider_handles_match_and_miss() -> None:
+    graph = cast("CompiledAgentGraph", object())
     provider = StaticSlashCommandProvider(
         commands=[
             StaticSlashCommand(
@@ -838,16 +840,16 @@ def test_static_slash_command_provider_handles_match_and_miss() -> None:
         argument=None,
         raw_prompt="/ping",
         session=_make_session(),
-        graph=object(),
+        graph=graph,
     )
     miss_request = SlashCommandRequest(
         name="miss",
         argument=None,
         raw_prompt="/miss",
         session=_make_session(),
-        graph=object(),
+        graph=graph,
     )
-    assert provider.available_commands(_make_session(), object())[0].name == "ping"
+    assert provider.available_commands(_make_session(), graph)[0].name == "ping"
     result = provider.handle_command(request)
     assert isinstance(result, SlashCommandResult)
     assert result.text == "ping"
