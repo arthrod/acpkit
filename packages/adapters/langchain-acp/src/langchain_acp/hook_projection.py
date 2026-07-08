@@ -48,7 +48,7 @@ class HookProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=TextContentBlock(type="text", text=event.summary),
-                )
+                ),
             ],
         )
 
@@ -73,6 +73,6 @@ class HookProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=TextContentBlock(type="text", text=detail),
-                )
+                ),
             ],
         )

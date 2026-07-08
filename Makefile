@@ -60,7 +60,7 @@ check-matrix:
 check-pydantic-ai-matrix:
 	@for version in $(PYDANTIC_AI_VERSIONS); do \
 		printf "$(BLUE)==>$(RESET) Checking Pydantic AI $$version compatibility...\n"; \
-		uv run --extra dev --with "pydantic-ai-slim==$$version" pytest tests/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py -q || exit $$?; \
+		PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --extra dev --with "pydantic-ai-slim==$$version" pytest -p pytest_asyncio.plugin tests/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py -q || exit $$?; \
 		uv run --extra dev --with "pydantic-ai-slim==$$version" ty check packages/adapters/pydantic-acp/src tests/pydantic examples/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py || exit $$?; \
 	done
 	@printf "$(GREEN)✔ Pydantic AI compatibility matrix complete.$(RESET)\n"

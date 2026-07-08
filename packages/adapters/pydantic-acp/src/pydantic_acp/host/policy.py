@@ -198,7 +198,8 @@ class HostAccessPolicy:
         disposition: HostAccessDisposition = "allow"
         outside_cwd = not path_is_within_root(resolved_path, normalized_session_cwd)
         outside_workspace = normalized_workspace_root is not None and not path_is_within_root(
-            resolved_path, normalized_workspace_root
+            resolved_path,
+            normalized_workspace_root,
         )
 
         if is_absolute_input:
@@ -208,7 +209,7 @@ class HostAccessPolicy:
                     code="absolute_path",
                     message=f"Path is absolute: {resolved_path}",
                     path=resolved_path,
-                )
+                ),
             )
         if outside_cwd:
             disposition = _stronger_disposition(disposition, self.path_outside_cwd)
@@ -217,7 +218,7 @@ class HostAccessPolicy:
                     code="outside_cwd",
                     message=f"Path is outside the active session cwd: {resolved_path}",
                     path=resolved_path,
-                )
+                ),
             )
         if outside_workspace:
             disposition = _stronger_disposition(disposition, self.path_outside_workspace)
@@ -226,7 +227,7 @@ class HostAccessPolicy:
                     code="outside_workspace",
                     message=f"Path escapes the workspace root: {resolved_path}",
                     path=resolved_path,
-                )
+                ),
             )
 
         return HostPathEvaluation(
@@ -279,7 +280,8 @@ class HostAccessPolicy:
         disposition: HostAccessDisposition = "allow"
         outside_cwd = not path_is_within_root(resolved_cwd, normalized_session_cwd)
         outside_workspace = normalized_workspace_root is not None and not path_is_within_root(
-            resolved_cwd, normalized_workspace_root
+            resolved_cwd,
+            normalized_workspace_root,
         )
         referenced_external_paths = tuple(
             path
@@ -300,7 +302,7 @@ class HostAccessPolicy:
                     code="command_cwd_outside_cwd",
                     message=f"Command cwd is outside the active session cwd: {resolved_cwd}",
                     path=resolved_cwd,
-                )
+                ),
             )
         if outside_workspace:
             disposition = _stronger_disposition(disposition, self.command_cwd_outside_workspace)
@@ -309,7 +311,7 @@ class HostAccessPolicy:
                     code="command_cwd_outside_workspace",
                     message=f"Command cwd escapes the workspace root: {resolved_cwd}",
                     path=resolved_cwd,
-                )
+                ),
             )
         if referenced_external_paths:
             disposition = _stronger_disposition(disposition, self.command_external_paths)
@@ -320,7 +322,7 @@ class HostAccessPolicy:
                         "Command references paths outside the active session cwd: "
                         f"{_join_paths(referenced_external_paths)}"
                     ),
-                )
+                ),
             )
         if referenced_outside_workspace:
             disposition = _stronger_disposition(disposition, self.command_paths_outside_workspace)
@@ -331,7 +333,7 @@ class HostAccessPolicy:
                         "Command references paths outside the workspace root: "
                         f"{_join_paths(referenced_outside_workspace)}"
                     ),
-                )
+                ),
             )
 
         return HostCommandEvaluation(

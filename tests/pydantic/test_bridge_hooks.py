@@ -60,56 +60,56 @@ def test_hook_bridge_error_paths_emit_failed_updates() -> None:
         raise RuntimeError("execute failed")
 
     with pytest.raises(RuntimeError, match="run failed"):
-        asyncio.run(registry["wrap_run"][0].func(cast(Any, None), handler=fail_run))
+        asyncio.run(registry["wrap_run"][0].func(cast("Any", None), handler=fail_run))
     with pytest.raises(RuntimeError, match="run direct"):
         asyncio.run(
-            registry["on_run_error"][0].func(cast(Any, None), error=RuntimeError("run direct"))
+            registry["on_run_error"][0].func(cast("Any", None), error=RuntimeError("run direct")),
         )
     with pytest.raises(RuntimeError, match="node failed"):
         asyncio.run(
             registry["wrap_node_run"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 node=_HOOK_CONTEXT,
                 handler=fail_node,
-            )
+            ),
         )
     with pytest.raises(RuntimeError, match="model failed"):
         asyncio.run(
             registry["wrap_model_request"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 request_context=_HOOK_CONTEXT,
                 handler=fail_model,
-            )
+            ),
         )
     with pytest.raises(RuntimeError, match="validate failed"):
         asyncio.run(
             registry["wrap_tool_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 handler=fail_validate,
-            )
+            ),
         )
     with pytest.raises(RuntimeError, match="execute failed"):
         asyncio.run(
             registry["wrap_tool_execute"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 handler=fail_execute,
-            )
+            ),
         )
     with pytest.raises(RuntimeError, match="execute direct"):
         asyncio.run(
             registry["on_tool_execute_error"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 error=RuntimeError("execute direct"),
-            )
+            ),
         )
 
     updates = bridge.drain_updates(session, Agent(TestModel(custom_output_text="unused")))
@@ -145,7 +145,7 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
     response = ModelResponse(parts=[])
 
     async def ok_run() -> Any:
-        return cast(Any, "run-result")
+        return cast("Any", "run-result")
 
     async def ok_node(node: Any) -> Any:
         return node
@@ -168,126 +168,128 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
         raise RuntimeError("output failed")
 
     async def event_stream():
-        yield cast(Any, SimpleNamespace(event_kind="demo_event"))
+        yield cast("Any", SimpleNamespace(event_kind="demo_event"))
 
-    request_context = cast(Any, SimpleNamespace(messages=[1, 2]))
-    assert asyncio.run(registry["before_run"][0].func(cast(Any, None))) is None
+    request_context = cast("Any", SimpleNamespace(messages=[1, 2]))
+    assert asyncio.run(registry["before_run"][0].func(cast("Any", None))) is None
     assert (
-        asyncio.run(registry["wrap_run"][0].func(cast(Any, None), handler=ok_run)) == "run-result"
+        asyncio.run(registry["wrap_run"][0].func(cast("Any", None), handler=ok_run)) == "run-result"
     )
     assert (
-        asyncio.run(registry["after_run"][0].func(cast(Any, None), result=cast(Any, "done")))
+        asyncio.run(registry["after_run"][0].func(cast("Any", None), result=cast("Any", "done")))
         == "done"
     )
     assert (
-        asyncio.run(registry["before_node_run"][0].func(cast(Any, None), node=tool_call))
+        asyncio.run(registry["before_node_run"][0].func(cast("Any", None), node=tool_call))
         is tool_call
     )
     assert (
         asyncio.run(
             registry["after_node_run"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 node=tool_call,
-                result=cast(Any, "node-result"),
-            )
+                result=cast("Any", "node-result"),
+            ),
         )
         == "node-result"
     )
     assert (
         asyncio.run(
             registry["wrap_node_run"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 node=tool_call,
                 handler=ok_node,
-            )
+            ),
         )
         is tool_call
     )
     assert (
-        asyncio.run(registry["_on_event"][0].func(cast(Any, None), cast(Any, tool_call)))
+        asyncio.run(registry["_on_event"][0].func(cast("Any", None), cast("Any", tool_call)))
         is tool_call
     )
     wrapped_stream = registry["wrap_run_event_stream"][0].func(
-        cast(Any, None),
+        cast("Any", None),
         stream=event_stream(),
     )
     assert asyncio.run(wrapped_stream.__anext__()).event_kind == "demo_event"
     assert (
-        asyncio.run(registry["before_model_request"][0].func(cast(Any, None), request_context))
+        asyncio.run(registry["before_model_request"][0].func(cast("Any", None), request_context))
         is request_context
     )
     assert (
         asyncio.run(
             registry["wrap_model_request"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 request_context=request_context,
                 handler=ok_model,
-            )
+            ),
         )
         is response
     )
     assert (
         asyncio.run(
             registry["after_model_request"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 request_context=request_context,
                 response=response,
-            )
+            ),
         )
         is response
     )
-    assert asyncio.run(registry["prepare_tools"][0].func(cast(Any, None), [tool_def])) == [tool_def]
+    assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [
+        tool_def,
+    ]
     assert asyncio.run(
         registry["before_tool_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         registry["after_tool_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         registry["wrap_tool_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
             handler=ok_validate,
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         registry["before_tool_execute"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         registry["wrap_tool_execute"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
             handler=ok_execute,
-        )
+        ),
     ) == {"ok": "hello"}
     assert (
         asyncio.run(
             registry["after_tool_execute"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 result="done",
-            )
+            ),
         )
         == "done"
     )
@@ -328,153 +330,156 @@ def test_hook_bridge_success_paths_and_disabled_metadata() -> None:
     partially_disabled.record_tool_validation = False
     partially_disabled.record_tool_execution = False
 
-    assert asyncio.run(partially_registry["before_run"][0].func(cast(Any, None))) is None
+    assert asyncio.run(partially_registry["before_run"][0].func(cast("Any", None))) is None
     assert (
-        asyncio.run(partially_registry["before_node_run"][0].func(cast(Any, None), node=tool_call))
+        asyncio.run(
+            partially_registry["before_node_run"][0].func(cast("Any", None), node=tool_call),
+        )
         is tool_call
     )
     assert (
         asyncio.run(
             partially_registry["_on_event"][0].func(
-                cast(Any, None), cast(Any, SimpleNamespace(event_kind="silent"))
-            )
+                cast("Any", None),
+                cast("Any", SimpleNamespace(event_kind="silent")),
+            ),
         ).event_kind
         == "silent"
     )
     assert (
         asyncio.run(
-            partially_registry["before_model_request"][0].func(cast(Any, None), request_context)
+            partially_registry["before_model_request"][0].func(cast("Any", None), request_context),
         )
         is request_context
     )
     assert asyncio.run(
-        partially_registry["prepare_tools"][0].func(cast(Any, None), [tool_def])
+        partially_registry["prepare_tools"][0].func(cast("Any", None), [tool_def]),
     ) == [tool_def]
     assert asyncio.run(
-        partially_registry["prepare_output_tools"][0].func(cast(Any, None), [tool_def])
+        partially_registry["prepare_output_tools"][0].func(cast("Any", None), [tool_def]),
     ) == [tool_def]
     assert (
         asyncio.run(
             partially_registry["before_output_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
-            )
+            ),
         )
         == "raw"
     )
     assert (
         asyncio.run(
             partially_registry["wrap_output_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 handler=ok_output,
-            )
+            ),
         )
         == "raw"
     )
     with pytest.raises(RuntimeError, match="output failed"):
         asyncio.run(
             partially_registry["wrap_output_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 handler=fail_output,
-            )
+            ),
         )
     assert (
         asyncio.run(
             partially_registry["after_output_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="checked",
-            )
+            ),
         )
         == "checked"
     )
     with pytest.raises(RuntimeError, match="validate failed"):
         asyncio.run(
             partially_registry["on_output_validate_error"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 error=RuntimeError("validate failed"),
-            )
+            ),
         )
     assert (
         asyncio.run(
             partially_registry["before_output_process"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
-            )
+            ),
         )
         == "raw"
     )
     assert (
         asyncio.run(
             partially_registry["wrap_output_process"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 handler=ok_output,
-            )
+            ),
         )
         == "raw"
     )
     with pytest.raises(RuntimeError, match="output failed"):
         asyncio.run(
             partially_registry["wrap_output_process"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 handler=fail_output,
-            )
+            ),
         )
     assert (
         asyncio.run(
             partially_registry["after_output_process"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="processed",
-            )
+            ),
         )
         == "processed"
     )
     with pytest.raises(RuntimeError, match="process failed"):
         asyncio.run(
             partially_registry["on_output_process_error"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 error=RuntimeError("process failed"),
-            )
+            ),
         )
     assert (
         asyncio.run(
             partially_registry["handle_deferred_tool_calls"][0].func(
-                cast(Any, None),
-                requests=cast(Any, None),
-            )
+                cast("Any", None),
+                requests=cast("Any", None),
+            ),
         )
         is None
     )
     assert asyncio.run(
         partially_registry["before_tool_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         partially_registry["before_tool_execute"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert partially_disabled.drain_updates(session, Agent(TestModel())) is None
 
@@ -509,68 +514,68 @@ def test_hook_bridge_records_output_and_deferred_hooks() -> None:
     async def ok_output(output: Any) -> Any:
         return output
 
-    assert asyncio.run(registry["prepare_output_tools"][0].func(cast(Any, None), [tool_def])) == [
-        tool_def
+    assert asyncio.run(registry["prepare_output_tools"][0].func(cast("Any", None), [tool_def])) == [
+        tool_def,
     ]
     assert (
         asyncio.run(
             registry["before_output_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
-            )
+            ),
         )
         == "raw"
     )
     assert (
         asyncio.run(
             registry["wrap_output_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 handler=ok_output,
-            )
+            ),
         )
         == "raw"
     )
     assert asyncio.run(
         registry["after_output_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             output_context=_HOOK_CONTEXT,
             output={"ok": True},
-        )
+        ),
     ) == {"ok": True}
     assert asyncio.run(
         registry["before_output_process"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             output_context=_HOOK_CONTEXT,
             output={"ok": True},
-        )
+        ),
     ) == {"ok": True}
     assert asyncio.run(
         registry["wrap_output_process"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             output_context=_HOOK_CONTEXT,
             output={"ok": True},
             handler=ok_output,
-        )
+        ),
     ) == {"ok": True}
     assert (
         asyncio.run(
             registry["after_output_process"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="done",
-            )
+            ),
         )
         == "done"
     )
     assert (
         asyncio.run(
             registry["handle_deferred_tool_calls"][0].func(
-                cast(Any, None),
-                requests=cast(Any, None),
-            )
+                cast("Any", None),
+                requests=cast("Any", None),
+            ),
         )
         is None
     )
@@ -601,38 +606,38 @@ def test_hook_bridge_output_error_hooks_emit_failed_updates() -> None:
     with pytest.raises(RuntimeError, match="output failed"):
         asyncio.run(
             registry["wrap_output_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 handler=fail_output,
-            )
+            ),
         )
     with pytest.raises(RuntimeError, match="validate direct"):
         asyncio.run(
             registry["on_output_validate_error"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 error=RuntimeError("validate direct"),
-            )
+            ),
         )
     with pytest.raises(RuntimeError, match="output failed"):
         asyncio.run(
             registry["wrap_output_process"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 handler=fail_output,
-            )
+            ),
         )
     with pytest.raises(RuntimeError, match="process direct"):
         asyncio.run(
             registry["on_output_process_error"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 output_context=_HOOK_CONTEXT,
                 output="raw",
                 error=RuntimeError("process direct"),
-            )
+            ),
         )
 
     updates = bridge.drain_updates(session, Agent(TestModel()))
@@ -662,7 +667,7 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
     registry = capability._registry
     tool_call = ToolCallPart("echo", {"text": "hello"})
     tool_def = ToolDefinition(name="echo")
-    request_context = cast(Any, SimpleNamespace(messages=[1]))
+    request_context = cast("Any", SimpleNamespace(messages=[1]))
     response = ModelResponse(parts=[])
 
     bridge.record_run_lifecycle = False
@@ -674,7 +679,7 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
     bridge.record_tool_execution = False
 
     async def ok_run() -> Any:
-        return cast(Any, "run-result")
+        return cast("Any", "run-result")
 
     async def fail_run() -> Any:
         raise RuntimeError("run failed")
@@ -709,165 +714,170 @@ def test_hook_bridge_skips_recording_when_flags_are_disabled_after_binding() -> 
         raise RuntimeError("execute failed")
 
     async def event_stream():
-        yield cast(Any, SimpleNamespace(event_kind="demo_event"))
+        yield cast("Any", SimpleNamespace(event_kind="demo_event"))
 
-    assert asyncio.run(registry["before_run"][0].func(cast(Any, None))) is None
+    assert asyncio.run(registry["before_run"][0].func(cast("Any", None))) is None
     assert (
-        asyncio.run(registry["wrap_run"][0].func(cast(Any, None), handler=ok_run)) == "run-result"
+        asyncio.run(registry["wrap_run"][0].func(cast("Any", None), handler=ok_run)) == "run-result"
     )
     with pytest.raises(RuntimeError, match="run failed"):
-        asyncio.run(registry["wrap_run"][0].func(cast(Any, None), handler=fail_run))
-    assert asyncio.run(registry["after_run"][0].func(cast(Any, None), result="done")) == "done"
+        asyncio.run(registry["wrap_run"][0].func(cast("Any", None), handler=fail_run))
+    assert asyncio.run(registry["after_run"][0].func(cast("Any", None), result="done")) == "done"
     with pytest.raises(RuntimeError, match="run direct"):
         asyncio.run(
-            registry["on_run_error"][0].func(cast(Any, None), error=RuntimeError("run direct"))
+            registry["on_run_error"][0].func(cast("Any", None), error=RuntimeError("run direct")),
         )
     assert (
-        asyncio.run(registry["before_node_run"][0].func(cast(Any, None), node=tool_call))
+        asyncio.run(registry["before_node_run"][0].func(cast("Any", None), node=tool_call))
         is tool_call
     )
     assert (
         asyncio.run(
             registry["after_node_run"][0].func(
-                cast(Any, None), node=tool_call, result="node-result"
-            )
+                cast("Any", None),
+                node=tool_call,
+                result="node-result",
+            ),
         )
         == "node-result"
     )
     assert (
         asyncio.run(
-            registry["wrap_node_run"][0].func(cast(Any, None), node=tool_call, handler=ok_node)
+            registry["wrap_node_run"][0].func(cast("Any", None), node=tool_call, handler=ok_node),
         )
         is tool_call
     )
     with pytest.raises(RuntimeError, match="node failed"):
         asyncio.run(
-            registry["wrap_node_run"][0].func(cast(Any, None), node=tool_call, handler=fail_node)
+            registry["wrap_node_run"][0].func(cast("Any", None), node=tool_call, handler=fail_node),
         )
     assert (
-        asyncio.run(registry["_on_event"][0].func(cast(Any, None), cast(Any, tool_call)))
+        asyncio.run(registry["_on_event"][0].func(cast("Any", None), cast("Any", tool_call)))
         is tool_call
     )
     wrapped_stream = registry["wrap_run_event_stream"][0].func(
-        cast(Any, None), stream=event_stream()
+        cast("Any", None),
+        stream=event_stream(),
     )
     assert asyncio.run(wrapped_stream.__anext__()).event_kind == "demo_event"
     assert (
-        asyncio.run(registry["before_model_request"][0].func(cast(Any, None), request_context))
+        asyncio.run(registry["before_model_request"][0].func(cast("Any", None), request_context))
         is request_context
     )
     assert (
         asyncio.run(
             registry["wrap_model_request"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 request_context=request_context,
                 handler=ok_model,
-            )
+            ),
         )
         is response
     )
     with pytest.raises(RuntimeError, match="model failed"):
         asyncio.run(
             registry["wrap_model_request"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 request_context=request_context,
                 handler=fail_model,
-            )
+            ),
         )
     assert (
         asyncio.run(
             registry["after_model_request"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 request_context=request_context,
                 response=response,
-            )
+            ),
         )
         is response
     )
-    assert asyncio.run(registry["prepare_tools"][0].func(cast(Any, None), [tool_def])) == [tool_def]
+    assert asyncio.run(registry["prepare_tools"][0].func(cast("Any", None), [tool_def])) == [
+        tool_def,
+    ]
     assert asyncio.run(
         registry["before_tool_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         registry["after_tool_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         registry["wrap_tool_validate"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
             handler=ok_validate,
-        )
+        ),
     ) == {"text": "hello"}
     with pytest.raises(RuntimeError, match="validate failed"):
         asyncio.run(
             registry["wrap_tool_validate"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 handler=fail_validate,
-            )
+            ),
         )
     assert asyncio.run(
         registry["before_tool_execute"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
-        )
+        ),
     ) == {"text": "hello"}
     assert asyncio.run(
         registry["wrap_tool_execute"][0].func(
-            cast(Any, None),
+            cast("Any", None),
             call=tool_call,
             tool_def=tool_def,
             args={"text": "hello"},
             handler=ok_execute,
-        )
+        ),
     ) == {"ok": "hello"}
     with pytest.raises(RuntimeError, match="execute failed"):
         asyncio.run(
             registry["wrap_tool_execute"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 handler=fail_execute,
-            )
+            ),
         )
     assert (
         asyncio.run(
             registry["after_tool_execute"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 result="done",
-            )
+            ),
         )
         == "done"
     )
     with pytest.raises(RuntimeError, match="execute direct"):
         asyncio.run(
             registry["on_tool_execute_error"][0].func(
-                cast(Any, None),
+                cast("Any", None),
                 call=tool_call,
                 tool_def=tool_def,
                 args={"text": "hello"},
                 error=RuntimeError("execute direct"),
-            )
+            ),
         )
 
     assert bridge.drain_updates(session, Agent(TestModel(custom_output_text="unused"))) is None

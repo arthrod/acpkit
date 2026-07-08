@@ -85,7 +85,7 @@ class GenericFakeChatModel(BaseChatModel):
             if self.stream_delimiter is None:
                 content_chunks = [content]
             else:
-                content_chunks = cast(list[str], re.split(self.stream_delimiter, content))
+                content_chunks = cast("list[str]", re.split(self.stream_delimiter, content))
                 content_chunks = [chunk for chunk in content_chunks if chunk]
             for index, token in enumerate(content_chunks):
                 is_last = index == len(content_chunks) - 1
@@ -95,7 +95,7 @@ class GenericFakeChatModel(BaseChatModel):
                         id=message.id,
                         tool_calls=tool_calls if is_last else [],
                         chunk_position="last" if is_last else None,
-                    )
+                    ),
                 )
                 if run_manager is not None:
                     run_manager.on_llm_new_token(token, chunk=chunk)
@@ -109,7 +109,7 @@ class GenericFakeChatModel(BaseChatModel):
                     id=message.id,
                     tool_calls=tool_calls,
                     chunk_position="last",
-                )
+                ),
             )
             if run_manager is not None:
                 run_manager.on_llm_new_token("", chunk=chunk)
@@ -137,26 +137,26 @@ class RecordingACPClient:
     permission_responses: list[RequestPermissionResponse] = field(default_factory=list)
     write_response: WriteTextFileResponse | None = field(default_factory=WriteTextFileResponse)
     release_response: ReleaseTerminalResponse | None = field(
-        default_factory=ReleaseTerminalResponse
+        default_factory=ReleaseTerminalResponse,
     )
     kill_response: KillTerminalResponse | None = field(default_factory=KillTerminalResponse)
     wait_response: WaitForTerminalExitResponse = field(
-        default_factory=lambda: WaitForTerminalExitResponse(exit_code=0)
+        default_factory=lambda: WaitForTerminalExitResponse(exit_code=0),
     )
     terminal_output_response: TerminalOutputResponse = field(
-        default_factory=lambda: TerminalOutputResponse(output="terminal-output", truncated=False)
+        default_factory=lambda: TerminalOutputResponse(output="terminal-output", truncated=False),
     )
 
     def queue_permission_selected(self, option_id: str) -> None:
         self.permission_responses.append(
             RequestPermissionResponse(
-                outcome=AllowedOutcome(outcome="selected", option_id=option_id)
-            )
+                outcome=AllowedOutcome(outcome="selected", option_id=option_id),
+            ),
         )
 
     def queue_permission_cancelled(self) -> None:
         self.permission_responses.append(
-            RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+            RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled")),
         )
 
     async def request_permission(
@@ -168,7 +168,7 @@ class RecordingACPClient:
     ) -> RequestPermissionResponse:
         del kwargs
         self.permission_requests.append(
-            (session_id, [option.option_id for option in options], tool_call)
+            (session_id, [option.option_id for option in options], tool_call),
         )
         if not self.permission_responses:
             raise AssertionError("unexpected permission request")

@@ -113,6 +113,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import RunContext, ToolDefinition
 
 __all__ = (
+    "UTC",
     "AcpSessionContext",
     "AdapterConfig",
     "AdapterModel",
@@ -124,22 +125,22 @@ __all__ = (
     "AgentPlanUpdate",
     "AgentSource",
     "AllowedOutcome",
+    "AnthropicCompactionBridge",
     "ApprovalPolicy",
     "ApprovalPolicyStore",
     "ApprovalRequired",
     "AsyncDemoConfigOptionsProvider",
     "AsyncDemoModesProvider",
     "AsyncDemoPlanProvider",
-    "AnthropicCompactionBridge",
     "AvailableCommandsUpdate",
     "BuiltinToolProjectionMap",
     "ClientFilesystemBackend",
     "ClientHostContext",
     "ClientTerminalBackend",
     "CompositeProjectionMap",
-    "ContentToolCallContent",
     "ConfigOption",
     "ConfigOptionUpdate",
+    "ContentToolCallContent",
     "CreateTerminalResponse",
     "CurrentModeUpdate",
     "DefaultPermissionToolCallBuilder",
@@ -152,43 +153,43 @@ __all__ = (
     "EnvVariable",
     "ExternalHookEventBridge",
     "FactoryAgentSource",
-    "FileSessionStore",
     "FileEditToolCallContent",
+    "FileSessionStore",
+    "FileSystemProjectionMap",
     "FilesystemBackend",
     "FilesystemRecordingClient",
-    "FileSystemProjectionMap",
     "FreeformModelsProvider",
     "HistoryProcessorBridge",
     "HookBridge",
     "HookEvent",
     "HookProjectionMap",
+    "HostRecordingClient",
     "ImageGenerationBridge",
     "IncludeToolReturnSchemasBridge",
-    "HostRecordingClient",
     "JsonValue",
     "KillTerminalResponse",
     "McpBridge",
+    "McpCapabilityBridge",
     "McpServerDefinition",
     "McpToolDefinition",
     "MemorySessionStore",
     "ModeState",
     "ModelMessage",
     "ModelSelectionState",
-    "McpCapabilityBridge",
     "NativeApprovalBridge",
     "OpenAICompactionBridge",
     "Path",
-    "PermissionOptionSet",
     "PermissionOption",
+    "PermissionOptionSet",
     "PermissionRequestContext",
     "PermissionToolCallBuilder",
     "PlanEntry",
     "PrefixToolsBridge",
-    "ProjectionAwareToolClassifier",
     "PrepareOutputToolsBridge",
     "PrepareOutputToolsMode",
     "PrepareToolsBridge",
     "PrepareToolsMode",
+    "ProjectionAwareToolClassifier",
     "ReadTextFileResponse",
     "RecordingClient",
     "ReleaseTerminalResponse",
@@ -209,25 +210,24 @@ __all__ = (
     "StaticAgentSource",
     "StaticSlashCommand",
     "StaticSlashCommandProvider",
-    "TerminalToolCallContent",
     "TerminalBackend",
     "TerminalOutputResponse",
     "TerminalRecordingClient",
+    "TerminalToolCallContent",
     "TestModel",
-    "ThreadExecutorBridge",
     "ThinkingBridge",
-    "ToolsetBridge",
+    "ThreadExecutorBridge",
     "ToolCallProgress",
     "ToolCallStart",
     "ToolCallUpdate",
-    "WebFetchBridge",
-    "WebSearchBridge",
-    "WebToolProjectionMap",
     "ToolDefinition",
-    "UTC",
+    "ToolsetBridge",
     "UsageUpdate",
     "UserMessageChunk",
     "WaitForTerminalExitResponse",
+    "WebFetchBridge",
+    "WebSearchBridge",
+    "WebToolProjectionMap",
     "WriteTextFileResponse",
     "agent_message_texts",
     "create_acp_agent",
@@ -247,12 +247,12 @@ class RecordingClient:
         self.permission_responses.append(
             RequestPermissionResponse(
                 outcome=AllowedOutcome(outcome="selected", option_id=option_id),
-            )
+            ),
         )
 
     def queue_permission_cancelled(self) -> None:
         self.permission_responses.append(
-            RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
+            RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled")),
         )
 
     async def request_permission(
@@ -264,10 +264,10 @@ class RecordingClient:
     ) -> RequestPermissionResponse:
         del kwargs
         self.permission_option_ids.append(
-            (session_id, [option.option_id for option in options], tool_call)
+            (session_id, [option.option_id for option in options], tool_call),
         )
         self.permission_option_names.append(
-            (session_id, [option.name for option in options], tool_call)
+            (session_id, [option.name for option in options], tool_call),
         )
         if not self.permission_responses:
             raise AssertionError("unexpected permission request")
@@ -295,7 +295,11 @@ class RecordingClient:
         self.updates.append((session_id, update))
 
     async def write_text_file(
-        self, content: str, path: str, session_id: str, **kwargs: Any
+        self,
+        content: str,
+        path: str,
+        session_id: str,
+        **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         del content, path, session_id, kwargs
         raise AssertionError("filesystem flow is not part of this test")
@@ -325,25 +329,37 @@ class RecordingClient:
         raise AssertionError("terminal flow is not part of this test")
 
     async def terminal_output(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> TerminalOutputResponse:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
 
     async def release_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> ReleaseTerminalResponse | None:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
 
     async def wait_for_terminal_exit(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> WaitForTerminalExitResponse:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
 
     async def kill_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> KillTerminalResponse | None:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
@@ -354,7 +370,7 @@ class RecordingClient:
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         raise AssertionError(f"unexpected extension notification: {method!r} {params!r}")
 
-    def on_connect(self, conn: AcpAgent) -> None:
+    def on_connect(self, conn: AcpAgent) -> None:  # type: ignore[misc]
         del conn
 
 
@@ -391,7 +407,11 @@ class FilesystemRecordingClient(RecordingClient):
         self.write_response: WriteTextFileResponse | None = WriteTextFileResponse()
 
     async def write_text_file(
-        self, content: str, path: str, session_id: str, **kwargs: Any
+        self,
+        content: str,
+        path: str,
+        session_id: str,
+        **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         del kwargs
         self.write_calls.append((session_id, path, content))
@@ -446,28 +466,40 @@ class TerminalRecordingClient(RecordingClient):
         return CreateTerminalResponse(terminal_id="terminal-1")
 
     async def terminal_output(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> TerminalOutputResponse:
         del kwargs
         self.output_calls.append((session_id, terminal_id))
         return TerminalOutputResponse(output="terminal-output", truncated=False)
 
     async def release_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> ReleaseTerminalResponse | None:
         del kwargs
         self.release_calls.append((session_id, terminal_id))
         return self.release_response
 
     async def wait_for_terminal_exit(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> WaitForTerminalExitResponse:
         del kwargs
         self.wait_calls.append((session_id, terminal_id))
         return self.wait_response
 
     async def kill_terminal(
-        self, session_id: str, terminal_id: str, **kwargs: Any
+        self,
+        session_id: str,
+        terminal_id: str,
+        **kwargs: Any,
     ) -> KillTerminalResponse | None:
         del kwargs
         self.kill_calls.append((session_id, terminal_id))
@@ -582,7 +614,7 @@ class DemoConfigOptionsProvider:
                 description="Enable streamed responses.",
                 type="boolean",
                 current_value=stream_enabled,
-            )
+            ),
         ]
 
     def set_config_option(
@@ -631,7 +663,7 @@ class FreeformModelsProvider:
                     model_id="custom-model-a",
                     name="Custom Model A",
                     override="custom-model-a",
-                )
+                ),
             ],
             current_model_id=current_model_id,
             allow_any_model_id=True,
@@ -667,7 +699,7 @@ class ReservedModelConfigProvider:
                     SessionConfigSelectOption(value="provider-model-a", name="Provider Model A"),
                     SessionConfigSelectOption(value="provider-model-b", name="Provider Model B"),
                 ],
-            )
+            ),
         ]
 
     def set_config_option(

@@ -174,8 +174,8 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                     raw_prompt=raw_prompt,
                     session=session,
                     agent=agent,
-                )
-            )
+                ),
+            ),
         )
         if result is None or not result.handled:
             return None
@@ -254,7 +254,7 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                 "",
                 "Run details:",
                 cancellation_details,
-            )
+            ),
         )
         await self._owner._record_update(
             session,
@@ -288,7 +288,7 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
             session.message_history_json,
             prompt_text=prompt_text,
             traceback_text="".join(
-                traceback.format_exception(type(error), error, error.__traceback__)
+                traceback.format_exception(type(error), error, error.__traceback__),
             ),
         )
         session.updated_at = utc_now()
@@ -337,7 +337,7 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                     if prompt_outcome.stop_reason == "cancelled"
                     else None
                 ),
-            )
+            ),
         )
         session.updated_at = utc_now()
         self._owner._config.session_store.save(session)

@@ -11,7 +11,11 @@ from pydantic_ai.tools import ToolDefinition
 from ..awaitables import resolve_value
 from ..bridges import PrepareToolsBridge
 from ..session.state import AcpSessionContext, utc_now
-from ._agent_state import has_native_plan_tools, set_native_plan_tools_installed, try_active_session
+from ._agent_state import (
+    has_native_plan_tools,
+    set_native_plan_tools_installed,
+    try_active_session,
+)
 
 if TYPE_CHECKING:
     from .adapter import PydanticAcpAgent
@@ -99,7 +103,7 @@ class _NativePlanRuntime(Generic[AgentDepsT, OutputDataT]):
                 agent,
                 entries,
                 plan_markdown,
-            )
+            ),
         )
 
     async def emit_native_plan_update(self, session: AcpSessionContext) -> None:
@@ -177,7 +181,7 @@ class _NativePlanRuntime(Generic[AgentDepsT, OutputDataT]):
                 {
                     "index": index,
                     "plan": f"Plan entry index must be between 1 and {len(entries)}.",
-                }
+                },
             )
         existing_entry = entries[index - 1]
         updated_payload = existing_entry.model_dump(mode="python")
@@ -208,7 +212,7 @@ class _NativePlanRuntime(Generic[AgentDepsT, OutputDataT]):
                         session.plan_markdown.rstrip(),
                         "Additional plan instructions:",
                         additional_instructions,
-                    )
+                    ),
                 )
             return "No plan has been recorded yet."
         numbered_entries = "\n".join(
@@ -231,7 +235,7 @@ class _NativePlanRuntime(Generic[AgentDepsT, OutputDataT]):
                 "Current plan entries:",
                 numbered_entries,
                 *sections,
-            )
+            ),
         )
 
     def _native_plan_additional_instructions(self) -> str | None:

@@ -59,7 +59,7 @@ class AdapterConfig:
     plan_provider: PlanProvider | None = None
     projection_maps: Sequence[ProjectionMap] = field(default_factory=tuple)
     prompt_capabilities: AdapterPromptCapabilities = field(
-        default_factory=AdapterPromptCapabilities
+        default_factory=AdapterPromptCapabilities,
     )
     replay_history_on_load: bool = True
     slash_command_provider: SlashCommandProvider | None = None

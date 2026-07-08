@@ -43,7 +43,6 @@ def test_custom_agent_source_is_supported(tmp_path: Path) -> None:
             agent: Agent[None, str],
         ) -> None:
             del session, agent
-            return None
 
     adapter = create_acp_agent(
         agent_source=SessionAwareAgentSource(),
@@ -57,7 +56,7 @@ def test_custom_agent_source_is_supported(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Use the custom agent source.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == ["source:source-demo"]
@@ -98,7 +97,7 @@ def test_custom_agent_source_can_supply_session_deps(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Show the deps value.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_updates = [
@@ -130,7 +129,6 @@ def test_connected_client_is_available_to_sources_and_providers(tmp_path: Path) 
             agent: Agent[None, str],
         ) -> None:
             del session, agent
-            return None
 
     adapter = create_acp_agent(
         agent_source=ClientAwareSource(),
@@ -146,7 +144,7 @@ def test_connected_client_is_available_to_sources_and_providers(tmp_path: Path) 
         adapter.prompt(
             prompt=[text_block("Use the client-aware agent source.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     session_info_updates = [
@@ -154,7 +152,7 @@ def test_connected_client_is_available_to_sources_and_providers(tmp_path: Path) 
     ]
     assert session_info_updates
     assert session_info_updates[-1].field_meta == {
-        "pydantic_acp": {"approval_state": {"connected": True}}
+        "pydantic_acp": {"approval_state": {"connected": True}},
     }
     assert agent_message_texts(client) == ["client:connected"]
 
@@ -177,13 +175,13 @@ def test_agent_factory_builds_session_specific_agents(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Use the first session agent.")],
             session_id=first_session.session_id,
-        )
+        ),
     )
     asyncio.run(
         adapter.prompt(
             prompt=[text_block("Use the second session agent.")],
             session_id=second_session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == ["factory:alpha", "factory:beta"]
@@ -213,7 +211,7 @@ def test_factory_receives_updated_session_state(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Show the current session-aware factory state.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == ["factory:enabled:from-store"]
@@ -235,7 +233,7 @@ def test_async_agent_factory_is_supported(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Use the async factory agent.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == ["async-factory:gamma"]
@@ -250,7 +248,7 @@ def test_load_missing_session_returns_none_and_resume_or_fork_raise(
     )
 
     load_response = asyncio.run(
-        adapter.load_session(cwd=str(tmp_path), session_id="missing", mcp_servers=[])
+        adapter.load_session(cwd=str(tmp_path), session_id="missing", mcp_servers=[]),
     )
     close_response = asyncio.run(adapter.close_session(session_id="missing"))
 
@@ -291,7 +289,7 @@ def test_fork_session_clones_transcript_and_model_override(tmp_path: Path) -> No
         adapter.prompt(
             prompt=[text_block("Prime the original session.")],
             session_id=original.session_id,
-        )
+        ),
     )
 
     client.updates.clear()
@@ -300,14 +298,14 @@ def test_fork_session_clones_transcript_and_model_override(tmp_path: Path) -> No
             cwd=str(tmp_path / "forked"),
             session_id=original.session_id,
             mcp_servers=[],
-        )
+        ),
     )
     resume_response = asyncio.run(
         adapter.resume_session(
             cwd=str(tmp_path / "forked"),
             session_id=forked.session_id,
             mcp_servers=[],
-        )
+        ),
     )
 
     assert resume_response.models is not None
@@ -347,19 +345,19 @@ def test_provider_backed_fork_preserves_session_state(tmp_path: Path) -> None:
             config_id="stream_enabled",
             session_id=original.session_id,
             value=True,
-        )
+        ),
     )
     asyncio.run(
         adapter.set_session_model(
             model_id="provider-model-b",
             session_id=original.session_id,
-        )
+        ),
     )
     asyncio.run(
         adapter.prompt(
             prompt=[text_block("Prime the provider-backed session.")],
             session_id=original.session_id,
-        )
+        ),
     )
 
     client.updates.clear()
@@ -368,14 +366,14 @@ def test_provider_backed_fork_preserves_session_state(tmp_path: Path) -> None:
             cwd=str(tmp_path / "forked"),
             session_id=original.session_id,
             mcp_servers=[],
-        )
+        ),
     )
     resume_response = asyncio.run(
         adapter.resume_session(
             cwd=str(tmp_path / "forked"),
             session_id=forked.session_id,
             mcp_servers=[],
-        )
+        ),
     )
 
     assert forked.models is not None
@@ -417,7 +415,7 @@ def test_close_session_removes_session_from_listing(tmp_path: Path) -> None:
             cwd=str(tmp_path),
             session_id=session.session_id,
             mcp_servers=[],
-        )
+        ),
     )
 
     assert close_response is not None
@@ -442,12 +440,12 @@ def test_load_session_can_skip_history_replay(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Prime the transcript without replay.")],
             session_id=session.session_id,
-        )
+        ),
     )
     client.updates.clear()
 
     load_response = asyncio.run(
-        adapter.load_session(cwd=str(tmp_path), session_id=session.session_id, mcp_servers=[])
+        adapter.load_session(cwd=str(tmp_path), session_id=session.session_id, mcp_servers=[]),
     )
 
     assert load_response is not None

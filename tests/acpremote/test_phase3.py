@@ -45,7 +45,7 @@ class _RecordingClient:
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self.updates.append(
-            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None)
+            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None),
         )
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -64,7 +64,7 @@ async def test_phase3_recording_client_stub_methods() -> None:
     client = _RecordingClient()
 
     with pytest.raises(AssertionError, match="permission flow"):
-        await client.request_permission([], "session-1", cast(Any, object()))
+        await client.request_permission([], "session-1", cast("Any", object()))
     with pytest.raises(AssertionError, match="extension methods"):
         await client.ext_method("demo.echo", {"value": 1})
 
@@ -75,7 +75,7 @@ async def test_phase3_recording_client_stub_methods() -> None:
         source="phase3",
     )
     assert client.updates[0].field_meta == {"source": "phase3"}
-    assert client.on_connect(cast(Agent, object())) is None
+    assert client.on_connect(cast("Agent", object())) is None
 
 
 @dataclass(slots=True)
@@ -118,7 +118,7 @@ class _ProxyTargetAgent:
     ) -> ListSessionsResponse:
         del cursor, cwd, kwargs
         return ListSessionsResponse(
-            sessions=[SessionInfo(cwd="/tmp", session_id="phase3-session", title="Remote session")]
+            sessions=[SessionInfo(cwd="/tmp", session_id="phase3-session", title="Remote session")],
         )
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> AuthenticateResponse | None:
@@ -187,12 +187,12 @@ async def _open_stream_pair() -> tuple[
 @pytest.mark.asyncio
 async def test_phase3_connect_acp_returns_local_agent_proxy_with_remote_passthrough() -> None:
     target = _ProxyTargetAgent()
-    server = await serve_acp(cast(Agent, target), mount_path="/proxy", remote_cwd="/srv/remote")
+    server = await serve_acp(cast("Agent", target), mount_path="/proxy", remote_cwd="/srv/remote")
     assert server.sockets is not None
     port = next(iter(server.sockets)).getsockname()[1]
-    proxy = cast(RemoteProxyAgent, connect_acp(f"ws://127.0.0.1:{port}/proxy/ws"))
+    proxy = cast("RemoteProxyAgent", connect_acp(f"ws://127.0.0.1:{port}/proxy/ws"))
     client = _RecordingClient()
-    proxy.on_connect(cast(Client, client))
+    proxy.on_connect(cast("Client", client))
     try:
         initialized = await proxy.initialize(protocol_version=1)
         assert initialized.protocol_version == 1
@@ -273,14 +273,14 @@ async def test_phase3_proxy_requires_on_connect_and_reuses_cached_remote_connect
     ) -> RemoteClientConnection:
         del url, options, headers, bearer_token
         calls.append(client)
-        return cast(RemoteClientConnection, _StubRemote())
+        return cast("RemoteClientConnection", _StubRemote())
 
     monkeypatch.setattr(
         "acpremote.proxy_agent.connect_remote_agent",
         _fake_connect_remote_agent,
     )
 
-    client = cast(Client, _RecordingClient())
+    client = cast("Client", _RecordingClient())
     proxy.on_connect(client)
 
     first = await proxy.initialize(protocol_version=1)
@@ -296,24 +296,24 @@ async def test_phase3_proxy_defaults_to_remote_host_ownership_but_can_opt_into_p
     None
 ):
     remote_target = _ProxyTargetAgent()
-    remote_server = await serve_acp(cast(Agent, remote_target), mount_path="/remote")
+    remote_server = await serve_acp(cast("Agent", remote_target), mount_path="/remote")
     assert remote_server.sockets is not None
     remote_port = next(iter(remote_server.sockets)).getsockname()[1]
-    remote_proxy = cast(RemoteProxyAgent, connect_acp(f"ws://127.0.0.1:{remote_port}/remote/ws"))
-    remote_proxy.on_connect(cast(Client, _RecordingClient()))
+    remote_proxy = cast("RemoteProxyAgent", connect_acp(f"ws://127.0.0.1:{remote_port}/remote/ws"))
+    remote_proxy.on_connect(cast("Client", _RecordingClient()))
 
     passthrough_target = _ProxyTargetAgent()
-    passthrough_server = await serve_acp(cast(Agent, passthrough_target), mount_path="/pass")
+    passthrough_server = await serve_acp(cast("Agent", passthrough_target), mount_path="/pass")
     assert passthrough_server.sockets is not None
     passthrough_port = next(iter(passthrough_server.sockets)).getsockname()[1]
     passthrough_proxy = cast(
-        RemoteProxyAgent,
+        "RemoteProxyAgent",
         connect_acp(
             f"ws://127.0.0.1:{passthrough_port}/pass/ws",
             options=TransportOptions(host_ownership="client_passthrough"),
         ),
     )
-    passthrough_proxy.on_connect(cast(Client, _RecordingClient()))
+    passthrough_proxy.on_connect(cast("Client", _RecordingClient()))
 
     capabilities = ClientCapabilities(
         fs=FileSystemCapabilities(read_text_file=True, write_text_file=True),
@@ -349,7 +349,7 @@ async def test_phase3_proxy_defaults_to_remote_host_ownership_but_can_opt_into_p
 @pytest.mark.asyncio
 async def test_phase3_proxy_supports_local_acp_stream_clients_transparently() -> None:
     target = _ProxyTargetAgent()
-    remote_server = await serve_acp(cast(Agent, target), mount_path="/proxy")
+    remote_server = await serve_acp(cast("Agent", target), mount_path="/proxy")
     assert remote_server.sockets is not None
     remote_port = next(iter(remote_server.sockets)).getsockname()[1]
 
@@ -358,9 +358,9 @@ async def test_phase3_proxy_supports_local_acp_stream_clients_transparently() ->
     (client_reader, client_writer), (proxy_reader, proxy_writer) = await _open_stream_pair()
 
     proxy_task = asyncio.create_task(
-        run_agent(proxy, input_stream=proxy_writer, output_stream=proxy_reader)
+        run_agent(proxy, input_stream=proxy_writer, output_stream=proxy_reader),
     )
-    local_connection = connect_to_agent(cast(Client, local_client), client_writer, client_reader)
+    local_connection = connect_to_agent(cast("Client", local_client), client_writer, client_reader)
     try:
         initialized = await local_connection.initialize(protocol_version=1)
         assert initialized.protocol_version == 1
@@ -379,7 +379,7 @@ async def test_phase3_proxy_supports_local_acp_stream_clients_transparently() ->
         proxy_writer.close()
         await client_writer.wait_closed()
         await proxy_writer.wait_closed()
-        await cast(RemoteProxyAgent, proxy).close()
+        await cast("RemoteProxyAgent", proxy).close()
         await proxy_task
         remote_server.close()
         await remote_server.wait_closed()
@@ -393,7 +393,7 @@ async def test_phase3_proxy_supports_local_acp_stream_clients_transparently() ->
 @pytest.mark.asyncio
 async def test_phase3_proxy_can_emit_transport_latency_meta_and_projection() -> None:
     target = _ProxyTargetAgent()
-    remote_server = await serve_acp(cast(Agent, target), mount_path="/latency")
+    remote_server = await serve_acp(cast("Agent", target), mount_path="/latency")
     assert remote_server.sockets is not None
     remote_port = next(iter(remote_server.sockets)).getsockname()[1]
 
@@ -405,7 +405,7 @@ async def test_phase3_proxy_can_emit_transport_latency_meta_and_projection() -> 
         ),
     )
     local_client = _RecordingClient()
-    proxy.on_connect(cast(Client, local_client))
+    proxy.on_connect(cast("Client", local_client))
     try:
         await proxy.initialize(protocol_version=1)
         session = await proxy.new_session(cwd="/tmp")
@@ -415,7 +415,7 @@ async def test_phase3_proxy_can_emit_transport_latency_meta_and_projection() -> 
         )
         assert response.stop_reason == "end_turn"
     finally:
-        await cast(RemoteProxyAgent, proxy).close()
+        await cast("RemoteProxyAgent", proxy).close()
         remote_server.close()
         await remote_server.wait_closed()
 

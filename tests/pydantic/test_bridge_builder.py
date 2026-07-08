@@ -75,14 +75,14 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
                 name="Repo MCP",
                 transport="http",
                 tool_prefix="mcp.",
-            )
+            ),
         ],
         tools=[
             McpToolDefinition(
                 tool_name="mcp.search_repo",
                 server_id="repo",
                 kind="search",
-            )
+            ),
         ],
     )
     bridges = [hook_bridge, history_bridge, prepare_bridge, mcp_bridge]
@@ -125,7 +125,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
     assert session.modes.current_mode_id == "chat"
 
     set_mode_response = asyncio.run(
-        adapter.set_session_mode(mode_id="review", session_id=session.session_id)
+        adapter.set_session_mode(mode_id="review", session_id=session.session_id),
     )
 
     assert set_mode_response is not None
@@ -135,7 +135,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Search the repo.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -199,7 +199,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
             "after_output_process",
             "on_output_process_error",
             "handle_deferred_tool_calls",
-        ]
+        ],
     }
     assert metadata["history_processors"] == {"processors": ["trim_history"]}
     assert metadata["mcp"] == {
@@ -212,7 +212,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
                 "tool_prefix": "mcp.",
                 "transport": "http",
                 "url": None,
-            }
+            },
         ],
     }
     assert metadata["prepare_tools"] == {
@@ -297,7 +297,7 @@ def test_agent_bridge_builder_auto_wraps_contextual_history_processors(
         adapter.prompt(
             prompt=[text_block("Use contextual history.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert prompt_response.stop_reason == "end_turn"

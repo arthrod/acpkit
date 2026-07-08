@@ -87,7 +87,7 @@ def replace_hook_entry(
 ) -> object | None:
     if is_dataclass(entry):
         try:
-            return replace(cast(Any, entry), func=func, timeout=timeout)
+            return replace(cast("Any", entry), func=func, timeout=timeout)
         except TypeError:
             return None
     try:
@@ -95,7 +95,7 @@ def replace_hook_entry(
     except Exception:
         return None
     try:
-        wrapped_entry_any = cast(Any, wrapped_entry)
+        wrapped_entry_any = cast("Any", wrapped_entry)
         wrapped_entry_any.func = func
         wrapped_entry_any.timeout = timeout
     except Exception:

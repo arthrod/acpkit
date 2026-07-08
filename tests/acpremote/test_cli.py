@@ -62,7 +62,7 @@ def _write_native_agent_module(tmp_path: Path) -> None:
                 "",
                 "ignored = object()",
                 "agent = NativeAgent()",
-            )
+            ),
         )
         + "\n",
         encoding="utf-8",
@@ -112,14 +112,14 @@ def test_acpremote_expose_command_builds_stdio_server(
             "python",
             "agent.py",
             "--flag",
-        ]
+        ],
     )
 
     assert exit_code == 0
     assert server.serve_forever_calls == 1
     assert server.close_calls == 1
     assert server.wait_closed_calls == 1
-    command_options = cast(CommandOptions, calls[0]["command_options"])
+    command_options = cast("CommandOptions", calls[0]["command_options"])
     assert command_options.command == ("python", "agent.py", "--flag")
     assert command_options.cwd == str(tmp_path)
     assert command_options.env == {"A": "1", "EMPTY": ""}
@@ -162,7 +162,7 @@ def test_acpremote_serve_loads_native_agent_target(
             "/acp",
             "--bearer-token",
             "direct-token",
-        ]
+        ],
     )
 
     assert exit_code == 0
@@ -258,7 +258,7 @@ def test_acpremote_cli_banner_handles_servers_without_tcp_port(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     server_without_sockets = _FakeServer(sockets=[])
-    server_with_non_tcp_socket = _FakeServer(sockets=[cast(Any, _FakeNonTcpSocket())])
+    server_with_non_tcp_socket = _FakeServer(sockets=[cast("Any", _FakeNonTcpSocket())])
 
     cli_module._print_server_banner(server_without_sockets, host="127.0.0.1", mount_path="/acp")
 

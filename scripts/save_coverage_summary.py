@@ -82,11 +82,11 @@ def _validate_thresholds(summary: CoverageSummary) -> None:
     failures: list[str] = []
     if summary.line_coverage < MIN_LINE_COVERAGE:
         failures.append(
-            f"line coverage {summary.line_coverage:.2f}% is below required {MIN_LINE_COVERAGE:.2f}%"
+            f"line coverage {summary.line_coverage:.2f}% is below required {MIN_LINE_COVERAGE:.2f}%",
         )
     if summary.branch_coverage < MIN_BRANCH_COVERAGE:
         failures.append(
-            f"branch coverage {summary.branch_coverage:.2f}% is below required {MIN_BRANCH_COVERAGE:.2f}%"
+            f"branch coverage {summary.branch_coverage:.2f}% is below required {MIN_BRANCH_COVERAGE:.2f}%",
         )
     if failures:
         raise SystemExit("Coverage thresholds failed:\n- " + "\n- ".join(failures))
@@ -97,7 +97,7 @@ def _parse_args() -> argparse.Namespace:
         description=(
             "Validate ACP Kit adapter-package coverage thresholds and optionally write the "
             "COVERAGE summary."
-        )
+        ),
     )
     parser.add_argument(
         "--input",

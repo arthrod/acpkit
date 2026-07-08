@@ -66,7 +66,7 @@ class StoredSessionUpdate:
     @classmethod
     def from_update(cls, update: SessionTranscriptUpdate) -> StoredSessionUpdate:
         payload = _coerce_json_object(
-            update.model_dump(mode="json", by_alias=True, exclude_none=True)
+            update.model_dump(mode="json", by_alias=True, exclude_none=True),
         )
         session_update = payload.get("sessionUpdate")
         if not _is_transcript_kind(session_update):

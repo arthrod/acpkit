@@ -44,7 +44,7 @@ class _NativePlanRuntime:
 
     def requires_structured_plan_output(self, session: AcpSessionContext) -> bool:
         return self.supports_native_plan_state(session) and self.uses_structured_plan_generation(
-            session
+            session,
         )
 
     def supports_plan_generation_selection(self) -> bool:
@@ -56,7 +56,7 @@ class _NativePlanRuntime:
             isinstance(configured_value, str)
             and configured_value in _PLAN_GENERATION_CONFIG_OPTIONS
         ):
-            return cast(PlanGenerationType, configured_value)
+            return cast("PlanGenerationType", configured_value)
         return self._owner._config.default_plan_generation_type
 
     def uses_tool_plan_generation(self, session: AcpSessionContext) -> bool:
@@ -87,7 +87,7 @@ class _NativePlanRuntime:
                     )
                     for value in _PLAN_GENERATION_CONFIG_OPTIONS
                 ],
-            )
+            ),
         ]
 
     def get_native_plan_entries(self, session: AcpSessionContext) -> list[PlanEntry] | None:
@@ -134,7 +134,7 @@ class _NativePlanRuntime:
                     session=session,
                     entries=entries,
                     plan_markdown=plan_markdown,
-                )
+                ),
             )
         session.updated_at = utc_now()
         self._owner._store.save(session)
@@ -167,7 +167,7 @@ class _NativePlanRuntime:
                 {
                     "index": index,
                     "plan": f"Plan entry index must be between 1 and {len(entries)}.",
-                }
+                },
             )
         existing_entry = entries[index - 1]
         updated_payload = existing_entry.model_dump(mode="python")
@@ -198,7 +198,7 @@ class _NativePlanRuntime:
                         session.plan_markdown.rstrip(),
                         "Additional plan instructions:",
                         additional_instructions,
-                    )
+                    ),
                 )
             return "No plan has been recorded yet."
         numbered_entries = "\n".join(
@@ -220,7 +220,7 @@ class _NativePlanRuntime:
                 "Current plan entries:",
                 numbered_entries,
                 *sections,
-            )
+            ),
         )
 
     def _native_plan_additional_instructions(self) -> str | None:

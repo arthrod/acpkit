@@ -35,7 +35,7 @@ CODEX_MODEL="gpt-5.4" \
 uv run python -m examples.langchain.workspace_graph
 ```
 
-The graph has real file tools scoped to `<session cwd>/.workspace-graph/`.
+The graph has real file tools scoped to `<session cwd>/agent_demos/workspace-graph/`.
 `FileSystemProjectionMap` renders reads and writes truthfully in ACP clients.
 Path traversal is rejected before filesystem access.
 
@@ -60,9 +60,9 @@ failures.
 
 ## Session Storage
 
-All examples use `FileSessionStore` under `.acp-sessions/`. Override the parent
-directory with `ACP_EXAMPLE_SESSION_DIR`. The local file store is intended for
-one process; use an application-owned store for multiple replicas.
+All examples use `FileSessionStore` under `agent_demos/acp-sessions/`. Override
+the parent directory with `ACP_EXAMPLE_SESSION_DIR`. The local file store is
+intended for one process; use an application-owned store for multiple replicas.
 
 ## Production Boundaries
 

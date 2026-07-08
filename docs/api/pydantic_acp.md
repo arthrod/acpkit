@@ -24,6 +24,14 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.RuntimeAgent
 
+## ACP Client Provider Bridge
+
+::: pydantic_acp.AcpProvider
+
+::: pydantic_acp.AcpModel
+
+::: pydantic_acp.AcpHostBridge
+
 ## Agent Source Classes And Protocols
 
 ::: pydantic_acp.AgentFactory

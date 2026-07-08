@@ -55,7 +55,7 @@ async def serve_remote_agent(
     if options is not None and server_options is not None:
         raise ValueError("pass either options or server_options, not both")
     resolved_server_options = server_options or ServerOptions(
-        transport=options or TransportOptions()
+        transport=options or TransportOptions(),
     )
     resolved_transport = resolved_server_options.transport
     metadata = build_server_metadata(resolved_server_options)

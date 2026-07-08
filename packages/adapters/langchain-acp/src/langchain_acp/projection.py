@@ -21,16 +21,16 @@ from acp.schema import (
 
 __all__ = (
     "BrowserProjectionMap",
+    "CommandProjectionMap",
     "CommunityFileManagementProjectionMap",
     "CompositeProjectionMap",
-    "CommandProjectionMap",
     "DeepAgentsProjectionMap",
     "DefaultToolClassifier",
     "FileSystemProjectionMap",
     "FinanceProjectionMap",
     "HttpRequestProjectionMap",
-    "ProjectionMap",
     "ProjectionAwareToolClassifier",
+    "ProjectionMap",
     "ToolClassifier",
     "WebFetchProjectionMap",
     "WebSearchProjectionMap",
@@ -80,7 +80,7 @@ _DEFAULT_WEB_SEARCH_TOOL_NAMES = frozenset(
         "searx_search_results",
         "tavily_answer",
         "tavily_search_results_json",
-    }
+    },
 )
 _DEFAULT_WEB_FETCH_TOOL_NAMES = frozenset(
     {
@@ -89,11 +89,11 @@ _DEFAULT_WEB_FETCH_TOOL_NAMES = frozenset(
         "requests_patch",
         "requests_post",
         "requests_put",
-    }
+    },
 )
 _DEFAULT_BROWSER_NAVIGATE_TOOL_NAMES = frozenset({"navigate_browser"})
 _DEFAULT_BROWSER_READ_TOOL_NAMES = frozenset(
-    {"current_webpage", "extract_hyperlinks", "extract_text", "get_elements"}
+    {"current_webpage", "extract_hyperlinks", "extract_text", "get_elements"},
 )
 _DEFAULT_BROWSER_ACTION_TOOL_NAMES = frozenset({"click_element", "previous_webpage"})
 _DEFAULT_COMMAND_TOOL_NAMES = frozenset({"terminal"})
@@ -103,7 +103,7 @@ _DEFAULT_FILE_MANAGEMENT_SEARCH_TOOL_NAMES = frozenset({"file_search", "list_dir
 _DEFAULT_FILE_MANAGEMENT_MUTATION_TOOL_NAMES = frozenset({"copy_file", "file_delete", "move_file"})
 _DEFAULT_FINANCE_SEARCH_TOOL_NAMES = frozenset({"google_finance", "yahoo_finance_news"})
 _DEFAULT_FINANCE_DATASET_TOOL_NAMES = frozenset(
-    {"balance_sheets", "cash_flow_statements", "income_statements"}
+    {"balance_sheets", "cash_flow_statements", "income_statements"},
 )
 _WEB_SEARCH_QUERY_KEYS = ("query", "q", "search_term", "search_query")
 _WEB_FETCH_URL_KEYS = ("url", "href", "link", "uri")
@@ -298,7 +298,7 @@ class FileSystemProjectionMap:
             risk_note = _command_risk_note(command)
             if risk_note is not None:
                 content.append(
-                    ContentToolCallContent(type="content", content=_text_block(risk_note))
+                    ContentToolCallContent(type="content", content=_text_block(risk_note)),
                 )
             return ToolProjection(
                 content=content,
@@ -317,7 +317,7 @@ class FileSystemProjectionMap:
                         path=path,
                         old_text=old_text,
                         new_text=new_text,
-                    )
+                    ),
                 ],
                 locations=[ToolCallLocation(path=path)],
                 title=_tool_title(tool_name, path=path),
@@ -364,7 +364,7 @@ class FileSystemProjectionMap:
                         path=path,
                         old_text="",
                         new_text=serialized_output,
-                    )
+                    ),
                 ],
                 locations=[ToolCallLocation(path=path)],
                 title=_tool_title(tool_name, path=path),
@@ -379,7 +379,7 @@ class FileSystemProjectionMap:
             output_text = _output_text(raw_output, serialized_output)
             if output_text:
                 content.append(
-                    ContentToolCallContent(type="content", content=_text_block(output_text))
+                    ContentToolCallContent(type="content", content=_text_block(output_text)),
                 )
             return ToolProjection(
                 content=content or None,
@@ -478,7 +478,7 @@ class WebSearchProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_web_search_start(raw_input)),
-                )
+                ),
             ],
             title=f"Search web for {_single_line_preview(query, limit=_MAX_COMMAND_TITLE_CHARS)}",
         )
@@ -502,7 +502,7 @@ class WebSearchProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_web_search_progress(raw_output, serialized_output)),
-                )
+                ),
             ],
             title=(
                 f"Search web for {_single_line_preview(query, limit=_MAX_COMMAND_TITLE_CHARS)}"
@@ -535,7 +535,7 @@ class HttpRequestProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_web_fetch_start(raw_input)),
-                )
+                ),
             ],
             title=f"{method} {_single_line_preview(url, limit=_MAX_COMMAND_TITLE_CHARS)}",
         )
@@ -560,7 +560,7 @@ class HttpRequestProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_web_fetch_progress(raw_output, serialized_output)),
-                )
+                ),
             ],
             title=(
                 f"{method} {_single_line_preview(url, limit=_MAX_COMMAND_TITLE_CHARS)}"
@@ -598,7 +598,7 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(f"URL: {url}"),
-                    )
+                    ),
                 ],
                 title=f"Navigate {_single_line_preview(url, limit=_MAX_COMMAND_TITLE_CHARS)}",
             )
@@ -611,7 +611,7 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(f"Selector: {selector}"),
-                    )
+                    ),
                 ],
                 title=f"Click {_single_line_preview(selector, limit=_MAX_COMMAND_TITLE_CHARS)}",
             )
@@ -622,11 +622,13 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            f"Selector: {selector}"
-                            if selector is not None
-                            else "Inspect page elements."
+                            (
+                                f"Selector: {selector}"
+                                if selector is not None
+                                else "Inspect page elements."
+                            ),
                         ),
-                    )
+                    ),
                 ],
                 title=(
                     f"Inspect {_single_line_preview(selector, limit=_MAX_COMMAND_TITLE_CHARS)}"
@@ -659,7 +661,7 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(_browser_text_preview(raw_output, serialized_output)),
-                    )
+                    ),
                 ],
                 title=(
                     f"Navigate {_single_line_preview(url, limit=_MAX_COMMAND_TITLE_CHARS)}"
@@ -673,9 +675,9 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            _format_browser_link_results(raw_output, serialized_output)
+                            _format_browser_link_results(raw_output, serialized_output),
                         ),
-                    )
+                    ),
                 ],
                 title="Extract hyperlinks",
             )
@@ -685,9 +687,9 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            _format_browser_element_results(raw_output, serialized_output)
+                            _format_browser_element_results(raw_output, serialized_output),
                         ),
-                    )
+                    ),
                 ],
                 title="Inspect page elements",
             )
@@ -697,7 +699,7 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(_browser_text_preview(raw_output, serialized_output)),
-                    )
+                    ),
                 ],
                 title=_browser_progress_title(tool_name),
             )
@@ -716,7 +718,7 @@ class CommandProjectionMap:
         raw_input: Any = None,
     ) -> ToolProjection | None:
         projection = FileSystemProjectionMap(
-            execute_tool_names=self.execute_tool_names
+            execute_tool_names=self.execute_tool_names,
         ).project_start(
             tool_name,
             cwd=cwd,
@@ -739,7 +741,7 @@ class CommandProjectionMap:
         status: ToolCallStatus,
     ) -> ToolProjection | None:
         projection = FileSystemProjectionMap(
-            execute_tool_names=self.execute_tool_names
+            execute_tool_names=self.execute_tool_names,
         ).project_progress(
             tool_name,
             cwd=cwd,
@@ -792,7 +794,7 @@ class CommunityFileManagementProjectionMap:
                 lines.append(f"Pattern: {pattern}")
             return ToolProjection(
                 content=[
-                    ContentToolCallContent(type="content", content=_text_block("\n".join(lines)))
+                    ContentToolCallContent(type="content", content=_text_block("\n".join(lines))),
                 ],
                 locations=[ToolCallLocation(path=directory)],
                 title=(
@@ -818,7 +820,7 @@ class CommunityFileManagementProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(f"From: {source_path}\nTo: {destination_path}"),
-                    )
+                    ),
                 ],
                 locations=[
                     ToolCallLocation(path=source_path),
@@ -869,9 +871,9 @@ class CommunityFileManagementProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            _truncate_text(serialized_output, limit=_MAX_CONTENT_PREVIEW_CHARS)
+                            _truncate_text(serialized_output, limit=_MAX_CONTENT_PREVIEW_CHARS),
                         ),
-                    )
+                    ),
                 ],
                 locations=[ToolCallLocation(path=directory)],
                 title=(
@@ -887,9 +889,9 @@ class CommunityFileManagementProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            _truncate_text(serialized_output, limit=_MAX_CONTENT_PREVIEW_CHARS)
+                            _truncate_text(serialized_output, limit=_MAX_CONTENT_PREVIEW_CHARS),
                         ),
-                    )
+                    ),
                 ],
                 locations=[ToolCallLocation(path=directory)],
                 title=f"List `{directory}`",
@@ -901,9 +903,9 @@ class CommunityFileManagementProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            _truncate_text(serialized_output, limit=_MAX_CONTENT_PREVIEW_CHARS)
+                            _truncate_text(serialized_output, limit=_MAX_CONTENT_PREVIEW_CHARS),
                         ),
-                    )
+                    ),
                 ],
                 locations=_file_management_locations(raw_input),
             )
@@ -930,9 +932,9 @@ class FinanceProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            f"Query: {query}" if query is not None else "Lookup financial data."
+                            (f"Query: {query}" if query is not None else "Lookup financial data."),
                         ),
-                    )
+                    ),
                 ],
                 title=(f"Search finance for {query}" if query is not None else "Search finance"),
             )
@@ -965,9 +967,9 @@ class FinanceProjectionMap:
                             _truncate_text(
                                 _output_text(raw_output, serialized_output),
                                 limit=_MAX_CONTENT_PREVIEW_CHARS,
-                            )
+                            ),
                         ),
-                    )
+                    ),
                 ],
             )
         if tool_name in self.dataset_tool_names:
@@ -980,9 +982,9 @@ class FinanceProjectionMap:
                             _truncate_text(
                                 _output_text(raw_output, serialized_output),
                                 limit=_MAX_CONTENT_PREVIEW_CHARS,
-                            )
+                            ),
                         ),
-                    )
+                    ),
                 ],
             )
         return None
@@ -996,7 +998,7 @@ class DeepAgentsProjectionMap:
             write_tool_names=frozenset({"edit_file", "write_file"}),
             search_tool_names=frozenset({"glob", "grep", "ls"}),
             execute_tool_names=frozenset({"execute"}),
-        )
+        ),
     )
 
     def project_start(

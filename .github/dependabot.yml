@@ -4,6 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    ignore:
+      - dependency-name: "agent-client-protocol"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

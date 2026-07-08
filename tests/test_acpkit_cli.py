@@ -140,7 +140,7 @@ async def test_native_acp_agent_stub_methods_and_adapter_module_patch_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _patch_adapter_modules(monkeypatch, available_modules={"acp"})
-    patched_find_spec = cast(Any, importlib.import_module("acpkit.adapters")).find_spec
+    patched_find_spec = cast("Any", importlib.import_module("acpkit.adapters")).find_spec
     assert patched_find_spec("sys") is not None
 
     agent = _NativeAcpAgent()
@@ -164,7 +164,8 @@ async def test_native_acp_agent_stub_methods_and_adapter_module_patch_fallback(
 
 
 def test_load_target_resolves_module_attribute(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -175,7 +176,7 @@ def test_load_target_resolves_module_attribute(
                 "from pydantic_ai.models.test import TestModel",
                 "",
                 'agent = Agent(TestModel(custom_output_text="loaded"))',
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -186,7 +187,8 @@ def test_load_target_resolves_module_attribute(
 
 
 def test_load_target_uses_current_working_directory(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -197,7 +199,7 @@ def test_load_target_uses_current_working_directory(
                 "from pydantic_ai.models.test import TestModel",
                 "",
                 'agent = Agent(TestModel(custom_output_text="cwd"))',
-            )
+            ),
         ),
     )
     monkeypatch.chdir(tmp_path)
@@ -208,7 +210,8 @@ def test_load_target_uses_current_working_directory(
 
 
 def test_load_target_resolves_latest_agent_when_attribute_is_omitted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -220,7 +223,7 @@ def test_load_target_resolves_latest_agent_when_attribute_is_omitted(
                 "",
                 'first_agent = Agent(TestModel(custom_output_text="first"))',
                 'second_agent = Agent(TestModel(custom_output_text="second"))',
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -232,7 +235,8 @@ def test_load_target_resolves_latest_agent_when_attribute_is_omitted(
 
 
 def test_load_target_uses_explicit_import_roots(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     agent_home = tmp_path / "agent_home"
     agent_home.mkdir()
@@ -245,7 +249,7 @@ def test_load_target_uses_explicit_import_roots(
                 "from pydantic_ai.models.test import TestModel",
                 "",
                 'agent = Agent(TestModel(custom_output_text="external"))',
-            )
+            ),
         ),
     )
     monkeypatch.chdir(tmp_path)
@@ -264,7 +268,8 @@ def test_parse_target_ref_rejects_empty_module_and_attribute() -> None:
 
 
 def test_run_target_dispatches_to_pydantic_adapter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -275,7 +280,7 @@ def test_run_target_dispatches_to_pydantic_adapter(
                 "from pydantic_ai.models.test import TestModel",
                 "",
                 'agent = Agent(TestModel(custom_output_text="run"))',
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -290,7 +295,8 @@ def test_run_target_dispatches_to_pydantic_adapter(
 
 
 def test_run_target_reports_missing_pydantic_adapter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -301,7 +307,7 @@ def test_run_target_reports_missing_pydantic_adapter(
                 "from pydantic_ai.models.test import TestModel",
                 "",
                 'agent = Agent(TestModel(custom_output_text="missing"))',
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -335,7 +341,8 @@ def test_load_target_reports_missing_pydantic_adapter_from_import_error(
 
 
 def test_run_target_reports_when_no_adapters_are_installed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -380,7 +387,8 @@ def test_launch_target_invokes_toad_with_mirrored_run_command(
     monkeypatch.setattr("acpkit.runtime.subprocess.run", record_run)
 
     exit_code = launch_target(
-        "sample_launch_app:agent", import_roots=("/tmp/one", "/tmp/two words")
+        "sample_launch_app:agent",
+        import_roots=("/tmp/one", "/tmp/two words"),
     )
 
     assert exit_code == 0
@@ -394,7 +402,7 @@ def test_launch_target_invokes_toad_with_mirrored_run_command(
             "toad",
             "acp",
             "acpkit run sample_launch_app:agent -p /tmp/one -p '/tmp/two words'",
-        ]
+        ],
     ]
 
 
@@ -441,7 +449,7 @@ def test_launch_command_invokes_toad_with_raw_command(
             "toad",
             "acp",
             "python3.11 finance_agent.py",
-        ]
+        ],
     ]
 
 
@@ -530,7 +538,7 @@ def test_cli_serve_command_invokes_runtime(
                 "port": port,
                 "mount_path": mount_path,
                 "token_env": token_env,
-            }
+            },
         )
 
     monkeypatch.setattr("acpkit.cli.serve_target", record_serve_target)
@@ -562,7 +570,7 @@ def test_cli_serve_command_invokes_runtime(
             "port": 9000,
             "mount_path": "/remote",
             "token_env": "ACP_TOKEN",
-        }
+        },
     ]
 
 
@@ -632,7 +640,7 @@ def test_run_target_routes_pydantic_agent_through_adapter_entrypoint(
                 "from pydantic_ai.models.test import TestModel",
                 "",
                 'agent = Agent(TestModel(custom_output_text="runtime"))',
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -696,7 +704,7 @@ def test_run_target_dispatches_native_acp_target_through_acp_runner(
                 "        return None",
                 "",
                 "agent = DemoAgent()",
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -764,9 +772,9 @@ def test_run_remote_addr_proxies_remote_agent_through_acp_runner(
 
     def fake_import_module(name: str, package: str | None = None) -> ModuleType:
         if name == "acpremote":
-            return cast(ModuleType, SimpleNamespace(connect_acp=fake_connect_acp))
+            return cast("ModuleType", SimpleNamespace(connect_acp=fake_connect_acp))
         if name == "acp":
-            return cast(ModuleType, SimpleNamespace(run_agent=fake_run_agent))
+            return cast("ModuleType", SimpleNamespace(run_agent=fake_run_agent))
         return original_import_module(name, package)  # pragma: no cover
 
     monkeypatch.setattr("acpkit.runtime.importlib.import_module", fake_import_module)
@@ -794,7 +802,7 @@ def test_serve_target_materializes_adapter_backed_agent_and_runs_remote_server(
                 "from pydantic_ai.models.test import TestModel",
                 "",
                 "agent = Agent(TestModel(custom_output_text='serve'))",
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -822,9 +830,9 @@ def test_serve_target_materializes_adapter_backed_agent_and_runs_remote_server(
 
     def fake_import_module(name: str, package: str | None = None) -> ModuleType:
         if name == "pydantic_acp":
-            return cast(ModuleType, SimpleNamespace(create_acp_agent=fake_create_acp_agent))
+            return cast("ModuleType", SimpleNamespace(create_acp_agent=fake_create_acp_agent))
         if name == "acpremote":
-            return cast(ModuleType, SimpleNamespace(serve_acp=fake_serve_acp))
+            return cast("ModuleType", SimpleNamespace(serve_acp=fake_serve_acp))
         return original_import_module(name, package)  # pragma: no cover
 
     monkeypatch.setattr("acpkit.runtime.importlib.import_module", fake_import_module)
@@ -881,7 +889,7 @@ def test_serve_target_accepts_native_acp_agent_without_materialization(
                 "    def on_connect(self, conn): return None",
                 "",
                 "agent = DemoAgent()",
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -905,7 +913,7 @@ def test_serve_target_accepts_native_acp_agent_without_materialization(
 
     def fake_import_module(name: str, package: str | None = None) -> ModuleType:
         if name == "acpremote":
-            return cast(ModuleType, SimpleNamespace(serve_acp=fake_serve_acp))
+            return cast("ModuleType", SimpleNamespace(serve_acp=fake_serve_acp))
         return original_import_module(name, package)  # pragma: no cover
 
     monkeypatch.setattr("acpkit.runtime.importlib.import_module", fake_import_module)
@@ -934,7 +942,7 @@ def test_target_resolution_reports_import_and_attribute_errors(
                 "        self.child = object()",
                 "",
                 "root = Namespace()",
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -977,7 +985,7 @@ def test_target_resolution_reports_when_module_has_no_supported_agent(
 def test_runtime_helpers_cover_remote_module_and_token_error_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime_module = cast(Any, importlib.import_module("acpkit.runtime"))
+    runtime_module = cast("Any", importlib.import_module("acpkit.runtime"))
 
     monkeypatch.setattr("acpkit.runtime.find_adapter_by_module_name", lambda name: None)
     with pytest.raises(AcpKitError, match="metadata is not registered"):
@@ -1004,20 +1012,21 @@ def test_runtime_helpers_cover_remote_module_and_token_error_paths(
 def test_runtime_materialize_acp_agent_covers_langchain_and_failure_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    runtime_module = cast(Any, importlib.import_module("acpkit.runtime"))
+    runtime_module = cast("Any", importlib.import_module("acpkit.runtime"))
     sentinel_graph = object()
     original_import_module = importlib.import_module
 
     monkeypatch.setattr("acpkit.runtime.is_acp_target", lambda target: False)
     monkeypatch.setattr("acpkit.runtime.is_pydantic_target", lambda target: False)
     monkeypatch.setattr(
-        "acpkit.runtime.is_langchain_target", lambda target: target is sentinel_graph
+        "acpkit.runtime.is_langchain_target",
+        lambda target: target is sentinel_graph,
     )
 
     def fake_import_module(name: str, package: str | None = None) -> ModuleType:
         if name == "langchain_acp":
             return cast(
-                ModuleType,
+                "ModuleType",
                 SimpleNamespace(create_acp_agent=lambda *, graph: ("langchain-agent", graph)),
             )
         return original_import_module(name, package)  # pragma: no cover
@@ -1150,7 +1159,7 @@ def test_root_remote_helpers_delegate_to_acpremote(
         del package
         assert name == "acpremote"
         return cast(
-            ModuleType,
+            "ModuleType",
             SimpleNamespace(
                 connect_acp=lambda url, **kwargs: observed.setdefault("connect", (url, kwargs)),
                 serve_acp=lambda agent, **kwargs: observed.setdefault("serve", (agent, kwargs)),
@@ -1235,11 +1244,11 @@ def test_adapter_helpers_cover_langchain_and_acp_runner_paths(
     def fake_import_module(name: str, package: str | None = None) -> ModuleType:
         if name == "langchain_acp":
             return cast(
-                ModuleType,
+                "ModuleType",
                 SimpleNamespace(run_acp=lambda *, graph: observed.setdefault("graph", graph)),
             )
         if name == "acp":
-            return cast(ModuleType, SimpleNamespace(run_agent=fake_run_agent))
+            return cast("ModuleType", SimpleNamespace(run_agent=fake_run_agent))
         return original_import_module(name, package)  # pragma: no cover
 
     monkeypatch.setattr("acpkit.adapters.importlib.import_module", fake_import_module)
@@ -1269,7 +1278,7 @@ def test_workspace_graph_module_runs_as_main(monkeypatch: pytest.MonkeyPatch) ->
         codex_auth_helper,
         "create_codex_chat_openai",
         lambda _model_name, **_kwargs: GenericFakeChatModel(
-            messages=cycle([AIMessage(content="codex-ready")])
+            messages=cycle([AIMessage(content="codex-ready")]),
         ),
     )
     monkeypatch.setattr(langchain_acp, "run_acp", fake_run_acp)

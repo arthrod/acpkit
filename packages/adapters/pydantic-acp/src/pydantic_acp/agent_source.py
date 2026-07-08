@@ -19,7 +19,8 @@ __all__ = ("AgentFactory", "AgentSource", "FactoryAgentSource", "StaticAgentSour
 
 class AgentFactory(Protocol[AgentFactoryDepsT, AgentFactoryOutputDataT]):
     def __call__(
-        self, session: AcpSessionContext
+        self,
+        session: AcpSessionContext,
     ) -> (
         PydanticAgent[AgentFactoryDepsT, AgentFactoryOutputDataT]
         | Awaitable[PydanticAgent[AgentFactoryDepsT, AgentFactoryOutputDataT]]
@@ -28,7 +29,8 @@ class AgentFactory(Protocol[AgentFactoryDepsT, AgentFactoryOutputDataT]):
 
 class AgentSource(Protocol[AgentDepsT, OutputDataT]):
     async def get_agent(
-        self, session: AcpSessionContext
+        self,
+        session: AcpSessionContext,
     ) -> PydanticAgent[AgentDepsT, OutputDataT]: ...
 
     async def get_deps(

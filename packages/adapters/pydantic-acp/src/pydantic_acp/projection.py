@@ -24,7 +24,11 @@ from pydantic_ai import (
     ToolCallPart,
     ToolReturnPart,
 )
-from pydantic_ai.messages import CompactionPart, NativeToolCallPart, NativeToolReturnPart
+from pydantic_ai.messages import (
+    CompactionPart,
+    NativeToolCallPart,
+    NativeToolReturnPart,
+)
 from typing_extensions import TypeIs
 
 from ._projection_text import format_code_block, single_line_summary, truncate_text
@@ -39,13 +43,13 @@ __all__ = (
     "HarnessCodeModeProjectionMap",
     "HarnessFileSystemProjectionMap",
     "HarnessShellProjectionMap",
-    "ProjectionMap",
     "ProjectionAwareToolClassifier",
+    "ProjectionMap",
     "ToolClassifier",
     "WebToolProjectionMap",
+    "build_compaction_updates",
     "build_tool_progress_update",
     "build_tool_start_update",
-    "build_compaction_updates",
     "build_tool_updates",
     "compose_projection_maps",
     "extract_tool_call_locations",
@@ -69,7 +73,7 @@ _MAX_COMMAND_TITLE_CHARS = 80
 _MAX_FILE_READ_PREVIEW_CHARS = 12000
 _MAX_WEB_PREVIEW_CHARS = 2000
 _DEFAULT_SEARCH_TOOL_NAMES = frozenset(
-    {"duckduckgo_search", "exa_search", "tavily_search", "web_search"}
+    {"duckduckgo_search", "exa_search", "tavily_search", "web_search"},
 )
 _DEFAULT_FETCH_TOOL_NAMES = frozenset({"web_fetch"})
 _DEFAULT_IMAGE_GENERATION_TOOL_NAMES = frozenset({"generate_image", "image_generation"})
@@ -79,7 +83,7 @@ _HARNESS_WRITE_TOOL_NAMES = frozenset({"write_file", "create_directory"})
 _HARNESS_EDIT_TOOL_NAMES = frozenset({"edit_file"})
 _HARNESS_SEARCH_TOOL_NAMES = frozenset({"list_directory", "search_files"})
 _HARNESS_SHELL_TOOL_NAMES = frozenset(
-    {"run_command", "start_command", "check_command", "stop_command"}
+    {"run_command", "start_command", "check_command", "stop_command"},
 )
 _HARNESS_CODE_MODE_TOOL_NAMES = frozenset({"run_code"})
 
@@ -224,7 +228,7 @@ class FileSystemProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(_format_command_preview(command)),
-                    )
+                    ),
                 ],
                 title=_format_command_title(command),
             )
@@ -243,7 +247,7 @@ class FileSystemProjectionMap:
                     path=path,
                     old_text=self._old_text_from_input(raw_input, path=path, cwd=cwd),
                     new_text=new_text,
-                )
+                ),
             ],
             locations=[ToolCallLocation(path=path)],
         )
@@ -295,7 +299,7 @@ class FileSystemProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(rendered_output),
-                    )
+                    ),
                 ],
                 locations=self._search_locations_from_input(raw_input),
                 status=status,
@@ -323,7 +327,7 @@ class FileSystemProjectionMap:
                     path=path,
                     old_text="",
                     new_text=new_text,
-                )
+                ),
             ],
             locations=[ToolCallLocation(path=path)],
         )
@@ -388,7 +392,8 @@ class FileSystemProjectionMap:
         return None
 
     def _search_locations_from_input(
-        self, raw_input: dict[str, Any]
+        self,
+        raw_input: dict[str, Any],
     ) -> list[ToolCallLocation] | None:
         path = self._search_path_from_input(raw_input)
         return [ToolCallLocation(path=path)] if path is not None else None
@@ -483,7 +488,7 @@ class WebToolProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(_format_web_search_start(raw_input)),
-                    )
+                    ),
                 ],
                 title=f"Search web for {_single_line_preview(query, limit=_MAX_COMMAND_TITLE_CHARS)}",
             )
@@ -497,7 +502,7 @@ class WebToolProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_web_fetch_start(raw_input)),
-                )
+                ),
             ],
             title=f"Fetch {_single_line_preview(url, limit=_MAX_COMMAND_TITLE_CHARS)}",
         )
@@ -521,10 +526,10 @@ class WebToolProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            _format_web_search_progress(raw_output, serialized_output)
+                            _format_web_search_progress(raw_output, serialized_output),
                         ),
-                    )
-                ]
+                    ),
+                ],
             )
         if tool_name not in self.fetch_tool_names:
             return None
@@ -533,8 +538,8 @@ class WebToolProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_web_fetch_progress(raw_output, serialized_output)),
-                )
-            ]
+                ),
+            ],
         )
 
 
@@ -567,7 +572,7 @@ class BuiltinToolProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(_format_image_generation_start(raw_input)),
-                    )
+                    ),
                 ],
                 title=(
                     f"Generate image for {_single_line_preview(prompt, limit=_MAX_COMMAND_TITLE_CHARS)}"
@@ -582,7 +587,7 @@ class BuiltinToolProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_mcp_start(tool_name, raw_input)),
-                )
+                ),
             ],
             title=_format_mcp_title(tool_name, raw_input),
         )
@@ -615,10 +620,10 @@ class BuiltinToolProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            _format_image_generation_progress(raw_output, serialized_output)
+                            _format_image_generation_progress(raw_output, serialized_output),
                         ),
-                    )
-                ]
+                    ),
+                ],
             )
         if not any(tool_name.startswith(prefix) for prefix in self.mcp_tool_name_prefixes):
             return None
@@ -627,8 +632,8 @@ class BuiltinToolProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_mcp_progress(raw_output, serialized_output)),
-                )
-            ]
+                ),
+            ],
         )
 
 
@@ -701,7 +706,7 @@ class HarnessFileSystemProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(f"Read file: `{path}`"),
-                )
+                ),
             ],
             locations=[ToolCallLocation(path=path)],
             title=f"Read {_single_line_preview(path, limit=_MAX_COMMAND_TITLE_CHARS)}",
@@ -726,7 +731,7 @@ class HarnessFileSystemProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_format_harness_read_progress(path, output_text)),
-                )
+                ),
             ],
             locations=[ToolCallLocation(path=path)],
             status=status,
@@ -772,7 +777,7 @@ class HarnessShellProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(f"Command ID: {command_id}"),
-                )
+                ),
             ],
             title=f"{action} command {command_id}",
         )
@@ -819,7 +824,7 @@ class HarnessCodeModeProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(format_code_block(code, language="python")),
-                )
+                ),
             ],
             title=f"Run code: {_single_line_preview(code, limit=_MAX_COMMAND_TITLE_CHARS)}",
         )
@@ -842,8 +847,8 @@ class HarnessCodeModeProjectionMap:
                 ContentToolCallContent(
                     type="content",
                     content=_text_block(_stringify_value(raw_output, serialized_output)),
-                )
-            ]
+                ),
+            ],
         )
 
 
@@ -1012,7 +1017,7 @@ def _render_tree_node(node: _PathTreeNode, *, prefix: str) -> list[str]:
                 _render_tree_node(
                     node.directories[name],
                     prefix=f"{prefix}{child_prefix}",
-                )
+                ),
             )
         else:
             rendered.append(f"{prefix}{connector}{name}")
@@ -1175,7 +1180,7 @@ def _bash_progress_content(
                 "",
                 "Stdout:",
                 format_code_block(stdout, language="text", limit=_MAX_COMMAND_PREVIEW_CHARS),
-            )
+            ),
         )
     stderr = raw_output.get("stderr")
     if isinstance(stderr, str) and stderr:
@@ -1184,7 +1189,7 @@ def _bash_progress_content(
                 "",
                 "Stderr:",
                 format_code_block(stderr, language="text", limit=_MAX_COMMAND_PREVIEW_CHARS),
-            )
+            ),
         )
     return [ContentToolCallContent(type="content", content=_text_block("\n".join(sections)))]
 
@@ -1310,7 +1315,7 @@ def _format_web_fetch_progress(raw_output: Any, serialized_output: str) -> str:
                 "",
                 "Preview:",
                 format_code_block(content, language="text", limit=_MAX_WEB_PREVIEW_CHARS),
-            )
+            ),
         )
     if not lines:
         return truncate_text(serialized_output, limit=_MAX_WEB_PREVIEW_CHARS)
@@ -1387,7 +1392,7 @@ def _format_mcp_start(tool_name: str, raw_input: dict[str, Any]) -> str:
                     language="json",
                     limit=_MAX_WEB_PREVIEW_CHARS,
                 ),
-            )
+            ),
         )
     return "\n".join(lines)
 
@@ -1422,7 +1427,7 @@ def _format_mcp_progress(raw_output: Any, serialized_output: str) -> str:
                     language="json",
                     limit=_MAX_WEB_PREVIEW_CHARS,
                 ),
-            )
+            ),
         )
     if not lines:
         return truncate_text(serialized_output, limit=_MAX_WEB_PREVIEW_CHARS)
@@ -1658,7 +1663,7 @@ def _build_progress_updates_for_message(
                         known_start=known_call_starts.get(part.tool_call_id),
                         projection_map=projection_map,
                         serializer=serializer,
-                    )
+                    ),
                 )
         return updates
 
@@ -1674,7 +1679,7 @@ def _build_progress_updates_for_message(
                     known_start=known_call_starts.get(part.tool_call_id),
                     projection_map=projection_map,
                     serializer=serializer,
-                )
+                ),
             )
         elif (
             isinstance(part, RetryPromptPart)
@@ -1689,7 +1694,7 @@ def _build_progress_updates_for_message(
                     known_start=known_call_starts.get(part.tool_call_id),
                     projection_map=projection_map,
                     serializer=serializer,
-                )
+                ),
             )
     return updates
 
@@ -1714,7 +1719,7 @@ def build_tool_updates(
                 known_call_starts=known_call_starts,
                 projection_map=projection_map,
                 serializer=serializer,
-            )
+            ),
         )
     return updates
 
@@ -1764,7 +1769,7 @@ def build_compaction_updates(
                     kind=known_start.kind,
                     status="completed",
                     raw_output=_format_compaction_progress(part, provider_name=provider_name),
-                )
+                ),
             )
     return updates
 
