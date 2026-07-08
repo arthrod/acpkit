@@ -28,9 +28,12 @@ __all__ = ("acp_agent", "agent_factory", "config", "main")
 _AGENT_NAME: Final[str] = "harness-agent"
 _DEFAULT_MODEL_NAME: Final[str] = "openrouter:google/gemini-3-flash-preview"
 _DEFAULT_CODEX_MODEL: Final[str] = "gpt-5.4"
-_WORKSPACE_ROOT: Final[Path] = Path(__file__).resolve().parent / ".harness-agent"
+_DEMO_ROOT: Final[Path] = Path("agent_demos")
+_WORKSPACE_ROOT: Final[Path] = Path.cwd() / _DEMO_ROOT / "harness-agent"
 _SESSION_STORE_ROOT: Final[Path] = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "pydantic-harness"
 )
 _INSTRUCTIONS: Final[str] = (

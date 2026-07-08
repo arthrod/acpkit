@@ -29,11 +29,14 @@ from pydantic_ai.tools import DeferredToolRequests
 
 __all__ = ("TravelPromptModelProvider", "acp_agent", "agent", "config", "main")
 
-_TRAVEL_ROOT: Final[Path] = Path(__file__).resolve().parent / ".travel-agent"
+_DEMO_ROOT: Final[Path] = Path("agent_demos")
+_TRAVEL_ROOT: Final[Path] = Path.cwd() / _DEMO_ROOT / "travel-agent"
 _READ_TOOL: Final[str] = "read_trip_file"
 _WRITE_TOOL: Final[str] = "write_trip_file"
 _SESSION_STORE_ROOT: Final[Path] = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "pydantic-travel"
 )
 _MEDIA_MODEL_ENV_NAMES: Final[tuple[str, ...]] = (

@@ -31,8 +31,11 @@ __all__ = (
 )
 
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
+_DEMO_ROOT = Path("agent_demos")
 _SESSION_STORE_ROOT = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "langchain-codex"
 )
 AVAILABLE_MODELS = (

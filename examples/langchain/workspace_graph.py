@@ -34,13 +34,16 @@ __all__ = (
     "write_workspace_note",
 )
 
-WORKSPACE_ROOT = Path.cwd() / ".workspace-graph"
+_DEMO_ROOT = Path("agent_demos")
+WORKSPACE_ROOT = Path.cwd() / _DEMO_ROOT / "workspace-graph"
 _READ_TOOL = "read_workspace_note"
 _WRITE_TOOL = "write_workspace_note"
-_SESSION_ROOT_NAME = ".workspace-graph"
+_SESSION_ROOT = _DEMO_ROOT / "workspace-graph"
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
 _SESSION_STORE_ROOT = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "langchain-workspace"
 )
 AVAILABLE_MODELS = (
@@ -141,7 +144,7 @@ def write_workspace_note(path: str, content: str) -> str:
 
 
 def _session_workspace_root(session: AcpSessionContext) -> Path:
-    return session.cwd.resolve() / _SESSION_ROOT_NAME
+    return session.cwd.resolve() / _SESSION_ROOT
 
 
 def _bind_workspace_tools(root: Path) -> tuple[Callable[..., str], ...]:

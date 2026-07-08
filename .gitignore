@@ -69,10 +69,6 @@ references
 AGENTS.md
 SPEC.md
 
-# Sessions
-.acp-sessions/
-.demo-sessions/
-
 # Temporary
 tmp
 *.snapshot
@@ -89,7 +85,8 @@ coverage.json
 direction.md
 scripts/openrouter*.py
 scripts/check_releases.py
-/.finance-agent
+# Example runtime output
+/agent_demos/
 
 # Scripts
 connect*.py
@@ -98,5 +95,3 @@ probe*.py
 pydantic_test*.py
 CHANGELOG
 .acprouter-state
-.deepagents-graph
-.workspace-graph

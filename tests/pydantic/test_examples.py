@@ -158,7 +158,7 @@ def test_harness_example_builds_agent_from_harness_capability_bridges(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     created_capabilities = _install_fake_harness_modules(monkeypatch)
-    expected_root = tmp_path / ".harness-agent"
+    expected_root = tmp_path / "agent_demos" / "harness-agent"
     monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", expected_root)
     monkeypatch.setattr(
         mock_harness_agent,
@@ -208,7 +208,7 @@ def test_harness_example_codemode_factory_includes_code_mode_bridge(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     created_capabilities = _install_fake_harness_modules(monkeypatch)
-    expected_root = tmp_path / ".harness-agent"
+    expected_root = tmp_path / "agent_demos" / "harness-agent"
     monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", expected_root)
     monkeypatch.setattr(
         mock_harness_agent,
@@ -266,7 +266,11 @@ def test_harness_example_acp_agent_runs_with_test_model_override(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _install_fake_harness_modules(monkeypatch)
-    monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", tmp_path / ".harness-agent")
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_WORKSPACE_ROOT",
+        tmp_path / "agent_demos" / "harness-agent",
+    )
     monkeypatch.setattr(
         mock_harness_agent,
         "_harness_model",
@@ -446,7 +450,9 @@ def test_finance_example_tools_and_adapter_cover_runtime_paths(
         [PlanEntry(content="Trim leverage", priority="high", status="pending")],
         "# Trade Plan",
     )
-    persisted = (tmp_path / ".acpkit" / "plans" / "finance-session.md").read_text(encoding="utf-8")
+    persisted = (
+        tmp_path / "agent_demos" / "finance-agent" / "plans" / "finance-session.md"
+    ).read_text(encoding="utf-8")
     assert "# Trade Plan" in persisted
     assert "Trim leverage" in persisted
 
@@ -477,7 +483,7 @@ def test_travel_example_helpers_cover_workspace_and_hooks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / ".travel-agent")
+    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / "agent_demos" / "travel-agent")
     travel_agent._ensure_travel_workspace()
 
     assert travel_agent._truncate_text("hello", limit=10) == "hello"
@@ -486,7 +492,9 @@ def test_travel_example_helpers_cover_workspace_and_hooks(
     assert "Hooks capability introspection" in travel_agent.describe_travel_surface()
     assert "Travel Brief" in travel_agent.read_trip_file("itinerary.md", max_chars=64)
     assert travel_agent.write_trip_file("scratch.txt", "hello") == "Wrote `scratch.txt`."
-    assert (tmp_path / ".travel-agent" / "scratch.txt").read_text(encoding="utf-8") == "hello"
+    assert (tmp_path / "agent_demos" / "travel-agent" / "scratch.txt").read_text(
+        encoding="utf-8"
+    ) == "hello"
 
     with pytest.raises(ValueError, match="travel demo workspace"):
         travel_agent._resolve_trip_path("../escape.txt")
@@ -680,7 +688,7 @@ def test_travel_model_helpers_cover_default_model_and_absolute_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / ".travel-agent")
+    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / "agent_demos" / "travel-agent")
     monkeypatch.delenv("MODEL_NAME", raising=False)
     monkeypatch.delenv("ACP_TRAVEL_MEDIA_MODEL", raising=False)
     monkeypatch.setenv("TRAVEL_MEDIA_MODEL", "openai:gpt-4.1-nano")
@@ -690,8 +698,8 @@ def test_travel_model_helpers_cover_default_model_and_absolute_paths(
     assert travel_agent._configured_media_model_name() == "openai:gpt-4.1-nano"
 
     travel_agent._ensure_travel_workspace()
-    itinerary_path = (tmp_path / ".travel-agent" / "itinerary.md").resolve()
-    scratch_path = (tmp_path / ".travel-agent" / "absolute.txt").resolve()
+    itinerary_path = (tmp_path / "agent_demos" / "travel-agent" / "itinerary.md").resolve()
+    scratch_path = (tmp_path / "agent_demos" / "travel-agent" / "absolute.txt").resolve()
 
     assert "Travel Brief" in travel_agent.read_trip_file(str(itinerary_path))
     assert (

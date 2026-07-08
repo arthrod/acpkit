@@ -25,16 +25,19 @@ from pydantic_ai.tools import DeferredToolRequests, RunContext, ToolDefinition
 
 __all__ = ("FinancePlanPersistenceProvider", "acp_agent", "agent", "config", "main")
 
-_FINANCE_DIR_NAME: Final[str] = ".finance-agent"
+_DEMO_ROOT: Final[Path] = Path("agent_demos")
+_FINANCE_DIR_NAME: Final[str] = "finance-agent"
 _NOTES_DIR_NAME: Final[str] = "notes"
-_PLAN_DIR: Final[Path] = Path(".acpkit") / "plans"
+_PLAN_DIR: Final[Path] = _DEMO_ROOT / _FINANCE_DIR_NAME / "plans"
 _WATCHLIST_TOOL: Final[str] = "list_watchlist"
 _READ_NOTE_TOOL: Final[str] = "read_market_note"
 _WRITE_NOTE_TOOL: Final[str] = "save_market_note"
 _QUOTE_TOOL: Final[str] = "quote_symbol"
 _READ_PREVIEW_CHARS: Final[int] = 4000
 _SESSION_STORE_ROOT: Final[Path] = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "pydantic-finance"
 )
 _MUTATING_TOOLS: Final[frozenset[str]] = frozenset({_WRITE_NOTE_TOOL})
@@ -59,7 +62,7 @@ def _workspace_model_name() -> str | TestModel:
 
 
 def _finance_root(cwd: Path) -> Path:
-    return cwd.resolve() / _FINANCE_DIR_NAME
+    return cwd.resolve() / _DEMO_ROOT / _FINANCE_DIR_NAME
 
 
 def _ensure_finance_workspace(root: Path) -> None:
@@ -177,7 +180,7 @@ def describe_finance_surface() -> str:
             "- ask/plan/trade tool modes via PrepareToolsBridge",
             "- structured native plan generation in plan mode",
             "- approval-gated note writes with ACP file diffs",
-            "- persisted plan snapshots under .acpkit/plans/",
+            "- persisted plan snapshots under agent_demos/finance-agent/plans/",
         ),
     )
 

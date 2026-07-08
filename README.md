@@ -286,8 +286,8 @@ from pydantic_ai import Agent
 from pydantic_acp import AcpProvider
 
 # `remote_acp_agent` can be any object implementing the ACP Agent interface.
-provider = AcpProvider(agent=remote_acp_agent, cwd="/workspace")
-model = provider.model("zed-agent")
+provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
+model = provider.model()
 agent = Agent(model)
 
 result = await agent.run("Summarize the current workspace state.")
@@ -298,6 +298,7 @@ This keeps ownership boundaries explicit:
 
 - Pydantic AI owns the outer agent run, output validation, and normal model/provider lifecycle.
 - ACP owns the delegated agent session, ACP-visible updates, and any editor or host capabilities requested by that agent.
+- `provider.model()` leaves ACP model selection to the wrapped agent's session default; pass `provider.model("zed-agent")` only when the ACP agent accepts that concrete `session/set_model` ID.
 - `AcpHostBridge` records ACP `session_update` messages and can delegate filesystem, terminal, approval, and extension callbacks to a real ACP host client when one is supplied.
 - Pydantic AI function tools are intentionally not executed directly by `AcpModel`; register tools on the ACP agent or expose host capabilities through ACP.
 

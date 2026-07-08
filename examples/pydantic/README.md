@@ -36,8 +36,8 @@ ACP_FINANCE_MODEL="openai:gpt-5.4-mini" \
 uv run python -m examples.pydantic.finance_agent
 ```
 
-The agent reads and writes only under `.finance-agent/` in the server working
-directory. The `trade` mode exposes the write tool, and every write still
+The agent reads and writes only under `agent_demos/finance-agent/` in the server
+working directory. The `trade` mode exposes the write tool, and every write still
 requires ACP approval.
 
 ## Travel Agent
@@ -52,7 +52,7 @@ uv run python -m examples.pydantic.travel_agent
 ```
 
 Without `ACP_TRAVEL_MODEL`, the example uses `TestModel` for an offline startup
-check. Files stay inside `examples/pydantic/.travel-agent/`.
+check. Files stay inside `agent_demos/travel-agent/`.
 
 ## Harness Agent
 
@@ -71,13 +71,13 @@ uv run python -m examples.pydantic.mock_harness_agent --codemode
 
 The shell bridge blocks destructive and network-oriented commands, disables
 interactive processes, bounds runtime and output, and confines work to
-`examples/pydantic/.harness-agent/`. `--codemode` is the only path that enables
+`agent_demos/harness-agent/`. `--codemode` is the only path that enables
 the code-mode bridge.
 
 ## Session Storage
 
-All examples use `FileSessionStore` under `.acp-sessions/`. Override the parent
-directory when needed:
+All examples use `FileSessionStore` under `agent_demos/acp-sessions/`. Override
+the parent directory when needed:
 
 ```bash
 ACP_EXAMPLE_SESSION_DIR="/var/lib/acpkit/sessions" \

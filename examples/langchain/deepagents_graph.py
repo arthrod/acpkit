@@ -42,11 +42,14 @@ __all__ = (
     "write_file",
 )
 
-WORKSPACE_ROOT = Path.cwd() / ".deepagents-graph"
+_DEMO_ROOT = Path("agent_demos")
+WORKSPACE_ROOT = Path.cwd() / _DEMO_ROOT / "deepagents-graph"
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
-_SESSION_ROOT_NAME = ".deepagents-graph"
+_SESSION_ROOT = _DEMO_ROOT / "deepagents-graph"
 _SESSION_STORE_ROOT = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "langchain-deepagents"
 )
 MOCK_WORKSPACE_FILES = {
@@ -171,7 +174,7 @@ def write_file(path: str, content: str) -> str:
 
 
 def _session_workspace_root(session: AcpSessionContext) -> Path:
-    return session.cwd.resolve() / _SESSION_ROOT_NAME
+    return session.cwd.resolve() / _SESSION_ROOT
 
 
 def _bind_workspace_tools(

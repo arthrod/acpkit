@@ -216,6 +216,23 @@ ACP Kit ships as a workspace, but most users usually start from one of five inst
 4. the standalone `acpremote` transport helper
 5. the standalone `codex-auth-helper` package
 
+## Install Stable v1
+
+Install every maintained integration:
+
+```bash
+uv add "acpkit[all]>=1.0.0,<2.0.0"
+```
+
+```bash
+pip install "acpkit[all]>=1.0.0,<2.0.0"
+```
+
+The root extras require matching v1-generation adapter, helper, and transport
+packages. See the
+[release notes](https://vcoderun.github.io/acpkit/releases/acpkit-1.0.0/) and
+[versioning policy](https://vcoderun.github.io/acpkit/versioning/).
+
 ## Install The Root CLI
 
 Use this path when you want `acpkit run ...` and `acpkit launch ...`.
@@ -223,7 +240,7 @@ Use this path when you want `acpkit run ...` and `acpkit launch ...`.
 For `pydantic_ai.Agent` targets:
 
 ```bash
-uv pip install "acpkit[pydantic]"
+uv add "acpkit[pydantic]"
 ```
 
 ```bash
@@ -233,7 +250,7 @@ pip install "acpkit[pydantic]"
 For LangChain, LangGraph, or DeepAgents targets:
 
 ```bash
-uv pip install "acpkit[langchain]"
+uv add "acpkit[langchain]"
 ```
 
 ```bash
@@ -243,7 +260,7 @@ pip install "acpkit[langchain]"
 Add the launch helper when you want to boot agents through Toad ACP:
 
 ```bash
-uv pip install "acpkit[pydantic,launch]"
+uv add "acpkit[pydantic,launch]"
 ```
 
 ```bash
@@ -257,7 +274,7 @@ Use this when you only need the Python adapter API and do not care about the roo
 For `pydantic_ai.Agent` runtimes:
 
 ```bash
-uv pip install pydantic-acp
+uv add pydantic-acp
 ```
 
 ```bash
@@ -270,7 +287,7 @@ protocol version it integrates against. Pydantic AI V1 is not supported.
 For LangChain, LangGraph, or DeepAgents runtimes:
 
 ```bash
-uv pip install langchain-acp
+uv add langchain-acp
 ```
 
 ```bash
@@ -280,7 +297,7 @@ pip install langchain-acp
 Add the optional DeepAgents helpers when needed:
 
 ```bash
-uv pip install "langchain-acp[deepagents]"
+uv add "langchain-acp[deepagents]"
 ```
 
 ```bash
@@ -298,7 +315,7 @@ together rather than validating them in isolation.
 Use this when you want a Codex-backed helper for Pydantic AI or LangChain:
 
 ```bash
-uv pip install codex-auth-helper
+uv add codex-auth-helper
 ```
 
 ```bash
@@ -308,7 +325,7 @@ pip install codex-auth-helper
 For LangChain usage, install the optional extra:
 
 ```bash
-uv pip install "codex-auth-helper[langchain]"
+uv add "codex-auth-helper[langchain]"
 ```
 
 ```bash
@@ -322,7 +339,7 @@ This helper expects an existing local Codex login and reads `~/.codex/auth.json`
 Use this when you already have an ACP agent or stdio ACP command and only need remote transport:
 
 ```bash
-uv pip install acpremote
+uv add acpremote
 ```
 
 ```bash
@@ -867,7 +884,7 @@ If you installed the root package:
 ```bash
 acpkit run my_graph_module
 acpkit run my_graph_module:graph
-acpkit run examples.langchain.workspace_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
 ```
 
 `acpkit` resolves the target, detects the last defined supported graph target when needed, and dispatches it to `langchain-acp`.
@@ -5492,7 +5509,7 @@ acpremote serve my_app:agent --host 0.0.0.0 --port 8080
 framework target still needs adapter dispatch:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+acpkit serve examples.pydantic.finance_agent:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 Expose a stdio ACP command:
@@ -5587,7 +5604,7 @@ agent = connect_acp(
 Remote-host flow:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 Local mirror flow:
@@ -5631,7 +5648,10 @@ By default `acpremote` exposes three routes:
 - websocket: `ws://127.0.0.1:8080/acp/ws`
 
 `mount_path=` can move the ACP metadata and WebSocket routes together while `/healthz` remains a
-top-level liveness probe.
+top-level liveness probe. `/healthz` is therefore reserved and cannot be used as the mount path.
+
+Remote metadata discovery uses `TransportOptions.open_timeout`. A timeout leaves metadata
+unavailable without blocking the WebSocket proxy indefinitely.
 
 ## Command Mirroring
 
@@ -5720,8 +5740,9 @@ Source directory:
 
 | Example | What it demonstrates |
 |---|---|
-| [`finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py) | session-aware finance workspace with ACP plans, approvals, mode-aware tool shaping, and projected note diffs |
+| [`finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py) | persistent finance sessions with ACP plans, approvals, mode-aware tool shaping, and projected note diffs |
 | [`travel_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py) | travel planning runtime with hook projection, approval-gated trip files, and prompt-model override behavior for media prompts |
+| [`mock_harness_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py) | real harness filesystem and shell capabilities with bounded policy and opt-in code mode |
 
 ## Maintained LangChain Examples
 
@@ -5733,7 +5754,7 @@ Source directory:
 |---|---|
 | [`codex_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/codex_graph.py) | Codex-backed `ChatOpenAI` construction through `codex-auth-helper`, then plain LangChain graph exposure through `langchain-acp` |
 | [`workspace_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/workspace_graph.py) | plain LangChain graph wiring, module-level `graph`, session-aware `graph_from_session(...)`, and filesystem read/write projection |
-| [`deepagents_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/deepagents_graph.py) | DeepAgents compatibility wiring through `langchain-acp`, approvals, and DeepAgents projection presets |
+| [`deepagents_graph.py`](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/deepagents_graph.py) | real DeepAgents graph construction with deterministic filesystem tools, native plans, approvals, and projection presets |
 
 ## Helper And CLI Recipes
 
@@ -5782,7 +5803,8 @@ The maintained finance showcase is [`examples/pydantic/finance_agent.py`](https:
 
 It is the main example for:
 
-- a direct module-level `Agent(...)` plus `AdapterConfig(...)` surface
+- a direct module-level `Agent(...)`, `AdapterConfig(...)`, and configured
+  `acp_agent` surface
 - `PrepareToolsBridge` mode shaping
 - structured native plan generation
 - approval-gated writes with `FileSystemProjectionMap`
@@ -5810,14 +5832,16 @@ By default the example uses `TestModel`. Set `ACP_FINANCE_MODEL` when you want a
 Remote ACP hosting path:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+acpkit serve examples.pydantic.finance_agent:acp_agent --host 0.0.0.0 --port 8080
 acpkit run --addr ws://127.0.0.1:8080/acp/ws
 ```
 
 ## Key Patterns
 
-- the module exports plain `agent`, `config`, and `main` symbols without factory wrappers
-- `FinancePlanPersistenceProvider` writes ACP plans into `.acpkit/plans/`
+- the module exports `agent`, `config`, `acp_agent`, and `main`; use
+  `acp_agent` when CLI or remote hosting must preserve the custom configuration
+- `FinancePlanPersistenceProvider` writes ACP plans into
+  `agent_demos/finance-agent/plans/`
 - `PrepareToolsBridge` keeps `ask`, `plan`, and `trade` behaviors explicit instead of scattering them across separate examples
 - `FileSystemProjectionMap` turns note reads and writes into rich ACP diffs
 - `NativeApprovalBridge` keeps mutating writes truthfully approval-gated
@@ -5835,7 +5859,8 @@ It is the main example for:
 - `Hooks` capability introspection rendered through `HookProjectionMap`
 - approval-gated read/write diff projection in a local workspace
 - prompt-model override behavior for image and audio prompts
-- a direct module-level `Agent(...)` plus `AdapterConfig(...)` surface without example-only factories
+- a direct module-level `Agent(...)`, `AdapterConfig(...)`, and configured
+  `acp_agent` surface without example-only factories
 
 ## Run It
 
@@ -5843,12 +5868,13 @@ It is the main example for:
 uv run python -m examples.pydantic.travel_agent
 ```
 
-Without `MODEL_NAME`, the example uses `TestModel` so the demo remains credential-free. Set
-`MODEL_NAME` and optionally `ACP_TRAVEL_MEDIA_MODEL` when you want live-model behavior.
+Without `ACP_TRAVEL_MODEL`, the example uses `TestModel` so the demo remains credential-free. Set
+`ACP_TRAVEL_MODEL` and optionally `ACP_TRAVEL_MEDIA_MODEL` when you want live-model behavior.
 
 ## Key Patterns
 
-- the module exports plain `agent`, `config`, and `main` symbols without factory wrappers
+- the module exports `agent`, `config`, `acp_agent`, and `main`; use
+  `acp_agent` for configured CLI or remote hosting
 - `HookProjectionMap` relabels and hides selected hook lifecycle events
 - `TravelPromptModelProvider` shows how a host can supply an explicit media-model override
 - generated trip files keep the example self-contained instead of relying on tracked demo fixtures
@@ -5869,9 +5895,9 @@ This example is the maintained plain-LangChain showcase.
 It demonstrates:
 
 - a Codex-backed `ChatOpenAI` model created through `codex-auth-helper`
-- a module-level `graph`, `config`, and `main()`
+- a module-level `graph`, `config`, configured `acp_agent`, and `main()`
 - a session-aware `graph_from_session(...)` factory
-- `acpkit run examples.langchain.workspace_graph:graph`
+- `acpkit run examples.langchain.workspace_graph:acp_agent`
 - filesystem read and write projection through `FileSystemProjectionMap`
 - a small seeded workspace for deterministic ACP rendering
 - a clean remote-host path through `acpkit serve ...` and `acpkit run --addr ...`
@@ -5894,16 +5920,18 @@ Override the default model when needed:
 CODEX_MODEL=gpt-5.4-mini uv run python -m examples.langchain.workspace_graph
 ```
 
-Or expose the graph directly through the root CLI:
+Or expose the configured native ACP target through the root CLI. This preserves
+the graph factory, persistent sessions, model and mode controls, and projection
+map:
 
 ```bash
-acpkit run examples.langchain.workspace_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
 ```
 
 Or host it remotely through ACP Remote:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8081
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8081
 acpkit run --addr ws://127.0.0.1:8081/acp/ws
 ```
 
@@ -5926,7 +5954,7 @@ It demonstrates:
 - `DeepAgentsCompatibilityBridge`
 - `DeepAgentsProjectionMap`
 - tool-based plan compatibility through `write_todos`
-- approval-gated file writes
+- approval handling around a deterministic mock write tool
 
 Install the optional dependency first:
 
@@ -5950,13 +5978,15 @@ Required local state:
 ~/.codex/auth.json
 ```
 
-If you want the module-level compiled graph directly, the example exports `graph` when `deepagents` is installed:
+Use the configured native ACP target when launching through the root CLI. This
+preserves the example's session store, modes, native plans, compatibility
+bridge, and projections:
 
 ```bash
-acpkit run examples.langchain.deepagents_graph:graph
+acpkit run examples.langchain.deepagents_graph:acp_agent
 ```
 
-If `deepagents` is not installed, use the module as a recipe and keep `main()` or `graph_from_session(...)` as the entrypoint instead.
+`deepagents` must be installed before this target handles a session.
 
 ### Dynamic Factory Agents
 URL: https://vcoderun.github.io/acpkit/examples/dynamic-factory/

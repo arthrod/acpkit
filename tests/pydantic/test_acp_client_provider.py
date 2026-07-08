@@ -3,6 +3,7 @@ from __future__ import annotations as _annotations
 import tomllib
 from pathlib import Path
 from typing import Any, Literal, cast
+from unittest.mock import AsyncMock
 
 import pydantic_acp
 import pytest
@@ -139,14 +140,14 @@ class EchoACPAgent:  # type: ignore[misc]
 
 
 def _build_provider_and_model(
-    agent: Any,
+    acp_agent: Any,
     *,
     model_name: str = "zed-agent",
     cwd: str = "/workspace",
     prompt_renderer: Any = None,
 ) -> tuple[AcpProvider, AcpModel]:
     """Construct an ``AcpProvider``/``AcpModel`` pair with this file's shared test defaults."""
-    provider = AcpProvider(agent=agent, cwd=cwd, prompt_renderer=prompt_renderer)
+    provider = AcpProvider(acp_agent=acp_agent, cwd=cwd, prompt_renderer=prompt_renderer)
     model = AcpModel(model_name=model_name, provider=provider)
     return provider, model
 
@@ -210,10 +211,10 @@ def test_pydantic_acp_requires_pydantic_ai_v2() -> None:
 # --- AcpProvider / AcpModel behavior (changed code) ---------------------------------
 
 
-def test_acp_provider_accepts_acp_client_directly_and_exposes_accessors() -> None:
+def test_acp_provider_accepts_acp_agent_directly_and_exposes_accessors() -> None:
     acp_agent = EchoACPAgent()
 
-    provider = AcpProvider(acp_client=cast(AcpAgent, acp_agent))
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent))
     model = provider.model(history_mode="full")
 
     assert provider.client is acp_agent
@@ -225,22 +226,14 @@ def test_acp_provider_accepts_acp_client_directly_and_exposes_accessors() -> Non
     assert model.provider is provider
 
 
-def test_acp_provider_rejects_ambiguous_client_construction() -> None:
+def test_acp_provider_requires_acp_agent_keyword() -> None:
     acp_agent = EchoACPAgent()
 
-    with pytest.raises(AssertionError, match="both `acp_client` and `agent`"):
-        cast(Any, AcpProvider)(
-            acp_client=acp_agent,
-            agent=EchoACPAgent(),
-            cwd="/workspace",
-        )
+    with pytest.raises(TypeError, match="required keyword-only argument: 'acp_agent'"):
+        cast(Any, AcpProvider)(cwd="/workspace")
 
-    with pytest.raises(AssertionError, match="both `acp_client` and `host_client`"):
-        cast(Any, AcpProvider)(
-            acp_client=acp_agent,
-            host_client=HostRecordingClient(),
-            cwd="/workspace",
-        )
+    with pytest.raises(TypeError, match="unexpected keyword argument 'agent'"):
+        cast(Any, AcpProvider)(agent=acp_agent, cwd="/workspace")
 
 
 async def test_acp_provider_reuses_session_and_model_across_multiple_requests() -> None:
@@ -259,12 +252,48 @@ async def test_acp_provider_reuses_session_and_model_across_multiple_requests() 
 
 def test_acp_provider_model_factory_uses_default_model_name() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=cast(AcpAgent, acp_agent), cwd="/workspace")
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent), cwd="/workspace")
 
     model = provider.model()
 
     assert model.model_name == "agent"
     assert model.provider is provider
+
+
+async def test_acp_provider_default_model_leaves_remote_model_selection_to_agent() -> None:
+    acp_agent = EchoACPAgent()
+    set_session_model = AsyncMock(
+        side_effect=RequestError.invalid_params({"modelId": "agent"}),
+    )
+    cast(Any, acp_agent).set_session_model = set_session_model
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent), cwd="/workspace")
+    model = provider.model()
+
+    result = await Agent(model).run("use the default ACP session model")
+
+    assert "use the default ACP session model" in result.output
+    assert model.model_name == "agent"
+    assert acp_agent.session_cwds == ["/workspace"]
+    assert acp_agent.session_models == []
+    set_session_model.assert_not_awaited()
+
+
+async def test_acp_provider_model_history_mode_is_model_scoped() -> None:
+    acp_agent = EchoACPAgent()
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent), cwd="/workspace")
+    full_history_model = provider.model("model-a", history_mode="full")
+    default_history_model = provider.model("model-b")
+    messages = [
+        ModelRequest(parts=[UserPromptPart("first turn")]),
+        ModelResponse(parts=[TextPart("first answer")]),
+        ModelRequest(parts=[UserPromptPart("second turn")]),
+    ]
+
+    await full_history_model.request(messages, None, ModelRequestParameters())
+    await default_history_model.request(messages, None, ModelRequestParameters())
+
+    assert "first answer" in acp_agent.prompts[0][1]
+    assert acp_agent.prompts[1] == ("session-1", "second turn")
 
 
 async def test_acp_provider_accepts_sync_set_session_model_hooks() -> None:
@@ -285,7 +314,7 @@ async def test_acp_provider_accepts_sync_set_session_model_hooks() -> None:
 
 async def test_acp_provider_ensure_session_returns_existing_session_for_same_model() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=cast(AcpAgent, acp_agent), cwd="/workspace")
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent), cwd="/workspace")
 
     first_session_id = await provider._ensure_session(model_name="zed-agent")
     second_session_id = await provider._ensure_session(model_name="zed-agent")
@@ -517,7 +546,7 @@ async def test_acp_buffered_stream_skips_non_text_response_parts() -> None:
 
 async def test_acp_provider_switches_session_model_when_model_name_changes() -> None:
     acp_agent = EchoACPAgent()
-    provider = AcpProvider(agent=cast(AcpAgent, acp_agent), cwd="/workspace")
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent), cwd="/workspace")
     first_model = AcpModel(model_name="model-a", provider=provider)
     second_model = AcpModel(model_name="model-b", provider=provider)
 
@@ -536,7 +565,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
     mcp_servers = [{"name": "demo"}]
 
     provider = AcpProvider(
-        agent=cast(AcpAgent, acp_agent),
+        acp_agent=cast(AcpAgent, acp_agent),
         cwd="/workspace",
         client_capabilities=capabilities,
         client_info=client_info,
@@ -552,7 +581,7 @@ async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() 
 
 
 def test_acp_provider_model_profile_returns_the_shared_acp_profile() -> None:
-    provider = AcpProvider(agent=cast(AcpAgent, EchoACPAgent()), cwd="/workspace")
+    provider = AcpProvider(acp_agent=cast(AcpAgent, EchoACPAgent()), cwd="/workspace")
     assert provider.model_profile("anything") is client_module.ACP_MODEL_PROFILE
 
 
@@ -605,7 +634,7 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
 
 async def test_acp_provider_does_not_require_the_agent_to_support_on_connect() -> None:
     acp_agent = NoHandshakeACPAgent()
-    provider = AcpProvider(agent=acp_agent, cwd="/workspace")  # type: ignore
+    provider = AcpProvider(acp_agent=acp_agent, cwd="/workspace")  # type: ignore
     model = AcpModel(model_name="agent", provider=provider)
 
     response = await model.request(
@@ -988,6 +1017,10 @@ def test_extract_text_recursively_collects_supported_response_shapes() -> None:
     assert extracted == "literal textchunk textnested textdict textattr text"
 
 
+def test_extract_text_does_not_duplicate_content_field_strings() -> None:
+    assert client_module._extract_text({"content": "content text"}) == "content text"
+
+
 def test_response_field_supports_dict_attr_and_missing_values() -> None:
     class AttrResponse:
         message = "attr message"
@@ -1096,7 +1129,7 @@ async def test_acp_provider_forwards_host_client_delegate_updates_end_to_end() -
     delegate = HostRecordingClient()
     acp_agent = EchoACPAgent()
     provider = AcpProvider(
-        agent=cast(AcpAgent, acp_agent),
+        acp_agent=cast(AcpAgent, acp_agent),
         cwd="/workspace",
         host_client=delegate,
     )
