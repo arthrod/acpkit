@@ -76,7 +76,7 @@ class NativeApprovalBridge:
     option_set: PermissionOptionSet = field(default_factory=PermissionOptionSet)
     policy_store: ApprovalPolicyStore = field(default_factory=SessionMetadataApprovalPolicyStore)
     tool_call_builder: PermissionToolCallBuilder = field(
-        default_factory=DefaultPermissionToolCallBuilder
+        default_factory=DefaultPermissionToolCallBuilder,
     )
     _supports_projection_aware_approval_bridge: bool = field(
         default=True,
@@ -123,7 +123,7 @@ class NativeApprovalBridge:
             allowed_decisions = review_config.get("allowed_decisions", ["approve", "reject"])
             if "edit" in allowed_decisions and set(allowed_decisions) == {"edit"}:
                 raise RequestError.invalid_request(
-                    {"reason": "ACP permission prompts cannot collect edited tool arguments."}
+                    {"reason": "ACP permission prompts cannot collect edited tool arguments."},
                 )
             permission = await client.request_permission(
                 session_id=session.session_id,
@@ -137,7 +137,7 @@ class NativeApprovalBridge:
                         cwd=session.cwd,
                         classifier=classifier,
                         projection_map=projection_map,
-                    )
+                    ),
                 ),
             )
             outcome = permission.outcome
@@ -187,7 +187,7 @@ class NativeApprovalBridge:
                         name=self.option_set.reject_always_name,
                         kind="reject_always",
                     ),
-                ]
+                ],
             )
         return options
 

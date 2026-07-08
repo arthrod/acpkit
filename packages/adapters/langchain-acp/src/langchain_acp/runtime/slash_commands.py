@@ -77,7 +77,7 @@ def build_available_commands(
                 name=MODEL_COMMAND_NAME,
                 description="Show the current session model, or set it with a provider:model value.",
                 input=AvailableCommandInput(root=UnstructuredCommandInput(hint="provider:model")),
-            )
+            ),
         )
     commands.extend(
         [
@@ -89,7 +89,7 @@ def build_available_commands(
                 name=MCP_SERVERS_COMMAND_NAME,
                 description="List MCP servers attached to the current session.",
             ),
-        ]
+        ],
     )
     if custom_commands:
         validate_custom_commands(custom_commands, mode_state=mode_state)
@@ -108,7 +108,7 @@ def validate_custom_commands(
         if command.name != normalized_name:
             raise ValueError(
                 f"Slash command name {command.name!r} must already be normalized as "
-                "a lowercase slash command id."
+                "a lowercase slash command id.",
             )
         if not _COMMAND_NAME_PATTERN.fullmatch(normalized_name):
             raise ValueError(f"Slash command name {command.name!r} must match ^[a-z][a-z0-9-]*$.")
@@ -119,13 +119,13 @@ def validate_custom_commands(
     if duplicate_names:
         raise ValueError(
             "Custom slash command names must be unique after normalization. "
-            f"Duplicate ids: {', '.join(duplicate_names)}."
+            f"Duplicate ids: {', '.join(duplicate_names)}.",
         )
     reserved_names = sorted(set(normalized_names) & RESERVED_SLASH_COMMAND_NAMES)
     if reserved_names:
         raise ValueError(
             "Custom slash command names cannot reuse reserved slash command names "
-            f"({', '.join(reserved_names)})."
+            f"({', '.join(reserved_names)}).",
         )
     if mode_state is None:
         return
@@ -134,7 +134,7 @@ def validate_custom_commands(
     if conflicting_mode_ids:
         raise ValueError(
             "Custom slash command names cannot reuse active mode ids "
-            f"({', '.join(conflicting_mode_ids)})."
+            f"({', '.join(conflicting_mode_ids)}).",
         )
 
 
@@ -184,7 +184,7 @@ def render_mcp_server_listing(server_infos: list[McpServerInfo]) -> str:
     for server_info in server_infos:
         lines.append(
             f"- {server_info.name} ({server_info.transport}, {server_info.source}): "
-            f"{server_info.target}"
+            f"{server_info.target}",
         )
     return "\n".join(lines)
 
@@ -212,7 +212,7 @@ def list_graph_tools(graph: Any) -> list[ToolInfo]:
                 ToolInfo(
                     name=name,
                     description=description if isinstance(description, str) else None,
-                )
+                ),
             )
     return tool_infos
 
@@ -298,7 +298,9 @@ def _mcp_server_info_from_session_payload(
     )
 
 
-def _mcp_server_info_from_bridge_metadata(raw_server: JsonValue) -> McpServerInfo | None:
+def _mcp_server_info_from_bridge_metadata(
+    raw_server: JsonValue,
+) -> McpServerInfo | None:
     raw_server_dict = _string_key_dict(raw_server)
     if raw_server_dict is None:
         return None

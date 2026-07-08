@@ -174,7 +174,7 @@ class PrepareToolsBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
                     )
                     for value in _PLAN_GENERATION_CONFIG_OPTIONS
                 ],
-            )
+            ),
         ]
 
     def set_mode(
@@ -249,7 +249,7 @@ class PrepareToolsBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
             isinstance(configured_value, str)
             and configured_value in _PLAN_GENERATION_CONFIG_OPTIONS
         ):
-            return cast(PlanGenerationType, configured_value)
+            return cast("PlanGenerationType", configured_value)
         return self.default_plan_generation_type
 
     def uses_tool_plan_generation(self, session: AcpSessionContext) -> bool:

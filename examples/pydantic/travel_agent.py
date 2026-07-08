@@ -29,11 +29,14 @@ from pydantic_ai.tools import DeferredToolRequests
 
 __all__ = ("TravelPromptModelProvider", "acp_agent", "agent", "config", "main")
 
-_TRAVEL_ROOT: Final[Path] = Path(__file__).resolve().parent / ".travel-agent"
+_DEMO_ROOT: Final[Path] = Path("agent_demos")
+_TRAVEL_ROOT: Final[Path] = Path.cwd() / _DEMO_ROOT / "travel-agent"
 _READ_TOOL: Final[str] = "read_trip_file"
 _WRITE_TOOL: Final[str] = "write_trip_file"
 _SESSION_STORE_ROOT: Final[Path] = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "pydantic-travel"
 )
 _MEDIA_MODEL_ENV_NAMES: Final[tuple[str, ...]] = (
@@ -104,7 +107,8 @@ def _prompt_has_binary_media(prompt: Sequence[AgentPromptBlock]) -> bool:
                 return True
             continue
         if isinstance(block, EmbeddedResourceContentBlock) and isinstance(
-            block.resource, BlobResourceContents
+            block.resource,
+            BlobResourceContents,
         ):
             return True
     return False
@@ -204,21 +208,19 @@ agent = Agent(
 @agent.tool_plain
 def describe_travel_surface() -> str:
     """Summarize the ACP-facing surfaces available in this travel example."""
-
     return "\n".join(
         (
             "Travel example features:",
             "- existing Hooks capability introspection rendered through HookProjectionMap",
             "- approval-gated file writes with ACP diffs",
             "- prompt-model override provider for image and audio prompts",
-        )
+        ),
     )
 
 
 @agent.tool_plain
 def list_trip_files() -> str:
     """List the demo travel files available in the local workspace."""
-
     _ensure_travel_workspace()
     return "\n".join(sorted(path.name for path in _TRAVEL_ROOT.iterdir() if path.is_file()))
 
@@ -226,7 +228,6 @@ def list_trip_files() -> str:
 @agent.tool_plain(name=_READ_TOOL)
 def read_trip_file(path: str, max_chars: int = 4000) -> str:
     """Read a travel file and return a bounded preview."""
-
     if max_chars <= 0:
         raise ValueError("max_chars must be positive.")
     _ensure_travel_workspace()
@@ -239,7 +240,6 @@ def read_trip_file(path: str, max_chars: int = 4000) -> str:
 @agent.tool_plain(name=_WRITE_TOOL, requires_approval=True)
 def write_trip_file(path: str, content: str) -> str:
     """Write a travel file inside the local demo workspace."""
-
     _ensure_travel_workspace()
     file_path = _resolve_trip_path(Path(path).name if Path(path).is_absolute() else path)
     file_path.write_text(content, encoding="utf-8")
@@ -261,7 +261,7 @@ config = AdapterConfig(
         FileSystemProjectionMap(
             default_read_tool=_READ_TOOL,
             default_write_tool=_WRITE_TOOL,
-        )
+        ),
     ],
 )
 acp_agent = create_acp_agent(agent=agent, config=config)

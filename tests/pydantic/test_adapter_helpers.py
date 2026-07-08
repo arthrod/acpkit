@@ -92,8 +92,8 @@ def _stored_session(adapter: Any, session_id: str) -> Any:
 def _fake_run_result(output: Any) -> Any:
     return SimpleNamespace(
         output=output,
-        new_messages=lambda: [],
-        all_messages=lambda: [],
+        new_messages=list,
+        all_messages=list,
         all_messages_json=lambda: b"[]",
     )
 
@@ -115,7 +115,7 @@ def test_session_model_selection_respects_provider_and_fallback_state(
     response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     session = _stored_session(adapter, response.session_id)
 
-    cast(Any, agent).model = _INVALID_TEST_VALUE
+    cast("Any", agent).model = _INVALID_TEST_VALUE
     session.session_model_id = None
     model_state = asyncio.run(adapter._get_model_selection_state(session, agent))
     assert model_state is None
@@ -136,8 +136,8 @@ def test_session_model_selection_respects_provider_and_fallback_state(
                 AdapterModel(
                     model_id="model-a",
                     name="Model A",
-                    override=cast(Any, selected_agent.model),
-                )
+                    override=cast("Any", selected_agent.model),
+                ),
             ],
         ),
     )
@@ -145,12 +145,11 @@ def test_session_model_selection_respects_provider_and_fallback_state(
     assert selected_adapter._resolve_current_model_id(session, selected_agent) == "selected-model"
     assert selected_adapter._resolve_model_id_from_value(selected_agent.model) == "model-a"
     assert selected_adapter._resolve_model_id_from_value("plain-model") == "plain-model"
-    assert selected_adapter._resolve_model_id_from_value(cast(Any, _INVALID_TEST_VALUE)) is None
+    assert selected_adapter._resolve_model_id_from_value(cast("Any", _INVALID_TEST_VALUE)) is None
 
     class DemoModelsProvider:
         def set_model(self, session, agent, model_id):
             del session, agent, model_id
-            return None
 
         def get_model_state(self, session, agent):
             del session, agent
@@ -170,18 +169,18 @@ def test_session_model_selection_respects_provider_and_fallback_state(
     provider_session = _stored_session(provider_adapter, provider_response.session_id)
     provider_session.config_values["model"] = "stale"
     set_response = asyncio.run(
-        provider_adapter.set_session_model("provider-model", provider_response.session_id)
+        provider_adapter.set_session_model("provider-model", provider_response.session_id),
     )
     assert set_response is not None
     assert provider_session.session_model_id is None
     provider_state = asyncio.run(
-        provider_adapter._get_model_selection_state(provider_session, agent)
+        provider_adapter._get_model_selection_state(provider_session, agent),
     )
     assert provider_state is not None
     assert provider_state.current_model_id is None
 
     missing_response = asyncio.run(
-        provider_adapter.set_session_model("missing", provider_response.session_id)
+        provider_adapter.set_session_model("missing", provider_response.session_id),
     )
     assert missing_response is not None
     assert "model" not in provider_session.config_values
@@ -191,7 +190,6 @@ def test_session_mode_and_config_updates_flow_through_providers(tmp_path: Path) 
     class DemoModesProvider:
         def set_mode(self, session, agent, mode_id):
             del session, agent, mode_id
-            return None
 
         def get_mode_state(self, session, agent):
             del session, agent
@@ -203,28 +201,25 @@ def test_session_mode_and_config_updates_flow_through_providers(tmp_path: Path) 
     class EmptyConfigProvider:
         def set_config_option(self, session, agent, config_id, value):
             del session, agent, config_id, value
-            return None
 
         def get_config_options(self, session, agent):
             del session, agent
-            return None
 
     class MatchingConfigProvider:
         def set_config_option(self, session, agent, config_id, value):
             del session, agent, config_id, value
-            return None
 
         def get_config_options(self, session, agent):
             del session, agent
             return cast(
-                Any,
+                "Any",
                 [
                     SessionConfigOptionBoolean(
                         id="flag",
                         name="Flag",
                         type="boolean",
                         current_value=False,
-                    )
+                    ),
                 ],
             )
 
@@ -266,7 +261,7 @@ def test_session_mode_and_config_updates_flow_through_providers(tmp_path: Path) 
     )
     matching_response = asyncio.run(matching_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     config_response = asyncio.run(
-        matching_adapter.set_config_option("flag", matching_response.session_id, True)
+        matching_adapter.set_config_option("flag", matching_response.session_id, True),
     )
     assert config_response is not None
 
@@ -291,7 +286,7 @@ def test_native_plan_state_syncs_through_runtime_outputs(tmp_path: Path) -> None
                 name="Plan",
                 prepare_func=pass_through,
                 plan_mode=True,
-            )
+            ),
         ],
     )
     agent = Agent(TestModel(custom_output_text="plan"), output_type=str)
@@ -334,14 +329,14 @@ def test_native_plan_state_syncs_through_runtime_outputs(tmp_path: Path) -> None
     assert adapter._format_native_plan(session) == "No plan has been recorded yet."
 
     session.plan_entries = [
-        PlanEntry(content="Inspect", priority="medium", status="pending").model_dump(mode="json")
+        PlanEntry(content="Inspect", priority="medium", status="pending").model_dump(mode="json"),
     ]
     assert "Inspect" in adapter._format_native_plan(session)
 
     adapter._install_native_plan_tools(agent)
     tools = agent._function_toolset.tools
-    get_plan_tool = cast(Any, tools["acp_get_plan"])
-    set_plan_tool = cast(Any, tools["acp_set_plan"])
+    get_plan_tool = cast("Any", tools["acp_get_plan"])
+    set_plan_tool = cast("Any", tools["acp_set_plan"])
     assert get_plan_tool.function() == "No plan has been recorded yet."
     assert persisted_states[-1] == (["Write the plan"], "# Plan")
     assert get_plan_tool.prepare(None, get_plan_tool.function_schema) is not None
@@ -363,7 +358,7 @@ def test_tool_based_plan_generation_keeps_agent_output_type_and_exposes_set_plan
                 name="Plan",
                 prepare_func=pass_through,
                 plan_mode=True,
-            )
+            ),
         ],
     )
     agent = Agent(TestModel(custom_output_text="plan"), output_type=str)
@@ -391,7 +386,7 @@ def test_tool_based_plan_generation_keeps_agent_output_type_and_exposes_set_plan
     adapter._install_native_plan_tools(agent)
     set_active_session(agent, session)
     tools = agent._function_toolset.tools
-    set_plan_tool = cast(Any, tools["acp_set_plan"])
+    set_plan_tool = cast("Any", tools["acp_set_plan"])
     assert set_plan_tool.prepare(None, set_plan_tool.function_schema) is not None
 
 
@@ -423,7 +418,7 @@ def test_adapter_runtime_mixins_delegate_prompt_and_session_helpers(
                         model_id="demo-model",
                         name="Demo Model",
                         override=TestModel(custom_output_text="demo"),
-                    )
+                    ),
                 ],
             )
 
@@ -436,7 +431,7 @@ def test_adapter_runtime_mixins_delegate_prompt_and_session_helpers(
                         model_id=model_id,
                         name="Configured Model",
                         override=TestModel(custom_output_text="configured"),
-                    )
+                    ),
                 ],
             )
 
@@ -464,7 +459,7 @@ def test_adapter_runtime_mixins_delegate_prompt_and_session_helpers(
                     name="Flag",
                     type="boolean",
                     current_value=False,
-                )
+                ),
             ]
 
         def set_config_option(
@@ -483,7 +478,7 @@ def test_adapter_runtime_mixins_delegate_prompt_and_session_helpers(
                     name="Flag",
                     type="boolean",
                     current_value=value,
-                )
+                ),
             ]
 
     class PromptOverrideProvider:
@@ -495,7 +490,6 @@ def test_adapter_runtime_mixins_delegate_prompt_and_session_helpers(
             model_override,
         ):
             del session, agent, prompt, model_override
-            return None
 
     agent = Agent(TestModel(custom_output_text="ok"))
     adapter = _adapter(
@@ -518,7 +512,7 @@ def test_adapter_runtime_mixins_delegate_prompt_and_session_helpers(
                 agent,
                 prompt=[text_block("hi")],
                 model_override=None,
-            )
+            ),
         )
         is None
     )
@@ -539,7 +533,7 @@ def test_adapter_runtime_mixins_delegate_prompt_and_session_helpers(
                 cwd=str(tmp_path),
                 session_id=response.session_id,
                 mcp_servers=[],
-            )
+            ),
         ).modes
         is not None
     )
@@ -598,7 +592,7 @@ def test_runtime_model_restore_and_error_paths_are_handled(
         agent=agent,
         config=AdapterConfig(
             session_store=MemorySessionStore(),
-            approval_bridge=cast(Any, _INVALID_TEST_VALUE),
+            approval_bridge=cast("Any", _INVALID_TEST_VALUE),
         ),
     )
     response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
@@ -623,7 +617,7 @@ def test_runtime_model_restore_and_error_paths_are_handled(
     assert session.config_values["model"] == default_model_id
 
     session.session_model_id = None
-    cast(Any, agent).model = _INVALID_TEST_VALUE
+    cast("Any", agent).model = _INVALID_TEST_VALUE
     assert asyncio.run(adapter._resolve_model_override(session, agent)) is None
 
     with pytest.raises(RequestError):
@@ -632,12 +626,14 @@ def test_runtime_model_restore_and_error_paths_are_handled(
         adapter._resolve_runtime_model(agent, model_override="not a model id\n")
 
     with pytest.raises(RequestError):
-        asyncio.run(adapter._resolve_deferred_approvals(session=session, requests=cast(Any, None)))
+        asyncio.run(
+            adapter._resolve_deferred_approvals(session=session, requests=cast("Any", None)),
+        )
 
     assert asyncio.run(adapter._record_cancelled_approval(session, None)) is None
     assert (
         asyncio.run(
-            adapter._handle_slash_command("unknown", argument=None, session=session, agent=agent)
+            adapter._handle_slash_command("unknown", argument=None, session=session, agent=agent),
         )
         is None
     )
@@ -668,7 +664,7 @@ def test_sessions_normalize_cwd_and_serialize_mcp_servers(tmp_path: Path) -> Non
                 AdapterModel(
                     model_id="default:test",
                     name="Default",
-                    override=cast(Any, agent.model),
+                    override=cast("Any", agent.model),
                 ),
             ],
             session_store=MemorySessionStore(),
@@ -732,7 +728,7 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
             agent=agent,
             prompt=[text_block("stream please")],
             session=session,
-        )
+        ),
     )
     assert outcome.result.output == "streamed"
     assert outcome.streamed_output is True
@@ -743,13 +739,13 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
         del prompt_text, kwargs
         return _fake_run_result("plain")
 
-    cast(Any, agent).run = fake_run
+    cast("Any", agent).run = fake_run
     outcome = asyncio.run(
         adapter._run_prompt(
             agent=agent,
             prompt=[text_block("plain please")],
             session=session,
-        )
+        ),
     )
     assert outcome.result.output == "plain"
     assert outcome.streamed_output is False
@@ -763,33 +759,33 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
             raise UserError("broken model")
         return _fake_run_result("recovered")
 
-    cast(Any, agent).run = flaky_run
+    cast("Any", agent).run = flaky_run
     monkeypatch.setattr(adapter, "_restore_default_model", lambda *args, **kwargs: True)
     outcome = asyncio.run(
         adapter._run_prompt(
             agent=agent,
             prompt=[text_block("recover please")],
             session=session,
-        )
+        ),
     )
     assert outcome.result.output == "recovered"
 
     no_bridge_result = _fake_run_result(
-        DeferredToolRequests(approvals=[ToolCallPart("approval-only", {"x": 1})])
+        DeferredToolRequests(approvals=[ToolCallPart("approval-only", {"x": 1})]),
     )
 
     async def no_bridge_run(prompt_text: str | None, **kwargs: Any) -> Any:
         del prompt_text, kwargs
         return no_bridge_result
 
-    cast(Any, agent).run = no_bridge_run
+    cast("Any", agent).run = no_bridge_run
     monkeypatch.setattr(adapter, "_supports_deferred_approval_bridge", lambda: False)
     no_bridge_outcome = asyncio.run(
         adapter._run_prompt(
             agent=agent,
             prompt=[text_block("approval please")],
             session=session,
-        )
+        ),
     )
     assert no_bridge_outcome.stop_reason == "end_turn"
 
@@ -797,7 +793,7 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
         agent=agent,
         config=AdapterConfig(
             session_store=MemorySessionStore(),
-            approval_bridge=cast(Any, _INVALID_TEST_VALUE),
+            approval_bridge=cast("Any", _INVALID_TEST_VALUE),
             enable_generic_tool_projection=False,
         ),
     )
@@ -810,26 +806,26 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
             DeferredToolRequests(
                 calls=[ToolCallPart("needs-call", {"x": 1})],
                 approvals=[ToolCallPart("needs-approval", {"y": 2})],
-            )
+            ),
         )
 
-    cast(Any, agent).run = calls_present_run
+    cast("Any", agent).run = calls_present_run
     bridge_outcome = asyncio.run(
         bridge_adapter._run_prompt(
             agent=agent,
             prompt=[text_block("calls please")],
             session=bridge_session,
-        )
+        ),
     )
     assert bridge_outcome.stop_reason == "end_turn"
 
     async def approval_loop_run(prompt_text: str | None, **kwargs: Any) -> Any:
         del prompt_text, kwargs
         return _fake_run_result(
-            DeferredToolRequests(approvals=[ToolCallPart("approval", {"z": 3})])
+            DeferredToolRequests(approvals=[ToolCallPart("approval", {"z": 3})]),
         )
 
-    cast(Any, agent).run = approval_loop_run
+    cast("Any", agent).run = approval_loop_run
 
     async def unresolved_approvals(**kwargs: Any) -> Any:
         del kwargs
@@ -850,7 +846,7 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
                 agent=agent,
                 prompt=[text_block("loop please")],
                 session=bridge_session,
-            )
+            ),
         )
 
     async def empty_stream(prompt_text: str | None, **kwargs: Any):
@@ -858,7 +854,7 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
         yield FunctionToolResultEvent(RetryPromptPart("retry", tool_name=None))
         yield FunctionToolResultEvent(ToolReturnPart("final_result", "done"))
 
-    cast(Any, agent).run_stream_events = empty_stream
+    cast("Any", agent).run_stream_events = empty_stream
     with pytest.raises(RequestError):
         asyncio.run(
             type(adapter)._run_prompt_with_events(
@@ -867,7 +863,7 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
                 prompt_input="stream",
                 run_kwargs={},
                 session=session,
-            )
+            ),
         )
 
 
@@ -911,7 +907,7 @@ def test_prompt_execution_compaction_paths_cover_empty_updates_and_retry_skips(
                 result=_fake_run_result("streamed"),
                 model_override=None,
                 run_output_type=None,
-            )
+            ),
         )
         is None
     )
@@ -921,7 +917,7 @@ def test_prompt_execution_compaction_paths_cover_empty_updates_and_retry_skips(
         del prompt_text, kwargs
         yield FunctionToolResultEvent(RetryPromptPart("retry", tool_name=None))
 
-    cast(Any, agent).run_stream_events = retry_only_stream
+    cast("Any", agent).run_stream_events = retry_only_stream
     with pytest.raises(RequestError):
         asyncio.run(
             type(adapter)._run_prompt_with_events(
@@ -930,7 +926,7 @@ def test_prompt_execution_compaction_paths_cover_empty_updates_and_retry_skips(
                 prompt_input="stream",
                 run_kwargs={},
                 session=session,
-            )
+            ),
         )
 
 
@@ -976,7 +972,7 @@ def test_prompt_execution_records_visible_compaction_updates(
             result=_fake_run_result("streamed"),
             model_override=None,
             run_output_type=None,
-        )
+        ),
     )
     assert len(recorded_updates) == 1
 
@@ -1014,7 +1010,7 @@ def test_cancel_stops_active_prompt_and_persists_terminal_history(
                 prompt=[text_block("Long running task")],
                 session_id=response.session_id,
                 message_id="cancelled-user-message",
-            )
+            ),
         )
         await started.wait()
 
@@ -1052,7 +1048,7 @@ def test_prompt_emits_derived_title_without_session_metadata(tmp_path: Path) -> 
             prompt=[text_block("Explain TCP slow start")],
             session_id=session.session_id,
             message_id="title-message",
-        )
+        ),
     )
 
     title_updates = [
@@ -1087,7 +1083,7 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
                 agent=agent,
                 prompt=[text_block("recover")],
                 session=session,
-            )
+            ),
         )
 
     assert adapter._build_run_kwargs(
@@ -1108,12 +1104,12 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
     adapter._config.approval_bridge = None
     assert adapter._build_run_output_type(agent, session=session) is None
     assert adapter._contains_text_output(NativePlanGeneration) is True
-    assert adapter._contains_text_output(cast(Any, _INVALID_TEST_VALUE)) is False
+    assert adapter._contains_text_output(cast("Any", _INVALID_TEST_VALUE)) is False
     assert adapter._contains_native_plan_generation([int, NativePlanGeneration]) is True
     assert adapter._contains_native_plan_generation([int, float]) is False
 
     tool_start_event = PartStartEvent(index=0, part=ToolCallPart("echo", {"text": "hi"}))
-    tool_delta_event = PartDeltaEvent(index=0, delta=cast(Any, _INVALID_TEST_VALUE))
+    tool_delta_event = PartDeltaEvent(index=0, delta=cast("Any", _INVALID_TEST_VALUE))
     assert adapter._text_chunk_from_event(tool_start_event) is None
     assert adapter._text_chunk_from_event(tool_delta_event) is None
     assert (
@@ -1130,7 +1126,7 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
         adapter._prompt_runtime._replace_native_plan_entry(session, index=1, status="completed")
 
     session.plan_entries = [
-        PlanEntry(content="Pending task", priority="low", status="pending").model_dump(mode="json")
+        PlanEntry(content="Pending task", priority="low", status="pending").model_dump(mode="json"),
     ]
     with pytest.raises(RequestError):
         adapter._prompt_runtime._replace_native_plan_entry(session, index=2, status="completed")
@@ -1155,10 +1151,10 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
     )
     tool_adapter._install_native_plan_tools(tool_agent)
     tools = tool_agent._function_toolset.tools
-    get_plan_tool = cast(Any, tools["acp_get_plan"])
-    set_plan_tool = cast(Any, tools["acp_set_plan"])
-    update_plan_tool = cast(Any, tools["acp_update_plan_entry"])
-    mark_done_tool = cast(Any, tools["acp_mark_plan_done"])
+    get_plan_tool = cast("Any", tools["acp_get_plan"])
+    set_plan_tool = cast("Any", tools["acp_set_plan"])
+    update_plan_tool = cast("Any", tools["acp_update_plan_entry"])
+    mark_done_tool = cast("Any", tools["acp_mark_plan_done"])
 
     session.config_values["mode"] = "ask"
     assert get_plan_tool.prepare(None, get_plan_tool.function_schema) is None
@@ -1172,7 +1168,7 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
         yield FunctionToolResultEvent(RetryPromptPart("retry", tool_name="output"))
         yield FunctionToolResultEvent(ToolReturnPart("final_result", "done"))
 
-    cast(Any, agent).run_stream_events = retry_and_output_stream
+    cast("Any", agent).run_stream_events = retry_and_output_stream
     with pytest.raises(RequestError):
         asyncio.run(
             type(adapter)._run_prompt_with_events(
@@ -1181,7 +1177,7 @@ def test_prompt_runtime_handles_edge_cases_without_corrupting_session_state(
                 prompt_input="stream",
                 run_kwargs={},
                 session=session,
-            )
+            ),
         )
 
 
@@ -1203,8 +1199,8 @@ def test_native_plan_additional_instructions_append_without_replacing_core_guida
 
     session.plan_entries = [
         PlanEntry(content="Inspect repo", priority="medium", status="pending").model_dump(
-            mode="json"
-        )
+            mode="json",
+        ),
     ]
 
     rendered = adapter._format_native_plan(session)
@@ -1233,9 +1229,9 @@ def test_native_plan_runtime_covers_empty_state_and_markdown_only_paths(
                             description="Structured plan mode.",
                             prepare_func=lambda ctx, tool_defs: list(tool_defs),
                             plan_mode=True,
-                        )
+                        ),
                     ],
-                )
+                ),
             ],
             native_plan_additional_instructions="Keep the plan reviewable.",
             session_store=MemorySessionStore(),
@@ -1280,9 +1276,9 @@ def test_native_plan_tool_prepare_paths_cover_transient_session_loss(
                             description="Execution mode with plan progress tools.",
                             prepare_func=lambda ctx, tool_defs: list(tool_defs),
                             plan_tools=True,
-                        )
+                        ),
                     ],
-                )
+                ),
             ],
             session_store=MemorySessionStore(),
         ),
@@ -1291,8 +1287,8 @@ def test_native_plan_tool_prepare_paths_cover_transient_session_loss(
     session = _stored_session(tool_adapter, response.session_id)
     tool_adapter._install_native_plan_tools(tool_agent)
     tools = tool_agent._function_toolset.tools
-    set_plan_tool = cast(Any, tools["acp_set_plan"])
-    update_plan_tool = cast(Any, tools["acp_update_plan_entry"])
+    set_plan_tool = cast("Any", tools["acp_set_plan"])
+    update_plan_tool = cast("Any", tools["acp_update_plan_entry"])
 
     calls = {"count": 0}
 
@@ -1340,7 +1336,7 @@ def test_prompt_model_override_provider_can_switch_model_for_media_prompts(
                 ImageContentBlock(type="image", data="aGVsbG8=", mime_type="image/png"),
             ],
             model_override="openrouter:google/gemini-3-flash-preview",
-        )
+        ),
     )
 
     assert resolved_override == "google-gla:gemini-3-flash-preview"
@@ -1354,8 +1350,8 @@ def test_workspace_prompt_model_provider_prefers_explicit_media_override_for_ima
     monkeypatch.setenv("MODEL_NAME", "openrouter:google/gemini-3-flash-preview")
 
     provider = TravelPromptModelProvider()
-    session = cast(Any, object())
-    agent = cast(Any, object())
+    session = cast("Any", object())
+    agent = cast("Any", object())
 
     resolved_override = provider.get_prompt_model_override(
         session,
@@ -1481,7 +1477,7 @@ def test_adapter_wrapper_methods_delegate_to_runtime_components(tmp_path: Path) 
             agent,
             model_selection_state=None,
             mode_state=None,
-        )
+        ),
     ) == ["cfg"]
     assert asyncio.run(adapter._get_mode_state(session, agent)) == "mode"
     assert asyncio.run(adapter._get_provider_config_options(session, agent)) == ["opt"]
@@ -1517,14 +1513,22 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
         return True
 
     async def fake_persist_external_plan_state(
-        session: Any, *, agent: Any, entries: Any, plan_markdown: Any
+        session: Any,
+        *,
+        agent: Any,
+        entries: Any,
+        plan_markdown: Any,
     ) -> None:
         native_plan_calls.append(
-            ("persist_external", (session, agent, list(entries), plan_markdown))
+            ("persist_external", (session, agent, list(entries), plan_markdown)),
         )
 
     async def fake_persist_native_plan_state(
-        session: Any, *, agent: Any, entries: Any, plan_markdown: Any
+        session: Any,
+        *,
+        agent: Any,
+        entries: Any,
+        plan_markdown: Any,
     ) -> None:
         native_plan_calls.append(("persist_native", (session, agent, list(entries), plan_markdown)))
 
@@ -1550,7 +1554,7 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
             agent=agent,
             entries=entries,
             plan_markdown="# External",
-        )
+        ),
     )
     asyncio.run(
         adapter._prompt_runtime._persist_native_plan_state(
@@ -1558,7 +1562,7 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
             agent=agent,
             entries=entries,
             plan_markdown="# Native",
-        )
+        ),
     )
     assert [call[0] for call in native_plan_calls] == [
         "supports_progress",
@@ -1567,7 +1571,7 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
     ]
 
     prompt_model_runtime = adapter._prompt_runtime._model_runtime
-    deferred_agent = cast(Any, SimpleNamespace(output_type=DeferredToolRequests))
+    deferred_agent = cast("Any", SimpleNamespace(output_type=DeferredToolRequests))
     assert (
         prompt_model_runtime.build_run_output_type(deferred_agent, session=session)
         is DeferredToolRequests
@@ -1608,11 +1612,9 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
 
     async def unavailable_mode(mode_id: str, session_id: str) -> None:
         del mode_id, session_id
-        return None
 
     async def unavailable_config(config_id: str, session_id: str, value: Any) -> None:
         del config_id, session_id, value
-        return None
 
     adapter._session_runtime.set_session_mode = unavailable_mode
     adapter._session_runtime.set_config_option = unavailable_config
@@ -1629,7 +1631,7 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
                 argument=None,
                 session=session,
                 agent=agent,
-            )
+            ),
         )
         == "Mode `plan` is unavailable"
     )
@@ -1640,7 +1642,7 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
                 argument="high",
                 session=session,
                 agent=agent,
-            )
+            ),
         )
         == "Thinking effort is unavailable or invalid"
     )
@@ -1654,7 +1656,9 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
     assert session.config_values["model"] == "test"
 
     monkeypatch.setattr(
-        adapter._session_runtime, "_resolve_model_id_from_value", lambda value: None
+        adapter._session_runtime,
+        "_resolve_model_id_from_value",
+        lambda value: None,
     )
     assign_model(agent, "restored-model")
     session.session_model_id = "restored-model"
@@ -1673,7 +1677,7 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
                 agent,
                 "flag",
                 True,
-            )
+            ),
         )
         is False
     )
@@ -1698,7 +1702,7 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
         session_surface_runtime.require_model_option("missing-model")
 
     adapter._config.available_models = [
-        AdapterModel(model_id="raw-model", name="Raw Model", override=cast(Any, agent.model))
+        AdapterModel(model_id="raw-model", name="Raw Model", override=cast("Any", agent.model)),
     ]
     assert session_surface_runtime.require_model_option("raw-model").model_id == "raw-model"
 
@@ -1722,13 +1726,12 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
             emit_current_mode=True,
             emit_plan=False,
             emit_session_info=False,
-        )
+        ),
     )
     assert client.updates == []
 
     async def no_model_selection_state(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
-        return None
 
     monkeypatch.setattr(
         session_surface_runtime,
@@ -1759,7 +1762,7 @@ def test_adapter_prompt_handler_covers_prompt_response_and_no_current_task(
         config=AdapterConfig(session_store=MemorySessionStore()),
     )
     session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    handler = cast(Any, adapter)._adapter_prompt
+    handler = cast("Any", adapter)._adapter_prompt
 
     adapter_prompt_module = importlib.import_module("pydantic_acp.runtime._adapter_prompt")
     monkeypatch.setattr(adapter_prompt_module.asyncio, "current_task", lambda: None)
@@ -1774,16 +1777,16 @@ def test_adapter_prompt_handler_covers_prompt_response_and_no_current_task(
             [text_block("hello")],
             session_response.session_id,
             message_id="prompt-msg",
-        )
+        ),
     )
     assert response.user_message_id == "prompt-msg"
-    assert cast(Any, adapter)._active_prompt_tasks == {}
+    assert cast("Any", adapter)._active_prompt_tasks == {}
 
     cancelled = asyncio.run(
         handler._handle_cancelled_prompt(
             session=_stored_session(adapter, session_response.session_id),
             prompt_text="cancel me",
-        )
+        ),
     )
     assert cancelled.stop_reason == "cancelled"
 
@@ -1803,7 +1806,7 @@ def test_unknown_slash_command_falls_through_to_prompt_execution(
         adapter.prompt(
             prompt=[text_block("/unknown keep going")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == ["continued after slash"]
@@ -1815,11 +1818,9 @@ def test_adapter_public_setters_cover_none_provider_and_mode_paths(
     class EmptyModelsProvider:
         def set_model(self, session, agent, model_id):
             del session, agent, model_id
-            return None
 
         def get_model_state(self, session, agent):
             del session, agent
-            return None
 
     class ReviewModesProvider:
         def get_mode_state(self, session, agent):

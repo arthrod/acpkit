@@ -100,7 +100,7 @@ def test_prompt_and_load_session_replay_history(tmp_path: Path) -> None:
             prompt=[text_block("Summarize the change.")],
             session_id=new_session_response.session_id,
             message_id="user-message-1",
-        )
+        ),
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -119,7 +119,7 @@ def test_prompt_and_load_session_replay_history(tmp_path: Path) -> None:
             cwd=str(tmp_path),
             session_id=new_session_response.session_id,
             mcp_servers=[],
-        )
+        ),
     )
 
     assert load_response is not None
@@ -157,7 +157,7 @@ def test_initialize_negotiates_protocol_and_exposes_mcp_capabilities() -> None:
         servers=[
             McpServerDefinition(server_id="http-server", name="HTTP", transport="http"),
             McpServerDefinition(server_id="sse-server", name="SSE", transport="sse"),
-        ]
+        ],
     )
     adapter = create_acp_agent(
         agent=Agent(TestModel()),
@@ -204,7 +204,8 @@ def test_prompt_projects_tool_calls(tmp_path: Path) -> None:
         return f"contents:{path}"
 
     adapter = create_acp_agent(
-        agent=agent, config=AdapterConfig(session_store=MemorySessionStore())
+        agent=agent,
+        config=AdapterConfig(session_store=MemorySessionStore()),
     )
     client = RecordingClient()
     adapter.on_connect(client)
@@ -214,7 +215,7 @@ def test_prompt_projects_tool_calls(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Read the file.")],
             session_id=new_session_response.session_id,
-        )
+        ),
     )
 
     tool_updates = [
@@ -248,7 +249,7 @@ def test_prompt_streams_text_chunks_with_shared_message_id(tmp_path: Path) -> No
         adapter.prompt(
             prompt=[text_block("Stream the answer.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     agent_updates = [
@@ -272,7 +273,7 @@ def test_optional_text_output_none_does_not_emit_literal_null(tmp_path: Path) ->
         adapter.prompt(
             prompt=[text_block("Return nothing if no answer is available.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "end_turn"
@@ -329,7 +330,7 @@ def test_load_session_can_resume_with_persisted_mode_after_adapter_restart(
                         prepare_func=review_tools,
                     ),
                 ],
-            )
+            ),
         ],
     )
     first_adapter = create_acp_agent(
@@ -341,14 +342,14 @@ def test_load_session_can_resume_with_persisted_mode_after_adapter_restart(
 
     session = asyncio.run(first_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     set_mode_response = asyncio.run(
-        first_adapter.set_session_mode(mode_id="review", session_id=session.session_id)
+        first_adapter.set_session_mode(mode_id="review", session_id=session.session_id),
     )
     assert set_mode_response is not None
     prompt_response = asyncio.run(
         first_adapter.prompt(
             prompt=[text_block("First run before restart.")],
             session_id=session.session_id,
-        )
+        ),
     )
     assert prompt_response.stop_reason == "end_turn"
 
@@ -367,7 +368,7 @@ def test_load_session_can_resume_with_persisted_mode_after_adapter_restart(
             cwd=str(tmp_path),
             session_id=session.session_id,
             mcp_servers=[],
-        )
+        ),
     )
     assert loaded is not None
     assert loaded.modes is not None
@@ -378,7 +379,7 @@ def test_load_session_can_resume_with_persisted_mode_after_adapter_restart(
         restarted_adapter.prompt(
             prompt=[text_block("Continue after restart.")],
             session_id=session.session_id,
-        )
+        ),
     )
     assert follow_up.stop_reason == "end_turn"
     assert agent_message_texts(restarted_client) == [
@@ -403,7 +404,7 @@ def test_file_session_store_skips_malformed_sessions_in_public_flows(
     assert [session.session_id for session in listed.sessions] == [valid_session.session_id]
 
     loaded = asyncio.run(
-        adapter.load_session(cwd=str(tmp_path), session_id="broken", mcp_servers=[])
+        adapter.load_session(cwd=str(tmp_path), session_id="broken", mcp_servers=[]),
     )
     assert loaded is None
 
@@ -438,10 +439,10 @@ def test_interleaved_sessions_keep_selected_models_isolated(tmp_path: Path) -> N
 
     asyncio.run(adapter.prompt(prompt=[text_block("Run first once.")], session_id=first.session_id))
     asyncio.run(
-        adapter.prompt(prompt=[text_block("Run second once.")], session_id=second.session_id)
+        adapter.prompt(prompt=[text_block("Run second once.")], session_id=second.session_id),
     )
     asyncio.run(
-        adapter.prompt(prompt=[text_block("Run first again.")], session_id=first.session_id)
+        adapter.prompt(prompt=[text_block("Run first again.")], session_id=first.session_id),
     )
 
     first_updates = [
@@ -483,7 +484,7 @@ def test_list_sessions_filters_by_cwd_and_orders_latest_first(tmp_path: Path) ->
         adapter.prompt(
             prompt=[text_block("Refresh alpha ordering.")],
             session_id=alpha_session.session_id,
-        )
+        ),
     )
 
     listed_all = asyncio.run(adapter.list_sessions())

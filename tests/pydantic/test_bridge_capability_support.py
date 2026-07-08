@@ -11,8 +11,15 @@ from typing import Any, cast
 
 import pytest
 from acp.schema import ToolKind
-from pydantic_acp import HarnessCodeModeBridge, HarnessFileSystemBridge, HarnessShellBridge
-from pydantic_acp.bridges.capability_support import _json_user_location, _resolve_mcp_server_id
+from pydantic_acp import (
+    HarnessCodeModeBridge,
+    HarnessFileSystemBridge,
+    HarnessShellBridge,
+)
+from pydantic_acp.bridges.capability_support import (
+    _json_user_location,
+    _resolve_mcp_server_id,
+)
 from pydantic_acp.projection import (
     HarnessCodeModeProjectionMap,
     HarnessFileSystemProjectionMap,
@@ -68,9 +75,9 @@ def _install_fake_harness_modules(monkeypatch: pytest.MonkeyPatch) -> None:
     shell_module = ModuleType("pydantic_ai_harness.shell")
     code_mode_module = ModuleType("pydantic_ai_harness.code_mode")
 
-    cast(Any, filesystem_module).FileSystem = _FakeHarnessCapability
-    cast(Any, shell_module).Shell = _FakeHarnessCapability
-    cast(Any, code_mode_module).CodeMode = _FakeHarnessCapability
+    cast("Any", filesystem_module).FileSystem = _FakeHarnessCapability
+    cast("Any", shell_module).Shell = _FakeHarnessCapability
+    cast("Any", code_mode_module).CodeMode = _FakeHarnessCapability
 
     monkeypatch.setitem(sys.modules, "pydantic_ai_harness", harness_module)
     monkeypatch.setitem(sys.modules, "pydantic_ai_harness.filesystem", filesystem_module)
@@ -105,7 +112,7 @@ def _write_mcp_stdio_server_script(path: Path) -> None:
                 'if __name__ == "__main__":',
                 '    mcp.run("stdio")',
                 "",
-            )
+            ),
         ),
         encoding="utf-8",
     )
@@ -130,7 +137,7 @@ def _build_mcp_stdio_test_env(
             (
                 *python_path_entries,
                 *([existing_pythonpath] if existing_pythonpath else []),
-            )
+            ),
         )
         mcp_env["PYTHONPATH"] = combined_pythonpath
     return python_executable, mcp_env
@@ -166,7 +173,7 @@ def test_harness_filesystem_bridge_builds_capability_and_metadata(
         "protected_patterns": [".git/*", ".env"],
     }
     assert isinstance(bridge.get_projection_maps()[0], HarnessFileSystemProjectionMap)
-    assert bridge.get_session_metadata(session, cast(Any, object())) == {
+    assert bridge.get_session_metadata(session, cast("Any", object())) == {
         "allowed_patterns": ["src/**"],
         "denied_patterns": ["*.secret"],
         "max_find_results": 7,
@@ -226,7 +233,7 @@ def test_harness_shell_bridge_builds_capability_and_metadata(
         "denied_commands": ["rm"],
     }
     assert isinstance(bridge.get_projection_maps()[0], HarnessShellProjectionMap)
-    assert bridge.get_session_metadata(session, cast(Any, object())) == {
+    assert bridge.get_session_metadata(session, cast("Any", object())) == {
         "allow_interactive": True,
         "allowed_commands": ["git", "pytest"],
         "cwd": "/workspace",
@@ -285,7 +292,7 @@ def test_harness_code_mode_bridge_builds_capability_and_metadata(
         "dynamic_catalog": True,
     }
     assert isinstance(bridge.get_projection_maps()[0], HarnessCodeModeProjectionMap)
-    assert bridge.get_session_metadata(session, cast(Any, object())) == {
+    assert bridge.get_session_metadata(session, cast("Any", object())) == {
         "dynamic_catalog": True,
         "has_mount": True,
         "has_os_access": True,
@@ -344,16 +351,16 @@ def test_harness_bridge_projection_maps_are_added_to_adapter_config(
         ),
     )
 
-    config = cast(Any, adapter)._config
+    config = cast("Any", adapter)._config
     projection_map_types = {type(projection_map) for projection_map in config.projection_maps}
     assert HarnessFileSystemProjectionMap in projection_map_types
     assert HarnessShellProjectionMap in projection_map_types
     assert HarnessCodeModeProjectionMap in projection_map_types
 
-    classifier = cast(Any, adapter)._tool_classifier
-    assert cast(ToolKind, classifier.classify("read_file")) == "read"
-    assert cast(ToolKind, classifier.classify("run_command")) == "execute"
-    assert cast(ToolKind, classifier.classify("run_code")) == "execute"
+    classifier = cast("Any", adapter)._tool_classifier
+    assert cast("ToolKind", classifier.classify("read_file")) == "read"
+    assert cast("ToolKind", classifier.classify("run_command")) == "execute"
+    assert cast("ToolKind", classifier.classify("run_code")) == "execute"
 
 
 def test_thread_executor_bridge_runs_sync_tools_on_configured_executor(
@@ -396,7 +403,7 @@ def test_thread_executor_bridge_runs_sync_tools_on_configured_executor(
             adapter.prompt(
                 prompt=[text_block("Check the thread executor.")],
                 session_id=session.session_id,
-            )
+            ),
         )
 
         assert response.stop_reason == "end_turn"
@@ -454,7 +461,7 @@ def test_metadata_and_return_schema_bridges_modify_selected_tools(
         adapter.prompt(
             prompt=[text_block("Inspect the available tools.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "end_turn"
@@ -507,7 +514,7 @@ def test_set_tool_metadata_bridge_can_attach_metadata_to_non_schema_tool(
         adapter.prompt(
             prompt=[text_block("Inspect the available tools.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "end_turn"
@@ -604,7 +611,7 @@ def test_toolset_and_prefix_bridges_expose_function_tools_to_the_model(
                 PrefixToolsBridge(
                     wrapped=Toolset(toolset=prefixed_toolset),
                     prefix="repo",
-                )
+                ),
             ],
         )
         contributions = builder.build()
@@ -622,12 +629,12 @@ def test_toolset_and_prefix_bridges_expose_function_tools_to_the_model(
         plain_adapter.prompt(
             prompt=[text_block("Inspect tools.")],
             session_id=plain_session.session_id,
-        )
+        ),
     )
     assert plain_response.stop_reason == "end_turn"
     assert plain_model.last_model_request_parameters is not None
     assert [tool.name for tool in plain_model.last_model_request_parameters.function_tools] == [
-        "lookup"
+        "lookup",
     ]
 
     prefixed_adapter = create_acp_agent(
@@ -639,12 +646,12 @@ def test_toolset_and_prefix_bridges_expose_function_tools_to_the_model(
         prefixed_adapter.prompt(
             prompt=[text_block("Inspect prefixed tools.")],
             session_id=prefixed_session.session_id,
-        )
+        ),
     )
     assert prefixed_response.stop_reason == "end_turn"
     assert prefixed_model.last_model_request_parameters is not None
     assert [tool.name for tool in prefixed_model.last_model_request_parameters.function_tools] == [
-        "repo_search"
+        "repo_search",
     ]
 
 
@@ -675,7 +682,7 @@ def test_toolset_bridge_preserves_instruction_parts_and_ordering(
         adapter.prompt(
             prompt=[text_block("Inspect toolset instructions.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "end_turn"
@@ -717,7 +724,7 @@ def test_mcp_toolset_include_instructions_reaches_model_request(tmp_path: Path) 
         adapter.prompt(
             prompt=[text_block("Inspect MCP instructions.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "end_turn" and "Be a helpful assistant." in "".join(
@@ -744,7 +751,7 @@ def test_mcp_stdio_test_helpers_cover_script_and_env_fallbacks(tmp_path: Path) -
     )
     assert existing_python == str(existing_executable)
     assert existing_env["PYTHONPATH"] == os.pathsep.join(
-        ("/repo/src", "/repo/tests", "/already/set")
+        ("/repo/src", "/repo/tests", "/already/set"),
     )
 
     missing_python, missing_env = _build_mcp_stdio_test_env(
@@ -782,7 +789,7 @@ def test_capability_bridge_helper_and_metadata_edge_paths(
         id="repo-server",
         headers={"authorization": "Bearer x"},
     )
-    toolset_bridge = ToolsetBridge(toolset=cast(Any, SimpleNamespace(id=object())))
+    toolset_bridge = ToolsetBridge(toolset=cast("Any", SimpleNamespace(id=object())))
     prefix_bridge = PrefixToolsBridge(wrapped=Toolset(toolset=FunctionToolset()), prefix="repo")
     openai_bridge = OpenAICompactionBridge(message_count_threshold=4, instructions="compact")
     anthropic_bridge = AnthropicCompactionBridge(
@@ -794,8 +801,8 @@ def test_capability_bridge_helper_and_metadata_edge_paths(
     assert _resolve_mcp_server_id("https://example.com/tools/sse", "explicit-id") == "explicit-id"
     assert _resolve_mcp_server_id("https://example.com/", None) == "example.com"
     assert _resolve_mcp_server_id("urn:acpkit", None) == "acpkit"
-    assert _json_user_location(cast(Any, {"city": "Istanbul", "ignored": object()})) == {
-        "city": "Istanbul"
+    assert _json_user_location(cast("Any", {"city": "Istanbul", "ignored": object()})) == {
+        "city": "Istanbul",
     }
 
     assert len(image_bridge.build_agent_capabilities(session)) == 1
@@ -966,7 +973,7 @@ def test_openai_compaction_bridge_records_visible_start_and_completion() -> None
         instructions="Compact aggressively.",
     )
     capability = bridge.build_capability(session)
-    fake_model = cast(Any, object.__new__(_FakeOpenAIResponsesModel))
+    fake_model = cast("Any", object.__new__(_FakeOpenAIResponsesModel))
     request_context = ModelRequestContext(
         model=fake_model,
         messages=[
@@ -974,14 +981,14 @@ def test_openai_compaction_bridge_records_visible_start_and_completion() -> None
             ModelRequest(parts=[UserPromptPart(content="new")]),
         ],
         model_settings=None,
-        model_request_parameters=cast(Any, SimpleNamespace()),
+        model_request_parameters=cast("Any", SimpleNamespace()),
     )
 
     updated_context = asyncio.run(
         capability.before_model_request(
-            cast(Any, SimpleNamespace()),
+            cast("Any", SimpleNamespace()),
             request_context,
-        )
+        ),
     )
 
     assert len(updated_context.messages) == 2
@@ -1007,7 +1014,7 @@ def test_openai_compaction_bridge_records_visible_start_and_completion() -> None
             "Status: history compacted",
             "Compaction payload stored for round-trip.",
             "Compaction id: cmp-123",
-        )
+        ),
     )
 
 
@@ -1022,7 +1029,7 @@ class _FakeOpenAIResponsesModel(OpenAIResponsesModel):
         from pydantic_ai import CompactionPart
 
         return ModelResponse(
-            parts=[CompactionPart(id="cmp-123", provider_name="openai", provider_details={})]
+            parts=[CompactionPart(id="cmp-123", provider_name="openai", provider_details={})],
         )
 
 
@@ -1091,16 +1098,16 @@ def test_openai_compaction_helpers_cover_trigger_threshold_and_missing_parts() -
     )
 
     request_context = ModelRequestContext(
-        model=cast(Any, object.__new__(_FakeOpenAIResponsesModel)),
+        model=cast("Any", object.__new__(_FakeOpenAIResponsesModel)),
         messages=[
             ModelRequest(parts=[UserPromptPart(content="prompt")]),
             ModelResponse(parts=[]),
             ModelResponse(
-                parts=[CompactionPart(id=None, provider_name="openai", provider_details={})]
+                parts=[CompactionPart(id=None, provider_name="openai", provider_details={})],
             ),
         ],
         model_settings=None,
-        model_request_parameters=cast(Any, SimpleNamespace()),
+        model_request_parameters=cast("Any", SimpleNamespace()),
     )
 
     compacted_part = _extract_compaction_part(request_context.messages)
@@ -1111,7 +1118,7 @@ def test_openai_compaction_helpers_cover_trigger_threshold_and_missing_parts() -
             "Provider: openai",
             "Status: history compacted",
             "Compaction payload stored for round-trip.",
-        )
+        ),
     )
 
     assert (
@@ -1128,9 +1135,9 @@ def test_openai_compaction_helpers_cover_trigger_threshold_and_missing_parts() -
                             provider_name="openai",
                             provider_details={},
                         ),
-                    ]
-                )
-            ]
+                    ],
+                ),
+            ],
         )
         is not None
     )
@@ -1146,20 +1153,20 @@ def test_openai_compaction_bridge_skips_when_not_needed_and_records_failures() -
     skipped_bridge = OpenAICompactionBridge(message_count_threshold=5)
     skipped_capability = skipped_bridge.build_capability(session)
     skipped_context = ModelRequestContext(
-        model=cast(Any, object.__new__(_FakeOpenAIResponsesModel)),
+        model=cast("Any", object.__new__(_FakeOpenAIResponsesModel)),
         messages=[
             ModelRequest(parts=[UserPromptPart(content="old")]),
             ModelRequest(parts=[UserPromptPart(content="new")]),
         ],
         model_settings=None,
-        model_request_parameters=cast(Any, SimpleNamespace()),
+        model_request_parameters=cast("Any", SimpleNamespace()),
     )
 
     unchanged_context = asyncio.run(
         skipped_capability.before_model_request(
-            cast(Any, SimpleNamespace()),
+            cast("Any", SimpleNamespace()),
             skipped_context,
-        )
+        ),
     )
 
     assert unchanged_context is skipped_context
@@ -1171,21 +1178,21 @@ def test_openai_compaction_bridge_skips_when_not_needed_and_records_failures() -
     )
     failing_capability = failing_bridge.build_capability(session)
     failing_context = ModelRequestContext(
-        model=cast(Any, object.__new__(_FailingOpenAIResponsesModel)),
+        model=cast("Any", object.__new__(_FailingOpenAIResponsesModel)),
         messages=[
             ModelRequest(parts=[UserPromptPart(content="old")]),
             ModelRequest(parts=[UserPromptPart(content="new")]),
         ],
         model_settings=None,
-        model_request_parameters=cast(Any, SimpleNamespace()),
+        model_request_parameters=cast("Any", SimpleNamespace()),
     )
 
     with pytest.raises(RuntimeError, match="boom"):
         asyncio.run(
             failing_capability.before_model_request(
-                cast(Any, SimpleNamespace()),
+                cast("Any", SimpleNamespace()),
                 failing_context,
-            )
+            ),
         )
 
     updates = failing_bridge.drain_updates(session, Agent(TestModel()))

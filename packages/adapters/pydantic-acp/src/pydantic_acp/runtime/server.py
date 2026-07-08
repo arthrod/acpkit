@@ -9,7 +9,12 @@ from acp import run_agent
 from acp.interfaces import Agent as AcpAgent
 from pydantic_ai import Agent as PydanticAgent
 
-from ..agent_source import AgentFactory, AgentSource, FactoryAgentSource, StaticAgentSource
+from ..agent_source import (
+    AgentFactory,
+    AgentSource,
+    FactoryAgentSource,
+    StaticAgentSource,
+)
 from ..config import DEFAULT_AGENT_NAME, AdapterConfig
 from ..hook_projection import HookProjectionMap
 from ..projection import ProjectionMap
@@ -70,7 +75,7 @@ def _resolve_agent_source(
     provided_count = sum(provided is not None for provided in (agent, agent_factory, agent_source))
     if provided_count != 1:
         raise ValueError(
-            "Exactly one of `agent`, `agent_factory`, or `agent_source` must be provided."
+            "Exactly one of `agent`, `agent_factory`, or `agent_source` must be provided.",
         )
     if agent is not None:
         return StaticAgentSource(agent)

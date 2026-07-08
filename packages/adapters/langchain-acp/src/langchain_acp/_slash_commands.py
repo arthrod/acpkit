@@ -18,7 +18,7 @@ RESERVED_SLASH_COMMAND_NAMES = frozenset(
         MODEL_COMMAND_NAME,
         TOOLS_COMMAND_NAME,
         MCP_SERVERS_COMMAND_NAME,
-    }
+    },
 )
 
 
@@ -30,7 +30,7 @@ def validate_mode_command_ids(mode_ids: Iterable[str]) -> None:
             raise ValueError("Mode slash command ids must be non-empty after normalization.")
         if any(character.isspace() for character in normalized_id):
             raise ValueError(
-                f"Mode slash command id {mode_id!r} cannot contain whitespace after normalization."
+                f"Mode slash command id {mode_id!r} cannot contain whitespace after normalization.",
             )
         normalized_ids.append(normalized_id)
     duplicate_ids = sorted(
@@ -42,5 +42,5 @@ def validate_mode_command_ids(mode_ids: Iterable[str]) -> None:
     if reserved_ids:
         raise ValueError(
             "Mode slash command ids cannot reuse reserved slash command names "
-            f"({', '.join(reserved_ids)})."
+            f"({', '.join(reserved_ids)}).",
         )

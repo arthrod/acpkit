@@ -87,7 +87,7 @@ def format_diff_preview(
             new_text.strip().splitlines(),
             lineterm="",
             n=context_lines,
-        )
+        ),
     )
     if not include_diff_headers:
         diff_lines = [

@@ -28,9 +28,12 @@ __all__ = ("acp_agent", "agent_factory", "config", "main")
 _AGENT_NAME: Final[str] = "harness-agent"
 _DEFAULT_MODEL_NAME: Final[str] = "openrouter:google/gemini-3-flash-preview"
 _DEFAULT_CODEX_MODEL: Final[str] = "gpt-5.4"
-_WORKSPACE_ROOT: Final[Path] = Path(__file__).resolve().parent / ".harness-agent"
+_DEMO_ROOT: Final[Path] = Path("agent_demos")
+_WORKSPACE_ROOT: Final[Path] = Path.cwd() / _DEMO_ROOT / "harness-agent"
 _SESSION_STORE_ROOT: Final[Path] = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "pydantic-harness"
 )
 _INSTRUCTIONS: Final[str] = (
@@ -108,7 +111,7 @@ def _harness_model(*, instructions: str = _INSTRUCTIONS) -> str | Model[Any]:
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
             "Install `codex-auth-helper`, unset `ACP_HARNESS_CODEX_MODEL`, or set "
-            "`ACP_HARNESS_MODEL` to a pydantic-ai model name before running the harness example."
+            "`ACP_HARNESS_MODEL` to a pydantic-ai model name before running the harness example.",
         ) from exc
     return create_codex_responses_model(
         configured_codex_model or _DEFAULT_CODEX_MODEL,
@@ -130,7 +133,6 @@ def _build_config(*, include_code_mode: bool) -> AdapterConfig:
 
 def _build_agent(session: AcpSessionContext, *, include_code_mode: bool) -> Agent[None, str]:
     """Build a real model-backed agent wired with pydantic-ai-harness capabilities."""
-
     _ensure_workspace()
     harness_bridges = _build_harness_bridges(
         _WORKSPACE_ROOT,

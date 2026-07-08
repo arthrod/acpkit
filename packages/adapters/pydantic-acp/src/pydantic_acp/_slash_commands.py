@@ -3,8 +3,8 @@ from __future__ import annotations as _annotations
 from collections.abc import Iterable
 
 __all__ = (
-    "MCP_SERVERS_COMMAND_NAME",
     "HOOKS_COMMAND_NAME",
+    "MCP_SERVERS_COMMAND_NAME",
     "MODEL_COMMAND_NAME",
     "RESERVED_SLASH_COMMAND_NAMES",
     "THINKING_COMMAND_NAME",
@@ -24,7 +24,7 @@ RESERVED_SLASH_COMMAND_NAMES = frozenset(
         TOOLS_COMMAND_NAME,
         HOOKS_COMMAND_NAME,
         MCP_SERVERS_COMMAND_NAME,
-    }
+    },
 )
 
 
@@ -43,12 +43,12 @@ def validate_mode_command_ids(mode_ids: Iterable[str]) -> None:
     if duplicate_ids:
         duplicate_text = ", ".join(duplicate_ids)
         raise ValueError(
-            f"Mode ids must be unique after normalization. Duplicate ids: {duplicate_text}."
+            f"Mode ids must be unique after normalization. Duplicate ids: {duplicate_text}.",
         )
     conflicting_ids = sorted(set(normalized_ids) & RESERVED_SLASH_COMMAND_NAMES)
     if conflicting_ids:
         conflict_text = ", ".join(conflicting_ids)
         raise ValueError(
             "Mode ids cannot reuse reserved slash command names "
-            f"({conflict_text}). Choose a more specific id outside the reserved keywords."
+            f"({conflict_text}). Choose a more specific id outside the reserved keywords.",
         )

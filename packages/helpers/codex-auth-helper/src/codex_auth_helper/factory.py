@@ -27,7 +27,7 @@ def create_codex_responses_model(
     if instructions is None:
         raise ValueError(
             "`instructions` is required for Codex-backed Pydantic models. "
-            "Pass an explicit system instruction string."
+            "Pass an explicit system instruction string.",
         )
     client = create_codex_async_openai(config=config, http_client=http_client)
     model_settings: OpenAIResponsesModelSettings = {"openai_store": False}
@@ -61,14 +61,13 @@ def create_codex_chat_openai(
     The returned model is pinned to the OpenAI Responses API and reuses the
     same Codex auth flow as the Pydantic helper path.
     """
-
     try:
         from langchain_openai import ChatOpenAI
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
             "Install the optional LangChain dependency first: "
             'uv add "codex-auth-helper[langchain]" or '
-            'pip install "codex-auth-helper[langchain]".'
+            'pip install "codex-auth-helper[langchain]".',
         ) from exc
 
     async_root_client = create_codex_async_openai(config=config, http_client=http_client)
@@ -77,17 +76,17 @@ def create_codex_chat_openai(
     if instructions is None:
         raise ValueError(
             "`instructions` is required for Codex-backed LangChain models. "
-            "Pass an explicit system instruction string."
+            "Pass an explicit system instruction string.",
         )
     if "store" in chat_model_kwargs:
         raise ValueError(
             "Do not pass `model_kwargs['store']`; Codex-backed ChatOpenAI always forces "
-            "`store=False`."
+            "`store=False`.",
         )
     if "instructions" in chat_model_kwargs:
         raise ValueError(
             "Pass `instructions` either through the dedicated parameter or "
-            "`model_kwargs['instructions']`, not both."
+            "`model_kwargs['instructions']`, not both.",
         )
     chat_model_kwargs["instructions"] = instructions
     chat_openai_kwargs: dict[str, Any] = {

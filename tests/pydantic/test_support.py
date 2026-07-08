@@ -43,7 +43,7 @@ def _session() -> AcpSessionContext:
 async def test_pydantic_support_recording_clients_cover_helpers_and_error_paths() -> None:
     client = RecordingClient()
     option = PermissionOption(option_id="allow_once", name="Allow once", kind="allow_once")
-    tool_call = cast(Any, object())
+    tool_call = cast("Any", object())
 
     with pytest.raises(AssertionError, match="unexpected permission request"):
         await client.request_permission([option], "session-1", tool_call)
@@ -83,7 +83,7 @@ async def test_pydantic_support_recording_clients_cover_helpers_and_error_paths(
         await client.ext_method("demo.echo", {"value": 1})
     with pytest.raises(AssertionError, match="unexpected extension notification"):
         await client.ext_notification("demo.note", {"value": 2})
-    assert client.on_connect(cast(Any, object())) is None
+    assert client.on_connect(cast("Any", object())) is None
 
     fs_client = FilesystemRecordingClient()
     assert (

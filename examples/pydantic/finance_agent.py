@@ -25,16 +25,19 @@ from pydantic_ai.tools import DeferredToolRequests, RunContext, ToolDefinition
 
 __all__ = ("FinancePlanPersistenceProvider", "acp_agent", "agent", "config", "main")
 
-_FINANCE_DIR_NAME: Final[str] = ".finance-agent"
+_DEMO_ROOT: Final[Path] = Path("agent_demos")
+_FINANCE_DIR_NAME: Final[str] = "finance-agent"
 _NOTES_DIR_NAME: Final[str] = "notes"
-_PLAN_DIR: Final[Path] = Path(".acpkit") / "plans"
+_PLAN_DIR: Final[Path] = _DEMO_ROOT / _FINANCE_DIR_NAME / "plans"
 _WATCHLIST_TOOL: Final[str] = "list_watchlist"
 _READ_NOTE_TOOL: Final[str] = "read_market_note"
 _WRITE_NOTE_TOOL: Final[str] = "save_market_note"
 _QUOTE_TOOL: Final[str] = "quote_symbol"
 _READ_PREVIEW_CHARS: Final[int] = 4000
 _SESSION_STORE_ROOT: Final[Path] = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "pydantic-finance"
 )
 _MUTATING_TOOLS: Final[frozenset[str]] = frozenset({_WRITE_NOTE_TOOL})
@@ -59,7 +62,7 @@ def _workspace_model_name() -> str | TestModel:
 
 
 def _finance_root(cwd: Path) -> Path:
-    return cwd.resolve() / _FINANCE_DIR_NAME
+    return cwd.resolve() / _DEMO_ROOT / _FINANCE_DIR_NAME
 
 
 def _ensure_finance_workspace(root: Path) -> None:
@@ -171,35 +174,32 @@ agent = Agent(
 @agent.tool_plain
 def describe_finance_surface() -> str:
     """Summarize the ACP-facing features available in this finance example."""
-
     return "\n".join(
         (
             "Finance example features:",
             "- ask/plan/trade tool modes via PrepareToolsBridge",
             "- structured native plan generation in plan mode",
             "- approval-gated note writes with ACP file diffs",
-            "- persisted plan snapshots under .acpkit/plans/",
-        )
+            "- persisted plan snapshots under agent_demos/finance-agent/plans/",
+        ),
     )
 
 
 @agent.tool_plain(name=_WATCHLIST_TOOL)
 def list_watchlist() -> str:
     """List the seeded watchlist and workspace note files."""
-
     finance_root = _finance_root(Path.cwd())
     return "\n\n".join(
         (
             "Seeded symbols:\n" + "\n".join(f"- {symbol}" for symbol in sorted(_QUOTE_BOOK)),
             "Workspace files:\n" + _list_market_files(finance_root),
-        )
+        ),
     )
 
 
 @agent.tool_plain(name=_QUOTE_TOOL)
 def quote_symbol(symbol: str) -> str:
     """Return a deterministic demo quote for a watchlist symbol."""
-
     normalized_symbol = symbol.strip().upper()
     try:
         return _QUOTE_BOOK[normalized_symbol]
@@ -210,14 +210,12 @@ def quote_symbol(symbol: str) -> str:
 @agent.tool_plain(name=_READ_NOTE_TOOL)
 def read_market_note(path: str, max_chars: int = _READ_PREVIEW_CHARS) -> str:
     """Read a finance workspace note relative to the current working directory."""
-
     return _read_market_note(_finance_root(Path.cwd()), path, max_chars=max_chars)
 
 
 @agent.tool_plain(name=_WRITE_NOTE_TOOL, requires_approval=True)
 def save_market_note(path: str, content: str) -> str:
     """Write a finance note inside the local workspace."""
-
     return _save_market_note(_finance_root(Path.cwd()), path, content)
 
 
@@ -258,7 +256,7 @@ config = AdapterConfig(
         FileSystemProjectionMap(
             default_read_tool=_READ_NOTE_TOOL,
             default_write_tool=_WRITE_NOTE_TOOL,
-        )
+        ),
     ],
 )
 acp_agent = create_acp_agent(agent=agent, config=config)

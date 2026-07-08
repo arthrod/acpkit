@@ -8,7 +8,10 @@ import pytest
 from acp.exceptions import RequestError
 from acp.schema import McpServerStdio
 from pydantic_acp.bridges.base import CapabilityBridge
-from pydantic_acp.runtime._agent_state import clear_selected_model_id, set_selected_model_id
+from pydantic_acp.runtime._agent_state import (
+    clear_selected_model_id,
+    set_selected_model_id,
+)
 from pydantic_acp.runtime._session_runtime import (
     _default_available_models,
     _known_codex_model_ids,
@@ -36,7 +39,7 @@ def test_list_sessions_filters_by_cwd_and_close_session_handles_missing(
         agent=Agent(TestModel(custom_output_text="ok")),
         config=AdapterConfig(session_store=MemorySessionStore()),
     )
-    adapter_any = cast(Any, adapter)
+    adapter_any = cast("Any", adapter)
     first = asyncio.run(adapter.new_session(cwd=str(tmp_path / "a"), mcp_servers=[]))
     second = asyncio.run(adapter.new_session(cwd=str(tmp_path / "b"), mcp_servers=[]))
 
@@ -63,14 +66,14 @@ def test_session_runtime_rejects_invalid_model_and_mode_config_types(
                 AdapterModel(
                     model_id="test:model",
                     name="Test Model",
-                    override=cast(Any, agent.model),
-                )
+                    override=cast("Any", agent.model),
+                ),
             ],
             capability_bridges=[
                 PrepareToolsBridge(
                     default_mode_id="chat",
                     modes=[PrepareToolsMode(id="chat", name="Chat", prepare_func=keep_tools)],
-                )
+                ),
             ],
             session_store=MemorySessionStore(),
         ),
@@ -108,7 +111,7 @@ def test_session_runtime_helper_inventory_and_missing_session_paths(
         config=AdapterConfig(session_store=MemorySessionStore()),
     )
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    adapter_any = cast(Any, adapter)
+    adapter_any = cast("Any", adapter)
     stored_session = adapter_any._config.session_store.get(session.session_id)
     assert stored_session is not None
     adapter_any._update_session_mcp_servers(stored_session, [])
@@ -126,7 +129,7 @@ def test_set_session_model_covers_missing_state_and_unconfigured_selection(
         agent=Agent(TestModel(custom_output_text="ok")),
         config=AdapterConfig(session_store=MemorySessionStore()),
     )
-    adapter_any = cast(Any, adapter)
+    adapter_any = cast("Any", adapter)
     runtime = adapter_any._session_runtime
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
@@ -162,7 +165,9 @@ def test_set_session_model_covers_missing_state_and_unconfigured_selection(
 
     monkeypatch.setattr(runtime, "_get_model_selection_state", permissive_model_state)
     monkeypatch.setattr(
-        runtime, "_resolve_unconfigured_model_id", lambda model_id: model_id.strip()
+        runtime,
+        "_resolve_unconfigured_model_id",
+        lambda model_id: model_id.strip(),
     )
     monkeypatch.setattr(runtime, "_remember_default_model", lambda _agent: None)
     monkeypatch.setattr(runtime, "_build_session_surface", fake_build_surface)
@@ -198,10 +203,10 @@ def test_set_config_option_decline_and_bridge_runtime_paths(
         agent=Agent(TestModel(custom_output_text="ok")),
         config=AdapterConfig(
             session_store=MemorySessionStore(),
-            capability_bridges=[cast(Any, BridgeConfigOptionHandler())],
+            capability_bridges=[cast("Any", BridgeConfigOptionHandler())],
         ),
     )
-    adapter_any = cast(Any, adapter)
+    adapter_any = cast("Any", adapter)
     runtime = adapter_any._session_runtime
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
@@ -238,7 +243,7 @@ def test_session_runtime_misc_runtime_helpers_and_serialization(
         agent=agent,
         config=AdapterConfig(session_store=MemorySessionStore()),
     )
-    adapter_any = cast(Any, adapter)
+    adapter_any = cast("Any", adapter)
     runtime = adapter_any._session_runtime
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     stored_session = adapter_any._config.session_store.get(session.session_id)
@@ -274,7 +279,7 @@ def test_session_runtime_misc_runtime_helpers_and_serialization(
             "command": "python",
             "name": "repo",
             "transport": "stdio",
-        }
+        },
     ]
 
     current_model = " "
@@ -283,8 +288,11 @@ def test_session_runtime_misc_runtime_helpers_and_serialization(
     assert (
         asyncio.run(
             runtime._build_config_options(
-                stored_session, agent, model_selection_state=None, mode_state=None
-            )
+                stored_session,
+                agent,
+                model_selection_state=None,
+                mode_state=None,
+            ),
         )
         is None
     )

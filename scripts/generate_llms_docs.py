@@ -254,6 +254,18 @@ DOC_PAGES: tuple[DocPage, ...] = (
         path="docs/testing.md",
     ),
     DocPage(
+        section="Release Notes",
+        title="ACP Kit 1.1.0",
+        summary="ACP-backed Pydantic AI provider bridge, example output paths, and v1.1 compatibility notes.",
+        path="docs/releases/acpkit-1.1.0.md",
+    ),
+    DocPage(
+        section="Release Notes",
+        title="ACP Kit 1.0.0",
+        summary="First stable synchronized workspace release and v1 compatibility contract.",
+        path="docs/releases/acpkit-1.0.0.md",
+    ),
+    DocPage(
         section="Operations",
         title="About ACP Kit",
         summary="Design goals, intended audience, package scope, and project status.",
@@ -332,7 +344,7 @@ def _build_llms_index() -> str:
                     f"- [{page.title}]({page.url})",
                     f"  Source: `{page.path}`",
                     f"  Summary: {page.summary}",
-                )
+                ),
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
@@ -365,7 +377,7 @@ def _build_llms_full() -> str:
                 f"Source: `{page.path}`",
                 "",
                 _load_doc_source(page),
-            )
+            ),
         )
     return "\n".join(lines).rstrip() + "\n"
 

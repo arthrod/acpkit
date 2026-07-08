@@ -65,7 +65,7 @@ class ThinkingBridge(CapabilityBridge):
                     )
                     for value in _THINKING_OPTIONS
                 ],
-            )
+            ),
         ]
 
     def get_model_settings(
@@ -79,7 +79,7 @@ class ThinkingBridge(CapabilityBridge):
             return None
         if current_value == _DISABLED_THINKING_VALUE:
             return Thinking(False).get_model_settings()
-        effort = cast(ThinkingEffort, current_value)
+        effort = cast("ThinkingEffort", current_value)
         return Thinking(effort=effort).get_model_settings()
 
     def get_session_metadata(

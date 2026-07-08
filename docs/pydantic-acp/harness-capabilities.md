@@ -66,7 +66,7 @@ from pydantic_acp import (
     run_acp,
 )
 
-workspace_root = Path(".harness-agent")
+workspace_root = Path("agent_demos/harness-agent")
 
 agent = Agent(
     "openai:gpt-5",

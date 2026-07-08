@@ -16,9 +16,9 @@ Use it when you want ACP-native clients to see truthful:
 - prompt resources such as editor selections, branch diffs, file references, and multimodal input
 - persisted ACP sessions and replayable transcript state
 
-## The Three Main Integration Seams
+## The Main Server Integration Seams
 
-Most integrations use one of these seams.
+Most server-side integrations use one of these seams.
 
 ### `run_acp(...)`
 
@@ -67,6 +67,46 @@ acp_agent = create_acp_agent(agent=agent)
 ```
 
 This is the lower-level construction seam behind `run_acp(...)`.
+
+## ACP Client Provider Bridge
+
+Use `AcpProvider` when the thing you already have is an ACP agent and the host
+application needs to consume it through normal Pydantic AI v2 model/provider
+APIs.
+
+This is the inverse of `create_acp_agent(...)`:
+
+- `create_acp_agent(...)` exposes a `pydantic_ai.Agent` as ACP
+- `AcpProvider` consumes an ACP agent as a Pydantic AI provider/model
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import AcpProvider
+
+# `remote_acp_agent` can be any object implementing the ACP Agent interface.
+provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
+model = provider.model()
+agent = Agent(model)
+
+result = await agent.run("Summarize the current workspace state.")
+print(result.output)
+```
+
+`provider.model()` intentionally leaves ACP model selection to the wrapped
+agent's session default. Pass `provider.model("zed-agent")` only when the
+wrapped ACP agent accepts that concrete `session/set_model` id.
+
+The bridge keeps ownership explicit:
+
+- Pydantic AI owns the outer run, output validation, and normal provider
+  lifecycle.
+- ACP owns the delegated session, ACP-visible updates, and any editor or host
+  capabilities requested by the wrapped agent.
+- Pydantic AI function tools are not executed directly by `AcpModel`; register
+  tools on the ACP agent or expose host capabilities through ACP.
+- `AcpHostBridge` records ACP `session_update` messages and can delegate
+  filesystem, terminal, approval, and extension callbacks to a real ACP host
+  client.
 
 ### `agent_factory=...`
 

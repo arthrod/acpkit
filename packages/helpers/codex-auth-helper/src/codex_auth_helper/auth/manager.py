@@ -100,8 +100,8 @@ class CodexTokenManager:
                         "client_id": self.config.client_id,
                         "grant_type": "refresh_token",
                         "refresh_token": self._state.refresh_token,
-                    }
-                )
+                    },
+                ),
             ),
             headers={"Content-Type": "application/x-www-form-urlencoded"},
         )
@@ -120,7 +120,7 @@ class CodexTokenManager:
                     "refresh_token": _string_value(payload, "refresh_token")
                     or self._state.refresh_token,
                 },
-            }
+            },
         )
         self.store.write_state(refreshed_state)
         return refreshed_state
@@ -140,8 +140,8 @@ class CodexTokenManager:
                             "client_id": self.config.client_id,
                             "grant_type": "refresh_token",
                             "refresh_token": self._state.refresh_token,
-                        }
-                    )
+                        },
+                    ),
                 ),
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
@@ -160,7 +160,7 @@ class CodexTokenManager:
                     "refresh_token": _string_value(payload, "refresh_token")
                     or self._state.refresh_token,
                 },
-            }
+            },
         )
         self.store.write_state(refreshed_state)
         return refreshed_state

@@ -7,7 +7,12 @@ import pytest
 from acp.schema import AgentMessageChunk, PermissionOption, RequestPermissionResponse
 from langchain_core.messages import AIMessage
 
-from .support import GenericFakeChatModel, RecordingACPClient, agent_message_texts, text_block
+from .support import (
+    GenericFakeChatModel,
+    RecordingACPClient,
+    agent_message_texts,
+    text_block,
+)
 
 
 class _RunManager:
@@ -25,7 +30,7 @@ def test_generic_fake_chat_model_support_stream_paths() -> None:
         messages=iter([AIMessage(content="alpha,beta", id="stream-1")]),
         stream_delimiter=",",
     )
-    chunks = list(model._stream([], run_manager=cast(Any, manager)))
+    chunks = list(model._stream([], run_manager=cast("Any", manager)))
     assert [chunk.message.content for chunk in chunks] == ["alpha", "beta"]
     assert manager.tokens == ["alpha", "beta"]
 
@@ -36,12 +41,19 @@ def test_generic_fake_chat_model_support_stream_paths() -> None:
                 AIMessage(
                     content="",
                     id="tool-1",
-                    tool_calls=[{"name": "demo", "args": {}, "id": "call-1", "type": "tool_call"}],
-                )
-            ]
-        )
+                    tool_calls=[
+                        {
+                            "name": "demo",
+                            "args": {},
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
+                ),
+            ],
+        ),
     )
-    tool_chunks = list(tool_model._stream([], run_manager=cast(Any, tool_manager)))
+    tool_chunks = list(tool_model._stream([], run_manager=cast("Any", tool_manager)))
     assert len(tool_chunks) == 1
     assert tool_manager.tokens == [""]
 
@@ -50,16 +62,16 @@ def test_generic_fake_chat_model_support_stream_paths() -> None:
 
     invalid_message_model = GenericFakeChatModel(messages=iter(["ignored"]))
     invalid_message_model._generate = cast(  # type: ignore[method-assign]
-        Any,
+        "Any",
         lambda *args, **kwargs: SimpleNamespace(
-            generations=[SimpleNamespace(message=cast(Any, object()))]
+            generations=[SimpleNamespace(message=cast("Any", object()))],
         ),
     )
     with pytest.raises(ValueError, match="Expected `AIMessage`"):
         list(invalid_message_model._stream([]))
 
     invalid_content_model = GenericFakeChatModel(
-        messages=iter([AIMessage(content=cast(Any, ["bad-content"]), id="invalid-1")])
+        messages=iter([AIMessage(content=cast("Any", ["bad-content"]), id="invalid-1")]),
     )
     with pytest.raises(ValueError, match="Expected string content"):
         list(invalid_content_model._stream([]))
@@ -69,7 +81,7 @@ def test_generic_fake_chat_model_support_stream_paths() -> None:
 async def test_langchain_recording_acp_client_support_helpers() -> None:
     client = RecordingACPClient()
     option = PermissionOption(option_id="allow_once", name="Allow once", kind="allow_once")
-    tool_call = cast(Any, object())
+    tool_call = cast("Any", object())
 
     with pytest.raises(AssertionError, match="unexpected permission request"):
         await client.request_permission([option], "session-1", tool_call)
@@ -116,4 +128,4 @@ async def test_langchain_recording_acp_client_support_helpers() -> None:
     with pytest.raises(AssertionError, match="unexpected extension notification"):
         await client.ext_notification("demo.note", {"value": 2})
 
-    assert client.on_connect(cast(Any, object())) is None
+    assert client.on_connect(cast("Any", object())) is None

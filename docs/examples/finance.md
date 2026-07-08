@@ -41,7 +41,8 @@ acpkit run --addr ws://127.0.0.1:8080/acp/ws
 
 - the module exports `agent`, `config`, `acp_agent`, and `main`; use
   `acp_agent` when CLI or remote hosting must preserve the custom configuration
-- `FinancePlanPersistenceProvider` writes ACP plans into `.acpkit/plans/`
+- `FinancePlanPersistenceProvider` writes ACP plans into
+  `agent_demos/finance-agent/plans/`
 - `PrepareToolsBridge` keeps `ask`, `plan`, and `trade` behaviors explicit instead of scattering them across separate examples
 - `FileSystemProjectionMap` turns note reads and writes into rich ACP diffs
 - `NativeApprovalBridge` keeps mutating writes truthfully approval-gated

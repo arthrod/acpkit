@@ -109,7 +109,7 @@ def test_thinking_bridge_integration_exposes_ui_option_and_sets_run_effort(
             config_id="thinking",
             session_id=session.session_id,
             value="high",
-        )
+        ),
     )
     assert update_response is not None
     assert update_response.config_options is not None
@@ -120,7 +120,7 @@ def test_thinking_bridge_integration_exposes_ui_option_and_sets_run_effort(
         adapter.prompt(
             prompt=[text_block("Use the selected thinking effort.")],
             session_id=session.session_id,
-        )
+        ),
     )
     assert observed_thinking[-1] == "high"
 
@@ -129,12 +129,12 @@ def test_thinking_bridge_integration_exposes_ui_option_and_sets_run_effort(
             config_id="thinking",
             session_id=session.session_id,
             value="off",
-        )
+        ),
     )
     asyncio.run(
         adapter.prompt(
             prompt=[text_block("Disable thinking for this run.")],
             session_id=session.session_id,
-        )
+        ),
     )
     assert observed_thinking[-1] is False

@@ -94,7 +94,9 @@ async def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
     assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
 
 
-async def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> None:
+async def test_deferred_approval_deny_flow_returns_denial_output(
+    tmp_path: Path,
+) -> None:
     agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
@@ -163,7 +165,7 @@ async def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
     assert tool_updates[1].status == "failed"
     assert tool_updates[1].raw_output == "Permission request cancelled."
 
-    stored_session = cast(Any, adapter)._config.session_store.get(new_session_response.session_id)
+    stored_session = cast("Any", adapter)._config.session_store.get(new_session_response.session_id)
     assert stored_session is not None
     message_history = load_message_history(stored_session.message_history_json)
     assert not any(
@@ -197,8 +199,8 @@ async def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceba
                                 "dangerous",
                                 {"path": "boom.txt"},
                                 tool_call_id="dangerous-call",
-                            )
-                        ]
+                            ),
+                        ],
                     )
         raise AssertionError("expected the failing tool call to be requested")  # pragma: no cover
 
@@ -220,7 +222,7 @@ async def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceba
     adapter.on_connect(client)
 
     session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
-    stored_session = cast(Any, adapter)._config.session_store.get(session_response.session_id)
+    stored_session = cast("Any", adapter)._config.session_store.get(session_response.session_id)
     assert stored_session is not None
     stored_session.message_history_json = dump_message_history(
         [
@@ -231,13 +233,13 @@ async def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceba
                         "dangling_tool",
                         {"path": "a"},
                         tool_call_id="call-1",
-                    )
+                    ),
                 ],
                 model_name="test",
             ),
-        ]
+        ],
     )
-    cast(Any, adapter)._config.session_store.save(stored_session)
+    cast("Any", adapter)._config.session_store.save(stored_session)
 
     with pytest.raises(RuntimeError, match="tool exploded"):
         await adapter.prompt(
@@ -245,7 +247,7 @@ async def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceba
             session_id=session_response.session_id,
         )
 
-    updated_session = cast(Any, adapter)._config.session_store.get(session_response.session_id)
+    updated_session = cast("Any", adapter)._config.session_store.get(session_response.session_id)
     assert updated_session is not None
     message_history = load_message_history(updated_session.message_history_json)
     assert not any(
@@ -486,7 +488,8 @@ async def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
             raise AssertionError("remembered policy should not be rewritten")
 
         def export_state(
-            self, session: AcpSessionContext
+            self,
+            session: AcpSessionContext,
         ) -> dict[str, JsonValue]:  # pragma: no cover
             del session
             raise AssertionError("export_state is metadata-only, not live approval lookup")
@@ -517,7 +520,9 @@ async def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
     assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
 
 
-def test_session_metadata_approval_policy_store_reads_valid_policy(tmp_path: Path) -> None:
+def test_session_metadata_approval_policy_store_reads_valid_policy(
+    tmp_path: Path,
+) -> None:
     session = AcpSessionContext(
         session_id="approval-store",
         cwd=tmp_path,

@@ -362,13 +362,13 @@ class _Phase5StateBridge(BufferedCapabilityBridge):
         default_factory=lambda: [
             ModelInfo(model_id="bridge-model", name="Bridge Model"),
             ModelInfo(model_id="pro", name="Pro"),
-        ]
+        ],
     )
     modes: list[SessionMode] = field(
         default_factory=lambda: [
             SessionMode(id="ask", name="Ask"),
             SessionMode(id="plan", name="Plan"),
-        ]
+        ],
     )
 
     def get_model_state(self, session: AcpSessionContext) -> ModelSelectionState:
@@ -406,7 +406,7 @@ class _Phase5StateBridge(BufferedCapabilityBridge):
                 name="Bridge Flag",
                 type="boolean",
                 current_value=bool(session.config_values.get("bridge_flag", False)),
-            )
+            ),
         ]
 
     def set_config_option(
@@ -454,7 +454,7 @@ def _make_session(*, session_id: str = "session-1", cwd: Path | None = None) -> 
 
 def _make_adapter(*, config: AdapterConfig | None = None) -> LangChainAcpAgent:
     return LangChainAcpAgent(
-        StaticGraphSource(graph=cast(Any, object())),
+        StaticGraphSource(graph=cast("Any", object())),
         config=config or AdapterConfig(),
     )
 
@@ -485,7 +485,7 @@ def test_native_approval_bridge_handles_success_cancel_and_invalid_paths() -> No
     session = _make_session()
     decision = asyncio.run(
         bridge.resolve_action_requests(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             action_requests=[
                 {"name": "read_file", "args": {"path": "notes.txt"}},
@@ -502,7 +502,7 @@ def test_native_approval_bridge_handles_success_cancel_and_invalid_paths() -> No
                 },
             ],
             classifier=classifier,
-        )
+        ),
     )
 
     assert decision == ApprovalDecision(decisions=[{"type": "approve"}, {"type": "reject"}])
@@ -515,24 +515,24 @@ def test_native_approval_bridge_handles_success_cancel_and_invalid_paths() -> No
     client.queue_permission_cancelled()
     cancelled = asyncio.run(
         bridge.resolve_action_requests(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             action_requests=[{"name": "execute_shell", "args": {"command": "pwd"}}],
             review_configs=[{"action_name": "execute_shell", "allowed_decisions": ["approve"]}],
             classifier=classifier,
-        )
+        ),
     )
     assert cancelled.cancelled is True
 
     with pytest.raises(RequestError):
         asyncio.run(
             bridge.resolve_action_requests(
-                client=cast(AcpClient, RecordingACPClient()),
+                client=cast("AcpClient", RecordingACPClient()),
                 session=session,
-                action_requests=[cast(dict[str, Any], "bad")],
+                action_requests=[cast("dict[str, Any]", "bad")],
                 review_configs=[],
                 classifier=classifier,
-            )
+            ),
         )
 
 
@@ -550,23 +550,23 @@ def test_native_approval_bridge_supports_persistent_choices_and_projection_build
 
     first_decision = asyncio.run(
         bridge.resolve_action_requests(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             action_requests=[{"name": "read_file", "args": {"path": "notes.txt"}}],
             review_configs=[{"action_name": "read_file", "allowed_decisions": ["approve"]}],
             classifier=classifier,
             projection_map=FileSystemProjectionMap(read_tool_names=frozenset({"read_file"})),
-        )
+        ),
     )
     second_decision = asyncio.run(
         bridge.resolve_action_requests(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             action_requests=[{"name": "read_file", "args": {"path": "notes.txt"}}],
             review_configs=[{"action_name": "read_file", "allowed_decisions": ["approve"]}],
             classifier=classifier,
             projection_map=FileSystemProjectionMap(read_tool_names=frozenset({"read_file"})),
-        )
+        ),
     )
 
     assert first_decision.decisions == [{"type": "approve"}]
@@ -584,12 +584,12 @@ def test_native_approval_bridge_supports_persistent_choices_and_projection_build
     with pytest.raises(RequestError):
         asyncio.run(
             bridge.resolve_action_requests(
-                client=cast(AcpClient, RecordingACPClient()),
+                client=cast("AcpClient", RecordingACPClient()),
                 session=session,
                 action_requests=[{"name": "write_file", "args": {"path": "a.txt"}}],
                 review_configs=[{"action_name": "write_file", "allowed_decisions": ["edit"]}],
                 classifier=classifier,
-            )
+            ),
         )
 
     client = RecordingACPClient()
@@ -598,34 +598,34 @@ def test_native_approval_bridge_supports_persistent_choices_and_projection_build
     with pytest.raises(RequestError):
         asyncio.run(
             unexpected_bridge.resolve_action_requests(
-                client=cast(AcpClient, client),
+                client=cast("AcpClient", client),
                 session=_make_session(),
                 action_requests=[{"name": "read_file", "args": {"path": "notes.txt"}}],
                 review_configs=[],
                 classifier=classifier,
-            )
+            ),
         )
 
     with pytest.raises(RequestError):
         asyncio.run(
             bridge.resolve_action_requests(
-                client=cast(AcpClient, RecordingACPClient()),
+                client=cast("AcpClient", RecordingACPClient()),
                 session=session,
                 action_requests=[{"name": "read_file", "args": "bad"}],
                 review_configs=[],
                 classifier=classifier,
-            )
+            ),
         )
 
     with pytest.raises(RequestError):
         asyncio.run(
             bridge.resolve_action_requests(
-                client=cast(AcpClient, RecordingACPClient()),
+                client=cast("AcpClient", RecordingACPClient()),
                 session=session,
                 action_requests=[{"name": 1, "args": {"path": "notes.txt"}}],
                 review_configs=[],
                 classifier=classifier,
-            )
+            ),
         )
 
 
@@ -639,7 +639,7 @@ def test_approval_store_and_support_shims_cover_empty_and_reject_paths() -> None
     session.metadata[store.metadata_key] = {"bad": "maybe"}
     assert store.get_policy(session, "bad") is None
 
-    store.set_policy(session, "dangerous", cast(ApprovalPolicy, "reject"))
+    store.set_policy(session, "dangerous", cast("ApprovalPolicy", "reject"))
     assert store.export_state(session) == {"bad": "maybe", "dangerous": "reject"}
 
     bridge = NativeApprovalBridge(enable_persistent_choices=True)
@@ -648,12 +648,12 @@ def test_approval_store_and_support_shims_cover_empty_and_reject_paths() -> None
     classifier = DefaultToolClassifier()
     decision = asyncio.run(
         bridge.resolve_action_requests(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=_make_session(session_id="reject-always"),
             action_requests=[{"id": "action-1", "name": "terminal", "args": {"command": "pwd"}}],
             review_configs=[],
             classifier=classifier,
-        )
+        ),
     )
     assert decision.decisions == [{"type": "reject"}]
     assert client.permission_requests[0][2].tool_call_id == "action-1"
@@ -662,12 +662,12 @@ def test_approval_store_and_support_shims_cover_empty_and_reject_paths() -> None
     bridge.policy_store.set_policy(rejecting_session, "terminal", "reject")
     remembered = asyncio.run(
         bridge.resolve_action_requests(
-            client=cast(AcpClient, RecordingACPClient()),
+            client=cast("AcpClient", RecordingACPClient()),
             session=rejecting_session,
             action_requests=[{"name": "terminal", "args": {"command": "pwd"}}],
             review_configs=[],
             classifier=classifier,
-        )
+        ),
     )
     assert remembered.decisions == [{"type": "reject"}]
 
@@ -680,7 +680,7 @@ def test_approval_store_and_support_shims_cover_empty_and_reject_paths() -> None
 
     assert supports_projection_aware_approval_bridge(None) is False
     assert supports_projection_aware_approval_bridge(NativeApprovalBridge()) is True
-    assert supports_projection_aware_approval_bridge(cast(Any, object())) is False
+    assert supports_projection_aware_approval_bridge(cast("Any", object())) is False
 
 
 def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
@@ -715,7 +715,8 @@ def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
 
     with pytest.raises(ValueError, match="already be normalized"):
         validate_custom_commands(
-            [AvailableCommand(name=" Ping ", description="x")], mode_state=None
+            [AvailableCommand(name=" Ping ", description="x")],
+            mode_state=None,
         )
     with pytest.raises(ValueError, match=r"\^\[a-z\]\[a-z0-9-\]\*\$"):
         validate_custom_commands([AvailableCommand(name="9ping", description="x")], mode_state=None)
@@ -731,7 +732,8 @@ def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
         validate_custom_commands([AvailableCommand(name="tools", description="x")], mode_state=None)
     with pytest.raises(ValueError, match="active mode ids"):
         validate_custom_commands(
-            [AvailableCommand(name="ask", description="x")], mode_state=mode_state
+            [AvailableCommand(name="ask", description="x")],
+            mode_state=mode_state,
         )
     validate_custom_commands([AvailableCommand(name="ping", description="x")], mode_state=None)
 
@@ -753,7 +755,14 @@ def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
     assert render_mcp_server_listing([]) == "No MCP servers are currently attached."
     assert (
         render_mcp_server_listing(
-            [McpServerInfo(name="repo", transport="http", target="https://repo", source="session")]
+            [
+                McpServerInfo(
+                    name="repo",
+                    transport="http",
+                    target="https://repo",
+                    source="session",
+                )
+            ],
         )
         == "MCP servers:\n- repo (http, session): https://repo"
     )
@@ -768,12 +777,12 @@ def test_slash_command_helpers_cover_graph_tool_and_mcp_server_edge_paths() -> N
                         _tools_by_name={
                             "read": SimpleNamespace(description="Read file"),
                             1: object(),
-                        }
-                    )
+                        },
+                    ),
                 ),
                 "other": SimpleNamespace(data=object()),
-            }
-        )
+            },
+        ),
     )
     assert list_graph_tools(graph) == [ToolInfo(name="read", description="Read file")]
     assert list_graph_tools(SimpleNamespace(get_graph=lambda: SimpleNamespace(nodes=None))) == []
@@ -783,7 +792,12 @@ def test_slash_command_helpers_cover_graph_tool_and_mcp_server_edge_paths() -> N
     session.mcp_servers = [
         {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
         {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
-        {"name": "repo-stdio", "type": "stdio", "command": "python", "args": ["server.py"]},
+        {
+            "name": "repo-stdio",
+            "type": "stdio",
+            "command": "python",
+            "args": ["server.py"],
+        },
         {"name": "stdio-no-args", "type": "stdio", "command": "python"},
         {"name": "bad-transport"},
         {"transport": "http"},
@@ -794,8 +808,8 @@ def test_slash_command_helpers_cover_graph_tool_and_mcp_server_edge_paths() -> N
             {"name": "bridge", "transport": "sse", "description": "docs"},
             {"name": "bad-bridge", "transport": 1},
             "bad",
-            cast(Any, {1: "bad"}),
-        ]
+            cast("Any", {1: "bad"}),
+        ],
     }
     infos = extract_session_mcp_servers(session)
     assert [(info.name, info.transport, info.source) for info in infos] == [
@@ -816,8 +830,8 @@ def test_static_slash_command_provider_handles_match_and_miss() -> None:
             StaticSlashCommand(
                 command=AvailableCommand(name="ping", description="Return pong."),
                 handler=lambda request: SlashCommandResult(text=request.name),
-            )
-        ]
+            ),
+        ],
     )
     request = SlashCommandRequest(
         name="ping",
@@ -852,7 +866,7 @@ def test_hook_projection_and_external_hook_bridge_cover_hidden_and_start_only_pa
     hidden_bridge.record_event(hidden_session, hidden_event)
     assert hidden_bridge.drain_updates(hidden_session) is None
 
-    projection_map = cast(Any, ExternalHookEventBridge()).projection_map
+    projection_map = cast("Any", ExternalHookEventBridge()).projection_map
     assert projection_map.build_start_update(tool_call_id="x", event=hidden_event) is None
     assert projection_map.build_progress_update(tool_call_id="x", event=hidden_event) is None
 
@@ -871,11 +885,10 @@ def test_hook_projection_and_external_hook_bridge_cover_hidden_and_start_only_pa
 
         def build_progress_update(self, *, tool_call_id: str, event: HookEvent) -> None:
             del tool_call_id, event
-            return None
 
     bridge = ExternalHookEventBridge(
         emission_mode="start_only",
-        projection_map=cast(Any, _StartOnlyProjectionMap()),
+        projection_map=cast("Any", _StartOnlyProjectionMap()),
     )
     session = _make_session(session_id="external-hooks")
     bridge.record_event(
@@ -900,7 +913,7 @@ def test_hook_projection_and_external_hook_bridge_cover_hidden_and_start_only_pa
     assert len(no_status_updates) == 1
 
     fallback_bridge = ExternalHookEventBridge(
-        projection_map=cast(Any, _StartOnlyProjectionMap()),
+        projection_map=cast("Any", _StartOnlyProjectionMap()),
     )
     fallback_bridge.record_event(
         session,
@@ -933,7 +946,9 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
             self.result = result
 
         def available_commands(
-            self, session: AcpSessionContext, graph: Any
+            self,
+            session: AcpSessionContext,
+            graph: Any,
         ) -> list[AvailableCommand]:
             del session, graph
             return [AvailableCommand(name="ping", description="pong")]
@@ -943,17 +958,17 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
             return self.result
 
     adapter = LangChainAcpAgent(
-        cast(Any, _NullGraphSource()),
+        cast("Any", _NullGraphSource()),
         config=AdapterConfig(),
     )
     client = _EmptyClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = _make_session()
     null_graph_source = _NullGraphSource()
     assert asyncio.run(null_graph_source.get_graph(session)) is null_graph_source.graph
     custom_provider = _CustomProvider(None)
     assert [command.name for command in custom_provider.available_commands(session, object())] == [
-        "ping"
+        "ping",
     ]
     assert (
         asyncio.run(
@@ -962,7 +977,7 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 prompt=[],
                 acknowledged_message_id=None,
-            )
+            ),
         )
         is None
     )
@@ -971,9 +986,9 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
             adapter._maybe_handle_slash_prompt(
                 session=session,
                 graph=object(),
-                prompt=[cast(Any, object())],
+                prompt=[cast("Any", object())],
                 acknowledged_message_id=None,
-            )
+            ),
         )
         is None
     )
@@ -984,16 +999,16 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 prompt=[TextContentBlock(type="text", text="/unknown")],
                 acknowledged_message_id=None,
-            )
+            ),
         )
         is None
     )
 
     provider_adapter = LangChainAcpAgent(
-        cast(Any, _NullGraphSource()),
-        config=AdapterConfig(slash_command_provider=cast(Any, custom_provider)),
+        cast("Any", _NullGraphSource()),
+        config=AdapterConfig(slash_command_provider=cast("Any", custom_provider)),
     )
-    provider_adapter.on_connect(cast(AcpClient, client))
+    provider_adapter.on_connect(cast("AcpClient", client))
     assert (
         asyncio.run(
             provider_adapter._maybe_handle_slash_prompt(
@@ -1001,20 +1016,21 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 prompt=[TextContentBlock(type="text", text="/ping")],
                 acknowledged_message_id="msg-1",
-            )
+            ),
         )
         is None
     )
 
     handled_false_adapter = LangChainAcpAgent(
-        cast(Any, _NullGraphSource()),
+        cast("Any", _NullGraphSource()),
         config=AdapterConfig(
             slash_command_provider=cast(
-                Any, _CustomProvider(SlashCommandResult(handled=False, text="ignored"))
-            )
+                "Any",
+                _CustomProvider(SlashCommandResult(handled=False, text="ignored")),
+            ),
         ),
     )
-    handled_false_adapter.on_connect(cast(AcpClient, client))
+    handled_false_adapter.on_connect(cast("AcpClient", client))
     assert (
         asyncio.run(
             handled_false_adapter._maybe_handle_slash_prompt(
@@ -1022,7 +1038,7 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 prompt=[TextContentBlock(type="text", text="/ping")],
                 acknowledged_message_id="msg-2",
-            )
+            ),
         )
         is None
     )
@@ -1033,22 +1049,22 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
             AgentMessageChunk(
                 session_update="agent_message_chunk",
                 content=TextContentBlock(type="text", text="update-only"),
-            )
+            ),
         ],
         refresh_session_surface=False,
     )
     no_text_adapter = LangChainAcpAgent(
-        cast(Any, _NullGraphSource()),
-        config=AdapterConfig(slash_command_provider=cast(Any, _CustomProvider(no_text_result))),
+        cast("Any", _NullGraphSource()),
+        config=AdapterConfig(slash_command_provider=cast("Any", _CustomProvider(no_text_result))),
     )
-    no_text_adapter.on_connect(cast(AcpClient, client))
+    no_text_adapter.on_connect(cast("AcpClient", client))
     response = asyncio.run(
         no_text_adapter._maybe_handle_slash_prompt(
             session=session,
             graph=object(),
             prompt=[TextContentBlock(type="text", text="/ping")],
             acknowledged_message_id="msg-3",
-        )
+        ),
     )
     assert response is not None
     assert response.stop_reason == "end_turn"
@@ -1073,10 +1089,10 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
     assert unavailable_mode_state.current_mode_id is None
 
     mode_adapter = LangChainAcpAgent(
-        cast(Any, _NullGraphSource()),
+        cast("Any", _NullGraphSource()),
         config=AdapterConfig(capability_bridges=[_ModeBridge()]),
     )
-    mode_adapter.on_connect(cast(AcpClient, client))
+    mode_adapter.on_connect(cast("AcpClient", client))
     assert (
         asyncio.run(
             mode_adapter._handle_builtin_slash_command(
@@ -1084,7 +1100,7 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 command_name="review",
                 argument=None,
-            )
+            ),
         )
         == "Mode is unavailable or invalid"
     )
@@ -1103,10 +1119,10 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
     assert none_mode_state.current_mode_id is None
 
     none_mode_adapter = LangChainAcpAgent(
-        cast(Any, _NullGraphSource()),
+        cast("Any", _NullGraphSource()),
         config=AdapterConfig(capability_bridges=[_NoneModeBridge()]),
     )
-    none_mode_adapter.on_connect(cast(AcpClient, client))
+    none_mode_adapter.on_connect(cast("AcpClient", client))
 
     async def _return_none_mode(
         _session: AcpSessionContext,
@@ -1118,7 +1134,7 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
             enable_config_option=False,
         )
 
-    cast(Any, none_mode_adapter)._set_mode = _return_none_mode
+    cast("Any", none_mode_adapter)._set_mode = _return_none_mode
     assert (
         asyncio.run(
             none_mode_adapter._handle_builtin_slash_command(
@@ -1126,7 +1142,7 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 command_name="review",
                 argument=None,
-            )
+            ),
         )
         == "Mode is unavailable or invalid"
     )
@@ -1144,10 +1160,10 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
     assert model_state.current_model_id is None
 
     model_adapter = LangChainAcpAgent(
-        cast(Any, _NullGraphSource()),
+        cast("Any", _NullGraphSource()),
         config=AdapterConfig(capability_bridges=[_ModelBridge()]),
     )
-    model_adapter.on_connect(cast(AcpClient, client))
+    model_adapter.on_connect(cast("AcpClient", client))
     assert (
         asyncio.run(
             model_adapter._handle_builtin_slash_command(
@@ -1155,7 +1171,7 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 command_name="model",
                 argument=None,
-            )
+            ),
         )
         == "Current model: unavailable"
     )
@@ -1166,7 +1182,7 @@ def test_adapter_slash_helpers_cover_unhandled_and_surface_refresh_paths() -> No
                 graph=object(),
                 command_name="model",
                 argument="bad-model",
-            )
+            ),
         )
         == "Model is unavailable or invalid"
     )
@@ -1188,7 +1204,7 @@ def test_phase5_builtin_bridges_cover_direct_paths(tmp_path: Path) -> None:
         available_models=(
             ModelInfo(model_id="base", name="Base"),
             ModelInfo(model_id="pro", name="Pro"),
-        )
+        ),
     )
     assert model_bridge.get_model_state(session) is not None
     assert model_bridge.set_model(session, "missing") is None
@@ -1199,7 +1215,7 @@ def test_phase5_builtin_bridges_cover_direct_paths(tmp_path: Path) -> None:
         available_modes=(
             SessionMode(id="ask", name="Ask"),
             SessionMode(id="plan", name="Plan"),
-        )
+        ),
     )
     assert mode_bridge.get_mode_state(session) is not None
     assert mode_bridge.set_mode(session, "missing") is None
@@ -1213,8 +1229,8 @@ def test_phase5_builtin_bridges_cover_direct_paths(tmp_path: Path) -> None:
                 name="Safe Tools",
                 type="boolean",
                 current_value=True,
-            )
-        ]
+            ),
+        ],
     )
     config_bridge = ConfigOptionsBridge(provider=config_provider)
     assert asyncio.run(_await_value(config_bridge.get_config_options(session))) is not None
@@ -1229,7 +1245,7 @@ def test_phase5_builtin_bridges_cover_direct_paths(tmp_path: Path) -> None:
     assert deepagents_metadata["cwd"] == str(tmp_path)
     assert deepagents_metadata["plan_generation_type"] == "tools"
     assert deepagents_bridge.extract_plan_entries(
-        {"todos": [{"content": "Inspect repo", "status": "pending", "priority": "high"}]}
+        {"todos": [{"content": "Inspect repo", "status": "pending", "priority": "high"}]},
     ) == [PlanEntry(content="Inspect repo", status="pending", priority="high")]
     assert deepagents_bridge.extract_plan_entries(
         {
@@ -1237,8 +1253,8 @@ def test_phase5_builtin_bridges_cover_direct_paths(tmp_path: Path) -> None:
                 "bad",
                 {"content": 1},
                 {"content": "Bad status", "status": "???", "priority": "???"},
-            ]
-        }
+            ],
+        },
     ) == [PlanEntry(content="Bad status", status="pending", priority="medium")]
 
     @dataclass(slots=True, kw_only=True)
@@ -1250,7 +1266,7 @@ def test_phase5_builtin_bridges_cover_direct_paths(tmp_path: Path) -> None:
                     AgentMessageChunk(
                         session_update="agent_message_chunk",
                         content=TextContentBlock(type="text", text="buffered"),
-                    )
+                    ),
                 ],
             )
             self._record_completed_event(session, title="buffered-complete", kind="other")
@@ -1285,8 +1301,8 @@ def test_phase5_graph_bridge_builder_and_manager_cover_custom_and_builtin_paths(
                 name="Safe Tools",
                 type="boolean",
                 current_value=True,
-            )
-        ]
+            ),
+        ],
     )
 
     @dataclass(slots=True, kw_only=True)
@@ -1318,15 +1334,15 @@ def test_phase5_graph_bridge_builder_and_manager_cover_custom_and_builtin_paths(
             capability_bridges=[
                 _ContributionBridge(),
                 cast(
-                    CapabilityBridge,
+                    "CapabilityBridge",
                     ToolSurfaceBridge(
-                        tool_kinds={"shell_exec": cast(ToolKind, "execute")},
+                        tool_kinds={"shell_exec": cast("ToolKind", "execute")},
                         approval_policy_keys={"shell_exec": "shell-policy"},
                     ),
                 ),
             ],
             config_options_provider=config_provider,
-        )
+        ),
     )
     manager = builder.build_manager()
 
@@ -1339,9 +1355,9 @@ def test_phase5_graph_bridge_builder_and_manager_cover_custom_and_builtin_paths(
     assert asyncio.run(manager.set_config_option(session, "safe_tools", False)) is not None
     metadata_sections = manager.get_metadata_sections(session)
     assert metadata_sections["deepagents"] is not None
-    assert cast(dict[str, Any], metadata_sections["deepagents"])["cwd"] == str(tmp_path)
+    assert cast("dict[str, Any]", metadata_sections["deepagents"])["cwd"] == str(tmp_path)
     contributions = builder.build_graph_contributions(session)
-    deepagents_metadata = cast(dict[str, Any], contributions.metadata["deepagents"])
+    deepagents_metadata = cast("dict[str, Any]", contributions.metadata["deepagents"])
     assert deepagents_metadata["cwd"] == str(tmp_path)
     assert deepagents_metadata["plan_generation_type"] == "tools"
     assert contributions.middleware == ("middleware",)
@@ -1365,21 +1381,21 @@ def test_phase5_runtime_uses_custom_capability_bridges_for_state_metadata_and_up
                         (),
                         "messages",
                         (AIMessageChunk(content="Bridge graph ready."), {}),
-                    )
-                ]
-            ]
+                    ),
+                ],
+            ],
         )
 
     bridge = _Phase5StateBridge()
     adapter = cast(
-        LangChainAcpAgent,
+        "LangChainAcpAgent",
         create_acp_agent(
             graph_factory=graph_factory,
             config=AdapterConfig(capability_bridges=[bridge]),
         ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     created = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     assert created.models is not None
@@ -1390,20 +1406,20 @@ def test_phase5_runtime_uses_custom_capability_bridges_for_state_metadata_and_up
     assert [option.id for option in created.config_options] == ["bridge_flag"]
 
     session = adapter._require_session(created.session_id)
-    custom_metadata = cast(dict[str, Any], session.metadata["custom"])
-    deepagents_metadata = cast(dict[str, Any], session.metadata["deepagents"])
+    custom_metadata = cast("dict[str, Any]", session.metadata["custom"])
+    deepagents_metadata = cast("dict[str, Any]", session.metadata["deepagents"])
     assert custom_metadata["model"] == "bridge-model"
     assert deepagents_metadata["cwd"] == str(tmp_path)
 
     assert asyncio.run(adapter.set_session_model("pro", session_id=created.session_id)) is not None
     assert asyncio.run(adapter.set_session_mode("plan", session_id=created.session_id)) is not None
     config_response = asyncio.run(
-        adapter.set_config_option("bridge_flag", session_id=created.session_id, value=True)
+        adapter.set_config_option("bridge_flag", session_id=created.session_id, value=True),
     )
     assert config_response is not None
 
     updated_session = adapter._require_session(created.session_id)
-    updated_custom_metadata = cast(dict[str, Any], updated_session.metadata["custom"])
+    updated_custom_metadata = cast("dict[str, Any]", updated_session.metadata["custom"])
     assert updated_custom_metadata["model"] == "pro"
     assert updated_custom_metadata["mode"] == "plan"
     metadata_sections = (
@@ -1411,8 +1427,8 @@ def test_phase5_runtime_uses_custom_capability_bridges_for_state_metadata_and_up
         .build_manager()
         .get_metadata_sections(updated_session)
     )
-    assert cast(dict[str, Any], metadata_sections["custom"])["model"] == "pro"
-    assert cast(dict[str, Any], metadata_sections["deepagents"])["cwd"] == str(tmp_path)
+    assert cast("dict[str, Any]", metadata_sections["custom"])["model"] == "pro"
+    assert cast("dict[str, Any]", metadata_sections["deepagents"])["cwd"] == str(tmp_path)
     buffered_updates = [
         update
         for _, update in client.updates
@@ -1424,7 +1440,7 @@ def test_phase5_runtime_uses_custom_capability_bridges_for_state_metadata_and_up
         adapter.prompt(
             prompt=[TextContentBlock(type="text", text="hello")],
             session_id=created.session_id,
-        )
+        ),
     )
     assert prompt_response.stop_reason == "end_turn"
     assert captured_metadata[-1]["custom"]["model"] == "pro"
@@ -1461,7 +1477,7 @@ def test_phase5_bridge_defaults_and_adapter_edges_cover_remaining_paths(
             )
 
     async_manager = GraphBridgeBuilder.from_config(
-        AdapterConfig(capability_bridges=[_AsyncStateBridge()])
+        AdapterConfig(capability_bridges=[_AsyncStateBridge()]),
     ).build_manager()
     assert asyncio.run(async_manager.get_model_state(session)) is not None
     assert asyncio.run(async_manager.get_mode_state(session)) is not None
@@ -1472,11 +1488,11 @@ def test_phase5_bridge_defaults_and_adapter_edges_cover_remaining_paths(
         metadata_key: str | None = "none"
 
     metadata_manager = GraphBridgeBuilder.from_config(
-        AdapterConfig(capability_bridges=[_NoneMetadataBridge(), _Phase5StateBridge()])
+        AdapterConfig(capability_bridges=[_NoneMetadataBridge(), _Phase5StateBridge()]),
     ).build_manager()
     metadata_sections = metadata_manager.get_metadata_sections(session)
     assert "none" not in metadata_sections
-    assert cast(dict[str, Any], metadata_sections["custom"])["model"] == "async-model"
+    assert cast("dict[str, Any]", metadata_sections["custom"])["model"] == "async-model"
 
     @dataclass(slots=True, kw_only=True)
     class _NoCurrentSelectionBridge(CapabilityBridge):
@@ -1499,7 +1515,7 @@ def test_phase5_bridge_defaults_and_adapter_edges_cover_remaining_paths(
             available_models=[ModelInfo(model_id="base", name="Base")],
             available_modes=[SessionMode(id="ask", name="Ask")],
             capability_bridges=[_NoCurrentSelectionBridge()],
-        )
+        ),
     )
     assert adapter._model_exists("base") is True
     assert adapter._model_exists("missing") is False
@@ -1541,8 +1557,8 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
                         write_tool_names=frozenset({"write_file"}),
                         execute_tool_names=frozenset({"execute_shell"}),
                     ),
-                )
-            )
+                ),
+            ),
         ],
     )
     assert nested_classifier.classify("write_file") == "edit"
@@ -1646,7 +1662,9 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
         hide_dot_directories=False,
     )
     assert _render_path_tree(
-        ".hidden/file.py\n", root_label=".", hide_dot_directories=False
+        ".hidden/file.py\n",
+        root_label=".",
+        hide_dot_directories=False,
     ).startswith("Tree: .")
     assert _render_path_tree("/", root_label=".", hide_dot_directories=False).startswith("Tree: .")
     flat_search_progress = search_projection_with_default.project_progress(
@@ -1757,15 +1775,15 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
                 start_projection=ToolProjection(
                     title="Tool A",
                     locations=[ToolCallLocation(path="a.txt")],
-                )
+                ),
             ),
             _StaticProjectionMap(
                 start_projection=ToolProjection(
-                    content=[cast(Any, merged_progress.content[0])],
+                    content=[cast("Any", merged_progress.content[0])],
                     status="completed",
-                )
+                ),
             ),
-        )
+        ),
     ).project_start("other_tool", raw_input={})
     assert merged is not None
     assert merged.title == "Tool A"
@@ -1774,7 +1792,7 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
         maps=(
             _StaticProjectionMap(progress_projection=ToolProjection(title="Progress A")),
             _StaticProjectionMap(progress_projection=ToolProjection(status="failed")),
-        )
+        ),
     ).project_progress("tool", serialized_output="done")
     assert merged_progress_projection is not None
     assert merged_progress_projection.title == "Progress A"
@@ -1786,7 +1804,7 @@ def test_projection_helpers_cover_classification_composition_and_locations() -> 
     composite_map = compose_projection_maps((projection_map, projection_map))
     assert isinstance(composite_map, CompositeProjectionMap)
     assert extract_tool_call_locations({"path": "draft.txt"}) == [
-        ToolCallLocation(path="draft.txt")
+        ToolCallLocation(path="draft.txt"),
     ]
     assert extract_tool_call_locations({"nope": "value"}) == []
     assert extract_tool_call_locations("bad") == []
@@ -2237,7 +2255,8 @@ def test_projection_maps_cover_negative_and_default_paths() -> None:
     assert copy_start.title == "Copy `a.txt` -> `b.txt`"
     assert file_projection_map.project_start("copy_file", raw_input={"source_path": "a"}) is None
     delete_start = file_projection_map.project_start(
-        "file_delete", raw_input={"file_path": "a.txt"}
+        "file_delete",
+        raw_input={"file_path": "a.txt"},
     )
     assert delete_start is not None
     assert delete_start.title == "Delete `a.txt`"
@@ -2474,7 +2493,7 @@ def test_default_output_serializer_handles_supported_shapes() -> None:
             "model": _ModelPayload(name="demo", enabled=True),
             "dataclass": _DataclassPayload(name="demo", size=2),
             "tuple": (1, 2),
-        }
+        },
     )
     assert compatible == {
         "bytes": "hi",
@@ -2508,8 +2527,8 @@ def test_structured_event_projection_map_normalizes_explicit_event_payloads() ->
                     "content": "Projected text",
                     "messageId": "m-1",
                 },
-            ]
-        }
+            ],
+        },
     )
 
     assert projected is not None
@@ -2517,7 +2536,7 @@ def test_structured_event_projection_map_normalizes_explicit_event_payloads() ->
     assert isinstance(projected[1], ToolCallProgress)
     assert isinstance(projected[2], AgentMessageChunk)
     assert projected[1].content is not None
-    assert cast(Any, projected[1].content[0]).type == "content"
+    assert cast("Any", projected[1].content[0]).type == "content"
     assert projected[2].content.text == "Projected text"
 
     assert projection_map.project_event_payload({"events": ["bad"]}) is None
@@ -2534,9 +2553,9 @@ def test_structured_event_projection_map_normalizes_explicit_event_payloads() ->
                     "title": "echo hi",
                     "kind": "execute",
                     "status": "in_progress",
-                }
-            ]
-        }
+                },
+            ],
+        },
     )
     assert double_projected is not None
     assert len(double_projected) == 2
@@ -2559,7 +2578,7 @@ def test_structured_event_projection_map_covers_direct_list_and_invalid_variants
                         "content": "Inspect repo",
                         "status": "pending",
                         "priority": "high",
-                    }
+                    },
                 ],
             },
             {
@@ -2567,7 +2586,7 @@ def test_structured_event_projection_map_covers_direct_list_and_invalid_variants
                 "content": "hello",
                 "messageId": "u-1",
             },
-        ]
+        ],
     )
 
     assert direct_list is not None
@@ -2591,8 +2610,8 @@ def test_structured_event_projection_map_covers_direct_list_and_invalid_variants
                         "type": "agent_message_chunk",
                         "content": {"type": "text", "text": 1},
                     },
-                ]
-            }
+                ],
+            },
         )
         is None
     )
@@ -2617,7 +2636,7 @@ def test_prompt_conversion_covers_audio_blob_and_defensive_embedded_resource_pat
                 mime_type="text/markdown",
                 size=42,
             ),
-        ]
+        ],
     )
     assert audio_content[0] == {
         "type": "audio",
@@ -2629,9 +2648,9 @@ def test_prompt_conversion_covers_audio_blob_and_defensive_embedded_resource_pat
 
     unknown_resource = _embedded_resource_content(
         cast(
-            EmbeddedResourceContentBlock,
+            "EmbeddedResourceContentBlock",
             SimpleNamespace(resource=SimpleNamespace(uri="file:///opaque")),
-        )
+        ),
     )
     assert unknown_resource == [{"type": "text", "text": "Embedded resource: file:///opaque"}]
 
@@ -2645,7 +2664,7 @@ def test_prompt_conversion_covers_audio_blob_and_defensive_embedded_resource_pat
                 type="resource",
                 resource=BlobResourceContents(uri="file:///blob.bin", blob="AA=="),
             ),
-        ]
+        ],
     )
     assert "MIME:" not in no_mime_content[0]["text"]
     assert "MIME:" not in no_mime_content[1]["text"]
@@ -2689,7 +2708,7 @@ def test_event_projection_private_helpers_cover_invalid_paths() -> None:
         (
             StructuredEventProjectionMap(),
             _NullEventMap(),
-        )
+        ),
     )
     assert composite is not None
     assert (
@@ -2752,10 +2771,12 @@ def test_stored_session_update_round_trips_all_supported_update_kinds() -> None:
     ]
 
     for update in updates:
-        stored = StoredSessionUpdate.from_update(cast(Any, update))
+        stored = StoredSessionUpdate.from_update(cast("Any", update))
         restored = stored.to_update()
         assert restored.model_dump(
-            mode="json", by_alias=True, exclude_none=True
+            mode="json",
+            by_alias=True,
+            exclude_none=True,
         ) == update.model_dump(
             mode="json",
             by_alias=True,
@@ -2763,7 +2784,7 @@ def test_stored_session_update_round_trips_all_supported_update_kinds() -> None:
         )
 
     with pytest.raises(TypeError):
-        StoredSessionUpdate.from_update(cast(Any, TextContentBlock(type="text", text="bad")))
+        StoredSessionUpdate.from_update(cast("Any", TextContentBlock(type="text", text="bad")))
 
     now = utc_now()
     assert now.tzinfo is not None
@@ -2777,7 +2798,7 @@ def test_stored_session_update_round_trips_all_supported_update_kinds() -> None:
     with pytest.raises(TypeError):
         _coerce_json_value(object())
     invalid_update = StoredSessionUpdate(kind="plan", payload={})
-    cast(Any, invalid_update).kind = "bad-kind"
+    cast("Any", invalid_update).kind = "bad-kind"
     with pytest.raises(AssertionError):
         invalid_update.to_update()
 
@@ -2793,7 +2814,7 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
             "content": "Inspect repo",
             "status": "pending",
             "priority": "high",
-        }
+        },
     ]
     session.transcript.append(
         StoredSessionUpdate.from_update(
@@ -2801,8 +2822,8 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
                 session_update="user_message_chunk",
                 content=TextContentBlock(type="text", text="hello"),
                 message_id="u1",
-            )
-        )
+            ),
+        ),
     )
 
     store.save(session)
@@ -2834,7 +2855,14 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="session path"):
         _store_child_path(file_store.root, "../escape.json")
 
-    unsafe_session_ids = ["", "../escape", "nested/session", ".hidden", "two words", "x" * 129]
+    unsafe_session_ids = [
+        "",
+        "../escape",
+        "nested/session",
+        ".hidden",
+        "two words",
+        "x" * 129,
+    ]
     for unsafe_session_id in unsafe_session_ids:
         with pytest.raises(ValueError, match="session_id"):
             file_store._session_path(unsafe_session_id)
@@ -2856,7 +2884,9 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
     session.updated_at = utc_now()
     file_store.save(session)
     session_copy = file_store.fork(
-        session.session_id, new_session_id="fork-file", cwd=tmp_path / "fork"
+        session.session_id,
+        new_session_id="fork-file",
+        cwd=tmp_path / "fork",
     )
     assert session_copy is not None
     assert session_copy.cwd == tmp_path / "fork"
@@ -2917,10 +2947,10 @@ def test_native_plan_runtime_and_tools_cover_phase4_paths(tmp_path: Path) -> Non
             native_plan_additional_instructions="Stay concise.",
             native_plan_persistence_provider=persistence_provider,
             plan_mode_id="plan",
-        )
+        ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     created = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     assert created.config_options is not None
     assert [option.id for option in created.config_options] == [
@@ -2948,10 +2978,10 @@ def test_native_plan_runtime_and_tools_cover_phase4_paths(tmp_path: Path) -> Non
                             content="Inspect repo",
                             status="pending",
                             priority="high",
-                        )
+                        ),
                     ],
                     "# Native plan",
-                )
+                ),
             )
             == "Recorded 1 plan entries."
         )
@@ -2969,10 +2999,10 @@ def test_native_plan_runtime_and_tools_cover_phase4_paths(tmp_path: Path) -> Non
             "content": "Inspect repo",
             "status": "completed",
             "priority": "high",
-        }
+        },
     ]
     plan_updates = [
-        cast(AgentPlanUpdate, update)
+        cast("AgentPlanUpdate", update)
         for _, update in client.updates
         if isinstance(update, AgentPlanUpdate)
     ]
@@ -2989,7 +3019,7 @@ def test_native_plan_runtime_structured_mode_and_unbound_tools() -> None:
             default_mode_id="plan",
             default_plan_generation_type="structured",
             plan_mode_id="plan",
-        )
+        ),
     )
     session = _make_session()
     session.session_mode_id = "plan"
@@ -3015,9 +3045,9 @@ def test_task_plan_validation_and_payload_parsing() -> None:
                     "content": "Inspect repo",
                     "status": "pending",
                     "priority": "high",
-                }
+                },
             ],
-        }
+        },
     )
     assert parsed.plan_entries[0].content == "Inspect repo"
 
@@ -3047,8 +3077,8 @@ def test_phase4_native_plan_runtime_negative_and_formatting_paths(
             default_plan_generation_type="structured",
             native_plan_additional_instructions="   ",
             plan_mode_id="plan",
-            plan_provider=cast(Any, object()),
-        )
+            plan_provider=cast("Any", object()),
+        ),
     )
     markdown_runtime = _NativePlanRuntime(markdown_only_adapter)
     markdown_session = _make_session(cwd=tmp_path)
@@ -3068,7 +3098,7 @@ def test_phase4_native_plan_runtime_negative_and_formatting_paths(
             default_plan_generation_type="structured",
             native_plan_additional_instructions="Keep milestones coarse.",
             plan_mode_id="plan",
-        )
+        ),
     )
     markdown_guidance_runtime = _NativePlanRuntime(markdown_guidance_adapter)
     markdown_guidance_session = _make_session(cwd=tmp_path)
@@ -3084,7 +3114,7 @@ def test_phase4_native_plan_runtime_negative_and_formatting_paths(
             default_mode_id="plan",
             default_plan_generation_type="tools",
             plan_mode_id="plan",
-        )
+        ),
     )
     entries_runtime = _NativePlanRuntime(entries_adapter)
     entries_session = _make_session(cwd=tmp_path)
@@ -3094,7 +3124,7 @@ def test_phase4_native_plan_runtime_negative_and_formatting_paths(
             "content": "Inspect repo",
             "status": "pending",
             "priority": "medium",
-        }
+        },
     ]
     updated = asyncio.run(
         entries_runtime.update_native_plan_entry(
@@ -3102,7 +3132,7 @@ def test_phase4_native_plan_runtime_negative_and_formatting_paths(
             index=1,
             content="Inspect repository",
             priority="low",
-        )
+        ),
     )
     assert updated.content == "Inspect repository"
     assert updated.priority == "low"
@@ -3112,11 +3142,11 @@ def test_phase4_native_plan_runtime_negative_and_formatting_paths(
     entries_runtime_adapter_session = _make_session(cwd=tmp_path, session_id="persist-current")
     entries_runtime_adapter_session.session_mode_id = "plan"
     entries_runtime_adapter_session.plan_entries = [
-        {"content": "Persist me", "status": "pending", "priority": "high"}
+        {"content": "Persist me", "status": "pending", "priority": "high"},
     ]
     asyncio.run(entries_runtime.persist_current_native_plan_state(entries_runtime_adapter_session))
     assert entries_runtime_adapter_session.plan_entries == [
-        {"content": "Persist me", "status": "pending", "priority": "high"}
+        {"content": "Persist me", "status": "pending", "priority": "high"},
     ]
 
 
@@ -3127,32 +3157,31 @@ def test_phase4_adapter_helper_branches_cover_native_plan_edges(tmp_path: Path) 
             default_mode_id="plan",
             default_plan_generation_type="tools",
             plan_mode_id="plan",
-        )
+        ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = _make_session(cwd=tmp_path)
     session.session_mode_id = "plan"
 
     asyncio.run(
         adapter._emit_plan_update(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             entries=[PlanEntry(content="Inspect repo", status="pending", priority="high")],
-        )
+        ),
     )
     assert session.plan_entries == [
         {
             "content": "Inspect repo",
             "status": "pending",
             "priority": "high",
-        }
+        },
     ]
 
     class _NoneConfigProvider:
         async def get_config_options(self, session: AcpSessionContext) -> None:
             del session
-            return None
 
         async def set_config_option(
             self,
@@ -3161,10 +3190,9 @@ def test_phase4_adapter_helper_branches_cover_native_plan_edges(tmp_path: Path) 
             value: str | bool,
         ) -> None:
             del session, config_id, value
-            return None
 
     options_adapter = _make_adapter(
-        config=AdapterConfig(config_options_provider=_NoneConfigProvider())
+        config=AdapterConfig(config_options_provider=_NoneConfigProvider()),
     )
     assert asyncio.run(options_adapter._config_options(_make_session())) == []
     assert (
@@ -3193,7 +3221,7 @@ def test_phase4_adapter_helper_branches_cover_native_plan_edges(tmp_path: Path) 
         config=AdapterConfig(
             models_provider=_NullModelsProvider(),
             modes_provider=_NullModesProvider(),
-        )
+        ),
     )
     provider_session = _make_session(cwd=tmp_path)
     assert (
@@ -3216,7 +3244,7 @@ def test_phase4_adapter_helper_branches_cover_native_plan_edges(tmp_path: Path) 
     )
     assert adapter._task_plan_from_value(structured_plan) == structured_plan
     model_backed = adapter._task_plan_from_value(
-        {"structured_response": _StructuredPlanModel(**structured_plan.model_dump(mode="python"))}
+        {"structured_response": _StructuredPlanModel(**structured_plan.model_dump(mode="python"))},
     )
     assert model_backed == structured_plan
     assert adapter._task_plan_from_value({"structured_response": {"bad": "payload"}}) is None
@@ -3225,7 +3253,7 @@ def test_phase4_adapter_helper_branches_cover_native_plan_edges(tmp_path: Path) 
 def test_runtime_server_and_root_surface_helpers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    graph = cast(Any, object())
+    graph = cast("Any", object())
     source = StaticGraphSource(graph=graph)
     assert _resolve_graph_source(graph=graph, graph_factory=None, graph_source=None) is not None
     assert _resolve_graph_source(graph=None, graph_factory=None, graph_source=source) is source
@@ -3245,13 +3273,13 @@ def test_runtime_server_and_root_surface_helpers(
         model_state=ModelSelectionState(
             available_models=[ModelInfo(model_id="base", name="Base")],
             current_model_id="base",
-        )
+        ),
     )
     modes_provider = _AsyncModesProvider(
         mode_state=ModeState(
             modes=[SessionMode(id="ask", name="Ask")],
             current_mode_id="ask",
-        )
+        ),
     )
     config_provider = _ConfigProvider(
         options=[
@@ -3260,8 +3288,8 @@ def test_runtime_server_and_root_surface_helpers(
                 name="Safety",
                 type="boolean",
                 current_value=True,
-            )
-        ]
+            ),
+        ],
     )
     config = AdapterConfig(
         config_options_provider=config_provider,
@@ -3310,7 +3338,7 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
     )
     adapter = _make_adapter(config=config)
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     initialize = asyncio.run(adapter.initialize(protocol_version=1))
     assert initialize.agent_info is not None
@@ -3330,23 +3358,23 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
 
     asyncio.run(
         adapter._emit_update(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=adapter._require_session(session_id),
             update=AgentMessageChunk(
                 session_update="agent_message_chunk",
                 content=TextContentBlock(type="text", text="replay me"),
                 message_id="m1",
             ),
-        )
+        ),
     )
     replay_count = len(client.updates)
     transcript_count = len(adapter._require_session(session_id).transcript)
     asyncio.run(
         adapter._emit_update(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=adapter._require_session(session_id),
             update=SimpleNamespace(session_update="ignored"),
-        )
+        ),
     )
     assert len(adapter._require_session(session_id).transcript) == transcript_count
 
@@ -3360,7 +3388,7 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
             cwd=str(tmp_path / "loaded"),
             session_id=session_id,
             mcp_servers=[mcp_servers[0]],
-        )
+        ),
     )
     assert load_response is not None
     assert len(client.updates) > replay_count
@@ -3371,7 +3399,7 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
     list_response = asyncio.run(adapter.list_sessions(cwd=str(tmp_path / "loaded")))
     assert [item.session_id for item in list_response.sessions] == [session_id]
     assert [item.session_id for item in asyncio.run(adapter.list_sessions()).sessions] == [
-        session_id
+        session_id,
     ]
 
     assert asyncio.run(adapter.set_session_model("gpt-5", session_id=session_id)) is not None
@@ -3386,7 +3414,7 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
             cwd=str(tmp_path / "resumed"),
             session_id=session_id,
             mcp_servers=[mcp_servers[1]],
-        )
+        ),
     )
     assert resume_response.models is not None
     resumed_session = adapter._require_session(session_id)
@@ -3398,7 +3426,7 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
             cwd=str(tmp_path / "forked"),
             session_id=session_id,
             mcp_servers=[mcp_servers[2]],
-        )
+        ),
     )
     forked_session = adapter._require_session(fork_response.session_id)
     assert forked_session.cwd == tmp_path / "forked"
@@ -3431,7 +3459,9 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
         asyncio.run(adapter.fork_session(cwd=str(tmp_path), session_id="missing", mcp_servers=[]))
 
 
-def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(tmp_path: Path) -> None:
+def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(
+    tmp_path: Path,
+) -> None:
     adapter = _make_adapter()
     server = McpServerStdio(name="stdio", command="python", args=["server.py"], env=[])
     created = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[server]))
@@ -3441,7 +3471,7 @@ def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(tmp_path
             cwd=str(tmp_path),
             session_id=created.session_id,
             mcp_servers=None,
-        )
+        ),
     )
     resumed = adapter._require_session(created.session_id)
     assert resumed.mcp_servers[0]["name"] == "stdio"
@@ -3451,7 +3481,7 @@ def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(tmp_path
             cwd=str(tmp_path),
             session_id=created.session_id,
             mcp_servers=None,
-        )
+        ),
     )
     assert adapter._require_session(forked.session_id).mcp_servers[0]["name"] == "stdio"
 
@@ -3459,44 +3489,46 @@ def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(tmp_path
 def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     adapter = _make_adapter()
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = _make_session(cwd=tmp_path)
 
     asyncio.run(
         adapter._emit_user_prompt(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             prompt=[TextContentBlock(type="text", text="Summarize the repo")],
             message_id="u1",
-        )
+        ),
     )
     assert session.title == "Summarize the repo"
     titled_session = _make_session(cwd=tmp_path, session_id="session-2")
     titled_session.title = "Existing title"
     asyncio.run(
         adapter._emit_user_prompt(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=titled_session,
             prompt=[TextContentBlock(type="text", text="  ")],
             message_id="u2",
-        )
+        ),
     )
     assert titled_session.title == "Existing title"
     untitled_session = _make_session(cwd=tmp_path, session_id="session-3")
     asyncio.run(
         adapter._emit_user_prompt(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=untitled_session,
             prompt=[ResourceContentBlock(type="resource_link", name="doc", uri="file:///doc")],
             message_id="u3",
-        )
+        ),
     )
     assert untitled_session.title is None
 
     generic_block = EmbeddedResourceContentBlock(
         type="resource",
         resource=BlobResourceContents(
-            uri="file:///blob", mime_type="application/octet-stream", blob="AA=="
+            uri="file:///blob",
+            mime_type="application/octet-stream",
+            blob="AA==",
         ),
     )
     content = prompt_to_langchain_content(
@@ -3527,7 +3559,7 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
                 ),
             ),
             generic_block,
-        ]
+        ],
     )
     assert content[0] == {"type": "text", "text": "hello"}
     assert content[1]["type"] == "image_url"
@@ -3541,7 +3573,7 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     assert (
         "user-message"
         in prompt_to_langchain_content(
-            cast(list[Any], [_UnknownPromptBlock(payload="user-message")])
+            cast("list[Any]", [_UnknownPromptBlock(payload="user-message")]),
         )[0]["text"]
     )
     assert message_text(["a", {"type": "text", "text": "b"}]) == "ab"
@@ -3578,25 +3610,25 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
                 "name": "read_file",
                 "args": '{"path":"notes.txt"}',
                 "index": 0,
-            }
+            },
         ],
     )
     asyncio.run(
         adapter._process_tool_call_chunks(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=tool_chunk,
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
     assert "call-1" in active_tool_calls
     asyncio.run(
         adapter._process_tool_call_chunks(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=cast(
-                AIMessageChunk,
+                "AIMessageChunk",
                 SimpleNamespace(
                     tool_call_chunks=[
                         "bad",
@@ -3607,34 +3639,34 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
                             "index": 0,
                         },
                         {"name": "late_name", "args": '{"path":"other.txt"}'},
-                    ]
+                    ],
                 ),
             ),
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
     asyncio.run(
         adapter._process_tool_call_chunks(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=cast(
-                AIMessageChunk,
+                "AIMessageChunk",
                 SimpleNamespace(
                     tool_call_chunks=[
                         {"id": "call-2", "name": object(), "args": 1, "index": 1},
-                    ]
+                    ],
                 ),
             ),
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
     assert "call-2" not in active_tool_calls
 
     asyncio.run(
         adapter._handle_tool_message(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=ToolMessage(
                 content="done",
@@ -3642,53 +3674,53 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
                 status="success",
             ),
             active_tool_calls=active_tool_calls,
-        )
+        ),
     )
     assert "call-1" not in active_tool_calls
     asyncio.run(
         adapter._handle_tool_message(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
-            message_chunk=cast(Any, SimpleNamespace(content="ignored", tool_call_id=None)),
+            message_chunk=cast("Any", SimpleNamespace(content="ignored", tool_call_id=None)),
             active_tool_calls=active_tool_calls,
-        )
+        ),
     )
 
     asyncio.run(
         adapter._process_message_chunk(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk="agent text",
             active_tool_calls={},
             tool_call_accumulator={},
-        )
+        ),
     )
     asyncio.run(
         adapter._process_message_chunk(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk="",
             active_tool_calls={},
             tool_call_accumulator={},
-        )
+        ),
     )
     asyncio.run(
         adapter._process_message_chunk(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=AIMessageChunk(content=[{"type": "text", "text": "chunk text"}]),
             active_tool_calls={},
             tool_call_accumulator={},
-        )
+        ),
     )
     asyncio.run(
         adapter._process_message_chunk(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=SimpleNamespace(content=[{"type": "other"}]),
             active_tool_calls={},
             tool_call_accumulator={},
-        )
+        ),
     )
 
     @dataclass
@@ -3697,24 +3729,24 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
 
     asyncio.run(
         adapter._process_message_chunk(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=_ContentWrapper(content=[{"type": "text", "text": "wrapped"}]),
             active_tool_calls={},
             tool_call_accumulator={},
-        )
+        ),
     )
     assert any(isinstance(update, AgentMessageChunk) for _, update in client.updates)
 
     projection_adapter = _make_adapter(
-        config=AdapterConfig(event_projection_maps=[StructuredEventProjectionMap()])
+        config=AdapterConfig(event_projection_maps=[StructuredEventProjectionMap()]),
     )
     projection_client = RecordingACPClient()
-    projection_adapter.on_connect(cast(AcpClient, projection_client))
+    projection_adapter.on_connect(cast("AcpClient", projection_client))
     projection_session = _make_session(cwd=tmp_path, session_id="projection")
     asyncio.run(
         projection_adapter._emit_projected_events(
-            client=cast(AcpClient, projection_client),
+            client=cast("AcpClient", projection_client),
             session=projection_session,
             payload={
                 "node": {
@@ -3725,12 +3757,12 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
                             "title": "nested",
                             "kind": "other",
                             "status": "in_progress",
-                        }
-                    ]
+                        },
+                    ],
                 },
                 "noop": {"ignored": True},
             },
-        )
+        ),
     )
     nested_updates = [
         update for _, update in projection_client.updates if isinstance(update, ToolCallStart)
@@ -3740,85 +3772,87 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     assert (
         asyncio.run(
             adapter._handle_update_payload(
-                client=cast(AcpClient, client), session=session, payload="bad"
-            )
+                client=cast("AcpClient", client),
+                session=session,
+                payload="bad",
+            ),
         )
         is None
     )
     with pytest.raises(RequestError):
         asyncio.run(
             adapter._handle_update_payload(
-                client=cast(AcpClient, client),
+                client=cast("AcpClient", client),
                 session=session,
                 payload={"__interrupt__": "bad"},
-            )
+            ),
         )
 
     with pytest.raises(RequestError):
         asyncio.run(
             adapter._resolve_interrupts(
-                client=cast(AcpClient, client),
+                client=cast("AcpClient", client),
                 session=session,
                 interrupts=[{"bad": "shape"}],
-            )
+            ),
         )
 
     no_approval_adapter = _make_adapter(config=AdapterConfig(approval_bridge=None))
-    no_approval_adapter.on_connect(cast(AcpClient, client))
+    no_approval_adapter.on_connect(cast("AcpClient", client))
     with pytest.raises(RequestError):
         asyncio.run(
             no_approval_adapter._resolve_interrupts(
-                client=cast(AcpClient, client),
+                client=cast("AcpClient", client),
                 session=session,
                 interrupts=[{"action_requests": [], "review_configs": []}],
-            )
+            ),
         )
     with pytest.raises(RequestError):
         asyncio.run(
             adapter._resolve_interrupts(
-                client=cast(AcpClient, client),
+                client=cast("AcpClient", client),
                 session=session,
                 interrupts=[object()],
-            )
+            ),
         )
 
     cancelling_client = RecordingACPClient()
     cancelling_client.queue_permission_cancelled()
     approval_adapter = _make_adapter()
-    approval_adapter.on_connect(cast(AcpClient, cancelling_client))
+    approval_adapter.on_connect(cast("AcpClient", cancelling_client))
     with pytest.raises(RequestError):
         asyncio.run(
             approval_adapter._resolve_interrupts(
-                client=cast(AcpClient, cancelling_client),
+                client=cast("AcpClient", cancelling_client),
                 session=session,
                 interrupts=[
                     {
                         "action_requests": [{"name": "read_file", "args": {"path": "notes.txt"}}],
                         "review_configs": [{"action_name": "read_file"}],
-                    }
+                    },
                 ],
-            )
+            ),
         )
     assert (
         asyncio.run(
             adapter._handle_update_payload(
-                client=cast(AcpClient, client),
+                client=cast("AcpClient", client),
                 session=session,
                 payload={"node": {"todos": "bad"}},
-            )
+            ),
         )
         is None
     )
 
     asyncio.run(
         adapter._emit_plan_update(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             entries=[
                 PlanEntry(content="Inspect repo", status="completed", priority="high"),
                 PlanEntry(content="Bad status", status="pending", priority="medium"),
             ],
-        )
+        ),
     )
     assert session.plan_entries == [
         {"content": "Inspect repo", "status": "completed", "priority": "high"},
@@ -3826,10 +3860,10 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     ]
     asyncio.run(
         adapter._emit_agent_text(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             text="",
-        )
+        ),
     )
     assert adapter._derive_title([TextContentBlock(type="text", text=" hello ")]) == "hello"
     assert (
@@ -3837,20 +3871,20 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
             [
                 TextContentBlock(type="text", text="   "),
                 TextContentBlock(type="text", text="next title"),
-            ]
+            ],
         )
         == "next title"
     )
     assert (
         adapter._derive_title(
-            [ResourceContentBlock(type="resource_link", name="doc", uri="file:///doc")]
+            [ResourceContentBlock(type="resource_link", name="doc", uri="file:///doc")],
         )
         is None
     )
     assert adapter._serialize_mcp_servers(None) == []
 
     replay_disabled_adapter = _make_adapter(config=AdapterConfig(replay_history_on_load=False))
-    replay_disabled_adapter.on_connect(cast(AcpClient, client))
+    replay_disabled_adapter.on_connect(cast("AcpClient", client))
     replay_session = _make_session(cwd=tmp_path, session_id="replay-disabled")
     replay_session.transcript.append(
         StoredSessionUpdate.from_update(
@@ -3858,8 +3892,8 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
                 session_update="agent_message_chunk",
                 content=TextContentBlock(type="text", text="ignore replay"),
                 message_id="m-disabled",
-            )
-        )
+            ),
+        ),
     )
     replay_count = len(client.updates)
     asyncio.run(replay_disabled_adapter._replay_transcript(replay_session))
@@ -3871,7 +3905,7 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
             default_model_id="explicit-model",
             available_modes=[SessionMode(id="ask", name="Ask")],
             default_mode_id="explicit-mode",
-        )
+        ),
     )
     assert explicit_default_adapter._default_model_id() == "explicit-model"
     assert explicit_default_adapter._default_mode_id() == "explicit-mode"
@@ -3882,7 +3916,7 @@ def test_langchain_adapter_prompt_and_interrupt_helpers(tmp_path: Path) -> None:
     try:
         no_current_session = _make_session(cwd=tmp_path, session_id="no-current")
         resolved_model_state = asyncio.run(
-            explicit_default_adapter._model_state(no_current_session)
+            explicit_default_adapter._model_state(no_current_session),
         )
         resolved_mode_state = asyncio.run(explicit_default_adapter._mode_state(no_current_session))
         assert resolved_model_state is not None
@@ -3902,7 +3936,7 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
     adapter = _make_adapter(
         config=AdapterConfig(
             projection_maps=[CommunityFileManagementProjectionMap()],
-        )
+        ),
     )
     client = RecordingACPClient()
     session = _make_session(cwd=tmp_path)
@@ -3911,10 +3945,10 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
 
     asyncio.run(
         adapter._process_tool_call_chunks(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=cast(
-                AIMessageChunk,
+                "AIMessageChunk",
                 SimpleNamespace(
                     tool_call_chunks=[
                         {
@@ -3922,13 +3956,13 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
                             "name": "read_file",
                             "args": '{"file_path":',
                             "index": 0,
-                        }
-                    ]
+                        },
+                    ],
                 ),
             ),
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
 
     assert active_tool_calls == {}
@@ -3936,10 +3970,10 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
 
     asyncio.run(
         adapter._process_tool_call_chunks(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=cast(
-                AIMessageChunk,
+                "AIMessageChunk",
                 SimpleNamespace(
                     tool_call_chunks=[
                         {
@@ -3947,13 +3981,13 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
                             "name": None,
                             "args": '"proof.txt"}',
                             "index": 0,
-                        }
-                    ]
+                        },
+                    ],
                 ),
             ),
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
 
     assert active_tool_calls["call-streamed"]["raw_input"] == {"file_path": "proof.txt"}
@@ -3964,10 +3998,10 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
 
     asyncio.run(
         adapter._process_tool_call_chunks(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=cast(
-                AIMessageChunk,
+                "AIMessageChunk",
                 SimpleNamespace(
                     tool_call_chunks=[
                         {
@@ -3975,18 +4009,21 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
                             "name": "read_file",
                             "args": '{"file_path":"next.txt"}',
                             "index": 0,
-                        }
-                    ]
+                        },
+                    ],
                 ),
             ),
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
 
     assert active_tool_calls["call-next-round"]["raw_input"] == {"file_path": "next.txt"}
     starts = [update for _, update in client.updates if isinstance(update, ToolCallStart)]
-    assert [update.title for update in starts] == ["Read `proof.txt`", "Read `next.txt`"]
+    assert [update.title for update in starts] == [
+        "Read `proof.txt`",
+        "Read `next.txt`",
+    ]
 
 
 def test_streamed_tool_start_accepts_empty_arguments(tmp_path: Path) -> None:
@@ -3996,11 +4033,11 @@ def test_streamed_tool_start_accepts_empty_arguments(tmp_path: Path) -> None:
     active_tool_calls: dict[str, dict[str, Any]] = {}
 
     tool_call_accumulator: dict[int, dict[str, str | int | None]] = {
-        99: {"args": "{}", "id": "other-call", "name": "other"}
+        99: {"args": "{}", "id": "other-call", "name": "other"},
     }
     asyncio.run(
         adapter._process_tool_call_chunks(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=AIMessageChunk(
                 content="",
@@ -4010,16 +4047,16 @@ def test_streamed_tool_start_accepts_empty_arguments(tmp_path: Path) -> None:
                         "name": "ping",
                         "args": "",
                         "index": 0,
-                    }
+                    },
                 ],
             ),
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
     asyncio.run(
         adapter._handle_tool_message(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=ToolMessage(
                 content="pong",
@@ -4028,7 +4065,7 @@ def test_streamed_tool_start_accepts_empty_arguments(tmp_path: Path) -> None:
             ),
             active_tool_calls=active_tool_calls,
             tool_call_accumulator=tool_call_accumulator,
-        )
+        ),
     )
 
     start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
@@ -4047,7 +4084,7 @@ def test_tool_result_without_start_uses_a_string_tool_name(tmp_path: Path) -> No
 
     asyncio.run(
         adapter._handle_tool_message(
-            client=cast(AcpClient, client),
+            client=cast("AcpClient", client),
             session=session,
             message_chunk=ToolMessage(
                 content="done",
@@ -4055,7 +4092,7 @@ def test_tool_result_without_start_uses_a_string_tool_name(tmp_path: Path) -> No
                 name=None,
             ),
             active_tool_calls={},
-        )
+        ),
     )
 
     start = next(update for _, update in client.updates if isinstance(update, ToolCallStart))
@@ -4072,7 +4109,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
             available_models=[ModelInfo(model_id="base", name="Base")],
             current_model_id="base",
             config_option_name="Graph Model",
-        )
+        ),
     )
     modes_provider = _AsyncModesProvider(
         mode_state=ModeState(
@@ -4082,7 +4119,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
             ],
             current_mode_id="ask",
             config_option_name="Graph Mode",
-        )
+        ),
     )
     config_provider = _ConfigProvider(
         options=[
@@ -4091,18 +4128,18 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
                 name="Safe Tools",
                 type="boolean",
                 current_value=True,
-            )
-        ]
+            ),
+        ],
     )
     adapter = _make_adapter(
         config=AdapterConfig(
             config_options_provider=config_provider,
             models_provider=models_provider,
             modes_provider=modes_provider,
-        )
+        ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     created = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     assert created.models is not None
@@ -4133,7 +4170,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
     assert session.config_values["provider-mode"] == "plan"
 
     response = asyncio.run(
-        adapter.set_config_option("safe_tools", session_id=created.session_id, value=False)
+        adapter.set_config_option("safe_tools", session_id=created.session_id, value=False),
     )
     assert response is not None
     assert config_provider.set_calls == [("safe_tools", False)]
@@ -4141,11 +4178,11 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
     assert session.config_values["safe_tools"] is False
 
     model_response = asyncio.run(
-        adapter.set_config_option("model", session_id=created.session_id, value="ultra")
+        adapter.set_config_option("model", session_id=created.session_id, value="ultra"),
     )
     assert model_response is not None
     mode_response = asyncio.run(
-        adapter.set_config_option("mode", session_id=created.session_id, value="ask")
+        adapter.set_config_option("mode", session_id=created.session_id, value="ask"),
     )
     assert mode_response is not None
     session = adapter._require_session(created.session_id)
@@ -4157,7 +4194,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
             available_modes=[SessionMode(id="plan", name="Plan")],
             default_mode_id="plan",
             plan_mode_id="plan",
-        )
+        ),
     )
     plan_created = asyncio.run(plan_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     plan_response = asyncio.run(
@@ -4165,7 +4202,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
             "plan_generation_type",
             session_id=plan_created.session_id,
             value="tools",
-        )
+        ),
     )
     assert plan_response is not None
     plan_session = plan_adapter._require_session(plan_created.session_id)
@@ -4176,7 +4213,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
                 "plan_generation_type",
                 session_id=plan_created.session_id,
                 value="bad",
-            )
+            ),
         )
 
     disabled_options_adapter = _make_adapter(
@@ -4186,16 +4223,16 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
                     available_models=[ModelInfo(model_id="hidden", name="Hidden")],
                     current_model_id="hidden",
                     enable_config_option=False,
-                )
+                ),
             ),
             modes_provider=_AsyncModesProvider(
                 mode_state=ModeState(
                     modes=[SessionMode(id="hidden-mode", name="Hidden Mode")],
                     current_mode_id="hidden-mode",
                     enable_config_option=False,
-                )
+                ),
             ),
-        )
+        ),
     )
     hidden_session = _make_session(cwd=tmp_path, session_id="hidden")
     assert asyncio.run(disabled_options_adapter._config_options(hidden_session)) == []
@@ -4204,7 +4241,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
         config=AdapterConfig(
             models_provider=_SyncModelsProvider(model_state=None),
             modes_provider=_AsyncModesProvider(mode_state=None),
-        )
+        ),
     )
     rejected_session = _make_session(cwd=tmp_path, session_id="rejected")
     rejected_adapter._store.save(rejected_session)
@@ -4233,11 +4270,10 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
         ) -> None:
             self.calls.append((config_id, value))
             session.config_values["provider-echo"] = value
-            return None
 
     non_mutating_provider = _NonMutatingConfigProvider()
     fallback_adapter = _make_adapter(
-        config=AdapterConfig(config_options_provider=cast(Any, non_mutating_provider))
+        config=AdapterConfig(config_options_provider=cast("Any", non_mutating_provider)),
     )
     fallback_created = asyncio.run(fallback_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     fallback_session_before = fallback_adapter._require_session(fallback_created.session_id)
@@ -4247,7 +4283,7 @@ def test_phase3_provider_state_helpers_cover_sync_async_and_reserved_config_path
             "demo-flag",
             session_id=fallback_created.session_id,
             value=True,
-        )
+        ),
     )
     assert fallback_response is not None
     fallback_session_after = fallback_adapter._require_session(fallback_created.session_id)
@@ -4273,12 +4309,12 @@ def test_langchain_adapter_prompt_resume_and_stream_edge_paths(tmp_path: Path) -
                                         {
                                             "name": "delete_file",
                                             "args": {"path": "draft.txt"},
-                                        }
+                                        },
                                     ],
                                     "review_configs": [{"action_name": "delete_file"}],
-                                }
-                            )
-                        ]
+                                },
+                            ),
+                        ],
                     },
                 ),
             ],
@@ -4287,26 +4323,26 @@ def test_langchain_adapter_prompt_resume_and_stream_edge_paths(tmp_path: Path) -
                     (),
                     "messages",
                     (AIMessageChunk(content=[{"type": "text", "text": "resumed"}]), {}),
-                )
+                ),
             ],
-        ]
+        ],
     )
     adapter = cast(
-        LangChainAcpAgent,
+        "LangChainAcpAgent",
         create_acp_agent(
-            graph=cast(Any, graph),
-            config=AdapterConfig(approval_bridge=cast(Any, approval_bridge)),
+            graph=cast("Any", graph),
+            config=AdapterConfig(approval_bridge=cast("Any", approval_bridge)),
         ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
     response = asyncio.run(
         adapter.prompt(
             prompt=[TextContentBlock(type="text", text="resume me")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "end_turn"
@@ -4334,11 +4370,11 @@ def test_langchain_adapter_prompt_cancels_mid_stream(tmp_path: Path) -> None:
             yield ((), "messages", (AIMessageChunk(content="ignored"), {}))
 
     adapter = cast(
-        LangChainAcpAgent,
-        create_acp_agent(graph=cast(Any, _CancellingGraph()), config=AdapterConfig()),
+        "LangChainAcpAgent",
+        create_acp_agent(graph=cast("Any", _CancellingGraph()), config=AdapterConfig()),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     session_holder["session_id"] = session.session_id
 
@@ -4346,13 +4382,15 @@ def test_langchain_adapter_prompt_cancels_mid_stream(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[TextContentBlock(type="text", text="cancel during stream")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "cancelled"
 
 
-def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(tmp_path: Path) -> None:
+def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(
+    tmp_path: Path,
+) -> None:
     async def run_scenario() -> None:
         started = asyncio.Event()
 
@@ -4372,18 +4410,18 @@ def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(tmp_path: P
                 yield  # pragma: no cover
 
         adapter = cast(
-            LangChainAcpAgent,
-            create_acp_agent(graph=cast(Any, _BlockingGraph()), config=AdapterConfig()),
+            "LangChainAcpAgent",
+            create_acp_agent(graph=cast("Any", _BlockingGraph()), config=AdapterConfig()),
         )
         client = RecordingACPClient()
-        adapter.on_connect(cast(AcpClient, client))
+        adapter.on_connect(cast("AcpClient", client))
         session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
         prompt_task = asyncio.create_task(
             adapter.prompt(
                 prompt=[TextContentBlock(type="text", text="wait forever")],
                 session_id=session.session_id,
                 message_id="blocking-message",
-            )
+            ),
         )
         await started.wait()
 
@@ -4396,7 +4434,9 @@ def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(tmp_path: P
     asyncio.run(run_scenario())
 
 
-def test_langchain_adapter_does_not_swallow_external_task_cancellation(tmp_path: Path) -> None:
+def test_langchain_adapter_does_not_swallow_external_task_cancellation(
+    tmp_path: Path,
+) -> None:
     async def run_scenario() -> None:
         started = asyncio.Event()
 
@@ -4416,16 +4456,16 @@ def test_langchain_adapter_does_not_swallow_external_task_cancellation(tmp_path:
                 yield  # pragma: no cover
 
         adapter = cast(
-            LangChainAcpAgent,
-            create_acp_agent(graph=cast(Any, _BlockingGraph()), config=AdapterConfig()),
+            "LangChainAcpAgent",
+            create_acp_agent(graph=cast("Any", _BlockingGraph()), config=AdapterConfig()),
         )
-        adapter.on_connect(cast(AcpClient, RecordingACPClient()))
+        adapter.on_connect(cast("AcpClient", RecordingACPClient()))
         session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
         prompt_task = asyncio.create_task(
             adapter.prompt(
                 prompt=[TextContentBlock(type="text", text="wait")],
                 session_id=session.session_id,
-            )
+            ),
         )
         await started.wait()
 
@@ -4452,7 +4492,7 @@ def test_langchain_adapter_cancelled_prompt_returns_cancelled(tmp_path: Path) ->
     )
     adapter = create_acp_agent(graph=graph, config=AdapterConfig())
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     asyncio.run(adapter.cancel(session_id=session.session_id))
 
@@ -4460,7 +4500,7 @@ def test_langchain_adapter_cancelled_prompt_returns_cancelled(tmp_path: Path) ->
         adapter.prompt(
             prompt=[TextContentBlock(type="text", text="cancel now")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "cancelled"

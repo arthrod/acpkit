@@ -39,7 +39,7 @@ class _SessionLifecycle(Generic[AgentDepsT, OutputDataT]):
                 cwd=self._runtime._normalize_cwd(cwd),
                 created_at=utc_now(),
                 updated_at=utc_now(),
-            )
+            ),
         )
         self._runtime._update_session_mcp_servers(session, mcp_servers)
         owner._config.session_store.save(session)
