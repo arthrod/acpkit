@@ -270,7 +270,10 @@ def test_langchain_example_workspace_graph_factory_uses_session_model_and_mode(
     )
     graph = workspace_graph.graph_from_session(session)
 
-    assert graph == {"model": "workspace-model", "name": f"workspace-edit-{tmp_path.name}"}
+    assert graph == {
+        "model": "workspace-model",
+        "name": f"workspace-edit-{tmp_path.name}",
+    }
     assert captured["model_name"] == "gpt-5.4"
     assert "smallest viable file update" in captured["instructions"]
 

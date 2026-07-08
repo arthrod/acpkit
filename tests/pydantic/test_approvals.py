@@ -94,7 +94,9 @@ async def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
     assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
 
 
-async def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> None:
+async def test_deferred_approval_deny_flow_returns_denial_output(
+    tmp_path: Path,
+) -> None:
     agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
@@ -518,7 +520,9 @@ async def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
     assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
 
 
-def test_session_metadata_approval_policy_store_reads_valid_policy(tmp_path: Path) -> None:
+def test_session_metadata_approval_policy_store_reads_valid_policy(
+    tmp_path: Path,
+) -> None:
     session = AcpSessionContext(
         session_id="approval-store",
         cwd=tmp_path,

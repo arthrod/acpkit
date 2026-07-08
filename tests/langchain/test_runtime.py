@@ -146,7 +146,9 @@ def test_langchain_acp_initialize_uses_configured_prompt_capabilities() -> None:
     assert response.agent_capabilities.prompt_capabilities.embedded_context is True
 
 
-def test_langchain_acp_slash_commands_emit_surface_updates_and_skip_graph(tmp_path) -> None:
+def test_langchain_acp_slash_commands_emit_surface_updates_and_skip_graph(
+    tmp_path,
+) -> None:
     def read_file(path: str) -> str:
         """Read a file from the workspace."""
         return path

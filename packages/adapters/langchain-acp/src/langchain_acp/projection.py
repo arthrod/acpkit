@@ -622,9 +622,11 @@ class BrowserProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            f"Selector: {selector}"
-                            if selector is not None
-                            else "Inspect page elements.",
+                            (
+                                f"Selector: {selector}"
+                                if selector is not None
+                                else "Inspect page elements."
+                            ),
                         ),
                     ),
                 ],
@@ -930,7 +932,7 @@ class FinanceProjectionMap:
                     ContentToolCallContent(
                         type="content",
                         content=_text_block(
-                            f"Query: {query}" if query is not None else "Lookup financial data.",
+                            (f"Query: {query}" if query is not None else "Lookup financial data."),
                         ),
                     ),
                 ],

@@ -7,7 +7,12 @@ import pytest
 from acp.schema import AgentMessageChunk, PermissionOption, RequestPermissionResponse
 from langchain_core.messages import AIMessage
 
-from .support import GenericFakeChatModel, RecordingACPClient, agent_message_texts, text_block
+from .support import (
+    GenericFakeChatModel,
+    RecordingACPClient,
+    agent_message_texts,
+    text_block,
+)
 
 
 class _RunManager:
@@ -36,7 +41,14 @@ def test_generic_fake_chat_model_support_stream_paths() -> None:
                 AIMessage(
                     content="",
                     id="tool-1",
-                    tool_calls=[{"name": "demo", "args": {}, "id": "call-1", "type": "tool_call"}],
+                    tool_calls=[
+                        {
+                            "name": "demo",
+                            "args": {},
+                            "id": "call-1",
+                            "type": "tool_call",
+                        }
+                    ],
                 ),
             ],
         ),

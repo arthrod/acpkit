@@ -1,7 +1,12 @@
 from __future__ import annotations as _annotations
 
 from ._version import __version__
-from .agent_source import AgentFactory, AgentSource, FactoryAgentSource, StaticAgentSource
+from .agent_source import (
+    AgentFactory,
+    AgentSource,
+    FactoryAgentSource,
+    StaticAgentSource,
+)
 from .agent_types import RuntimeAgent
 from .approval_store import (
     ApprovalPolicy,
@@ -128,7 +133,12 @@ from .slash import (
     StaticSlashCommand,
     StaticSlashCommandProvider,
 )
-from .testing import BlackBoxHarness, RecordingACPClient, UpdateRecord, agent_message_texts
+from .testing import (
+    BlackBoxHarness,
+    RecordingACPClient,
+    UpdateRecord,
+    agent_message_texts,
+)
 from .types import (
     AcpAgent,
     AgentPromptBlock,

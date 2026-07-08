@@ -15,7 +15,12 @@ from acp.schema import (
     SessionNotification,
     ToolCallUpdate,
 )
-from acpremote import CommandOptions, connect_remote_agent, serve_command, serve_stdio_command
+from acpremote import (
+    CommandOptions,
+    connect_remote_agent,
+    serve_command,
+    serve_stdio_command,
+)
 from acpremote import command as command_module
 
 

@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 from uuid import uuid4
 
 from acp.exceptions import RequestError
-from acp.schema import AgentMessageChunk, TextContentBlock, ToolCallProgress, ToolCallStart
+from acp.schema import (
+    AgentMessageChunk,
+    TextContentBlock,
+    ToolCallProgress,
+    ToolCallStart,
+)
 from pydantic_ai import Agent as PydanticAgent
 from pydantic_ai import AgentRunResult, AgentRunResultEvent
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UserError

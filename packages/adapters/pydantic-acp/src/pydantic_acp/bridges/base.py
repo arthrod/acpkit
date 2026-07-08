@@ -4,7 +4,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from acp.schema import McpCapabilities, ToolCallProgress, ToolCallStart, ToolCallStatus, ToolKind
+from acp.schema import (
+    McpCapabilities,
+    ToolCallProgress,
+    ToolCallStart,
+    ToolCallStatus,
+    ToolKind,
+)
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.settings import ModelSettings
 

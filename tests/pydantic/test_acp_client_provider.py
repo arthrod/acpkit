@@ -555,7 +555,10 @@ async def test_acp_provider_switches_session_model_when_model_name_changes() -> 
 
     # The ACP session is created once and reused; only the model selection changes.
     assert acp_agent.session_cwds == ["/workspace"]
-    assert acp_agent.session_models == [("session-1", "model-a"), ("session-1", "model-b")]
+    assert acp_agent.session_models == [
+        ("session-1", "model-a"),
+        ("session-1", "model-b"),
+    ]
 
 
 async def test_acp_provider_forwards_client_capabilities_info_and_mcp_servers() -> None:
@@ -714,7 +717,9 @@ async def test_host_bridge_forwards_session_update_to_delegate_when_present() ->
         lambda bridge: bridge.ext_method(method="custom/thing", params={}),
     ],
 )
-async def test_host_bridge_raises_without_a_delegate_for_host_methods(call: Any) -> None:
+async def test_host_bridge_raises_without_a_delegate_for_host_methods(
+    call: Any,
+) -> None:
     bridge = AcpHostBridge()
 
     with pytest.raises(RuntimeError, match="no host client delegate"):

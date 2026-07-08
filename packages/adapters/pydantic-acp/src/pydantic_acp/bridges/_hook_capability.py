@@ -17,7 +17,12 @@ from pydantic_ai.capabilities import (
     WrapToolValidateHandler,
 )
 from pydantic_ai.messages import AgentStreamEvent, ModelResponse, ToolCallPart
-from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults, RunContext, ToolDefinition
+from pydantic_ai.tools import (
+    DeferredToolRequests,
+    DeferredToolResults,
+    RunContext,
+    ToolDefinition,
+)
 
 from ..session.state import AcpSessionContext
 

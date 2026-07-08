@@ -4,7 +4,13 @@ from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from acp.schema import PlanEntry, ToolCallProgress, ToolCallStart, ToolCallStatus, ToolKind
+from acp.schema import (
+    PlanEntry,
+    ToolCallProgress,
+    ToolCallStart,
+    ToolCallStatus,
+    ToolKind,
+)
 
 from ..providers import ConfigOption, ModelSelectionState, ModeState
 from ..session.state import AcpSessionContext, JsonValue, SessionTranscriptUpdate

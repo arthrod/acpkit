@@ -11,8 +11,15 @@ from typing import Any, cast
 
 import pytest
 from acp.schema import ToolKind
-from pydantic_acp import HarnessCodeModeBridge, HarnessFileSystemBridge, HarnessShellBridge
-from pydantic_acp.bridges.capability_support import _json_user_location, _resolve_mcp_server_id
+from pydantic_acp import (
+    HarnessCodeModeBridge,
+    HarnessFileSystemBridge,
+    HarnessShellBridge,
+)
+from pydantic_acp.bridges.capability_support import (
+    _json_user_location,
+    _resolve_mcp_server_id,
+)
 from pydantic_acp.projection import (
     HarnessCodeModeProjectionMap,
     HarnessFileSystemProjectionMap,

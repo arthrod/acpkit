@@ -7,7 +7,12 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from acp.schema import AvailableCommand, SessionConfigOptionBoolean, SessionMode, SessionModeState
+from acp.schema import (
+    AvailableCommand,
+    SessionConfigOptionBoolean,
+    SessionMode,
+    SessionModeState,
+)
 from pydantic_acp.runtime.slash_commands import (
     McpServerInfo,
     _iter_mcp_server_infos,
@@ -894,7 +899,11 @@ def test_list_agent_mcp_servers_handles_mcp_toolset() -> None:
     ("client", "expected_transport", "expected_target"),
     [
         (SimpleNamespace(), "http", "<mcp>"),
-        (SimpleNamespace(url="https://example.com/mcp"), "http", "https://example.com/mcp"),
+        (
+            SimpleNamespace(url="https://example.com/mcp"),
+            "http",
+            "https://example.com/mcp",
+        ),
         (
             SimpleNamespace(transport=SimpleNamespace(url="https://example.com/mcp")),
             "http",

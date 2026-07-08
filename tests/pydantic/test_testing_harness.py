@@ -2,7 +2,12 @@ from __future__ import annotations as _annotations
 
 import pytest
 from acp import PROTOCOL_VERSION
-from pydantic_acp import AdapterConfig, BlackBoxHarness, ClientHostContext, FileSessionStore
+from pydantic_acp import (
+    AdapterConfig,
+    BlackBoxHarness,
+    ClientHostContext,
+    FileSessionStore,
+)
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ApprovalRequired
 from pydantic_ai.models.test import TestModel
@@ -20,7 +25,9 @@ from .support import (
 )
 
 
-async def test_black_box_harness_can_drive_approval_write_and_reload(tmp_path: Path) -> None:
+async def test_black_box_harness_can_drive_approval_write_and_reload(
+    tmp_path: Path,
+) -> None:
     store = FileSessionStore(tmp_path / "sessions")
 
     def factory(session):
@@ -111,7 +118,9 @@ async def test_black_box_harness_covers_initialize_mode_model_and_default_filter
     assert harness.agent_messages() == ["provider:model-b"]
 
 
-async def test_black_box_harness_exposes_compatibility_surface_updates(tmp_path: Path) -> None:
+async def test_black_box_harness_exposes_compatibility_surface_updates(
+    tmp_path: Path,
+) -> None:
     harness = BlackBoxHarness.create(
         agent=Agent(TestModel(custom_output_text="surface")),
         config=AdapterConfig(
@@ -185,7 +194,9 @@ async def test_black_box_harness_load_session_returns_none_for_missing_state(
     assert harness.last_session_id == "missing"
 
 
-async def test_black_box_harness_wraps_session_lifecycle_methods(tmp_path: Path) -> None:
+async def test_black_box_harness_wraps_session_lifecycle_methods(
+    tmp_path: Path,
+) -> None:
     harness = BlackBoxHarness.create(
         agent=Agent(TestModel(custom_output_text="lifecycle")),
         config=AdapterConfig(session_store=FileSessionStore(tmp_path / "sessions")),

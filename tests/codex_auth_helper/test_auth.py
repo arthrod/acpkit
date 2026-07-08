@@ -11,7 +11,11 @@ from typing import Any, cast
 import httpx
 import pytest
 from codex_auth_helper.auth.config import CodexAuthConfig, default_auth_path
-from codex_auth_helper.auth.manager import CodexTokenManager, _response_mapping, _string_value
+from codex_auth_helper.auth.manager import (
+    CodexTokenManager,
+    _response_mapping,
+    _string_value,
+)
 from codex_auth_helper.auth.state import (
     CodexAuthState,
     _as_string_mapping,

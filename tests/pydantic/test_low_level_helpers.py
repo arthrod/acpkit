@@ -411,7 +411,14 @@ def test_file_session_store_covers_delete_fork_missing_and_list_skip(
     with pytest.raises(ValueError, match="session path"):
         _store_child_path(store.root, "../escape.json")
 
-    unsafe_session_ids = ["", "../escape", "nested/session", ".hidden", "two words", "x" * 129]
+    unsafe_session_ids = [
+        "",
+        "../escape",
+        "nested/session",
+        ".hidden",
+        "two words",
+        "x" * 129,
+    ]
     for unsafe_session_id in unsafe_session_ids:
         with pytest.raises(ValueError, match="session_id"):
             store._session_path(unsafe_session_id)

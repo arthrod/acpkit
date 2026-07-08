@@ -204,9 +204,15 @@ def _print_server_banner(server: Any, *, host: str, mount_path: str) -> None:
     port = _server_port(server)
     paths = build_server_paths(mount_path)
     if port is None:
-        print(f"Serving ACP WebSocket at ws://{host}{paths.websocket_path}", file=sys.stderr)
+        print(
+            f"Serving ACP WebSocket at ws://{host}{paths.websocket_path}",
+            file=sys.stderr,
+        )
         return
-    print(f"Serving ACP WebSocket at ws://{host}:{port}{paths.websocket_path}", file=sys.stderr)
+    print(
+        f"Serving ACP WebSocket at ws://{host}:{port}{paths.websocket_path}",
+        file=sys.stderr,
+    )
 
 
 def _server_port(server: Any) -> int | None:

@@ -823,9 +823,7 @@ class LangChainAcpAgent(AcpAgent):
             tool_name = (
                 pending_name
                 if isinstance(pending_name, str) and pending_name
-                else message_name
-                if isinstance(message_name, str) and message_name
-                else "tool"
+                else (message_name if isinstance(message_name, str) and message_name else "tool")
             )
             pending_args = pending_state["args"] if pending_state is not None else ""
             raw_input = (

@@ -4,7 +4,12 @@ import importlib
 from typing import Any
 
 from ._version import __version__
-from .compatibility import CompatibilityManifest, SurfaceOwner, SurfaceStatus, SurfaceSupport
+from .compatibility import (
+    CompatibilityManifest,
+    SurfaceOwner,
+    SurfaceStatus,
+    SurfaceSupport,
+)
 from .runtime import (
     AcpKitError,
     MissingAdapterError,

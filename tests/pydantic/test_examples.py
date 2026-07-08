@@ -60,7 +60,9 @@ class _FakeHarnessCapability(AbstractCapability[None]):
         self.kwargs = kwargs
 
 
-def _install_fake_harness_modules(monkeypatch: pytest.MonkeyPatch) -> list[_FakeHarnessCapability]:
+def _install_fake_harness_modules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[_FakeHarnessCapability]:
     created: list[_FakeHarnessCapability] = []
 
     class FakeHarnessCapability(_FakeHarnessCapability):
@@ -332,20 +334,26 @@ def test_harness_example_main_codemode_dispatches_runtime_config(
     ]
 
 
-def test_harness_example_model_uses_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_harness_example_model_uses_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setenv("ACP_HARNESS_MODEL", "openai:gpt-5.4-mini")
 
     assert mock_harness_agent._harness_model() == "openai:gpt-5.4-mini"
 
 
-def test_harness_example_model_uses_openrouter_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_harness_example_model_uses_openrouter_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.delenv("ACP_HARNESS_MODEL", raising=False)
     monkeypatch.delenv("ACP_HARNESS_CODEX_MODEL", raising=False)
 
     assert mock_harness_agent._harness_model() == "openrouter:google/gemini-3-flash-preview"
 
 
-def test_harness_example_model_uses_codex_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_harness_example_model_uses_codex_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     captured: dict[str, str] = {}
     fake_module = ModuleType("codex_auth_helper")
 

@@ -73,7 +73,14 @@ _DEFAULT_IMAGE_GENERATION_TOOL_NAMES: Final[frozenset[str]] = frozenset(
 )
 _DEFAULT_MCP_TOOL_NAME_PREFIXES: Final[frozenset[str]] = frozenset({"mcp_server:"})
 _DEFAULT_HARNESS_FILESYSTEM_TOOL_NAMES: Final[frozenset[str]] = frozenset(
-    {"create_directory", "edit_file", "list_directory", "read_file", "search_files", "write_file"},
+    {
+        "create_directory",
+        "edit_file",
+        "list_directory",
+        "read_file",
+        "search_files",
+        "write_file",
+    },
 )
 _DEFAULT_HARNESS_SHELL_TOOL_NAMES: Final[frozenset[str]] = frozenset(
     {"check_command", "run_command", "start_command", "stop_command"},

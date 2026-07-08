@@ -17,7 +17,11 @@ from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
 from ..approvals import ApprovalResolution
 from ..bridges import PrepareToolsBridge
 from ..models import ModelOverride
-from ..session.state import AcpSessionContext, SessionTranscriptUpdate, StoredSessionUpdate
+from ..session.state import (
+    AcpSessionContext,
+    SessionTranscriptUpdate,
+    StoredSessionUpdate,
+)
 from ._native_plan_runtime import _NativePlanRuntime
 from ._prompt_execution import _PromptExecution
 from ._prompt_model_runtime import _PromptModelRuntime

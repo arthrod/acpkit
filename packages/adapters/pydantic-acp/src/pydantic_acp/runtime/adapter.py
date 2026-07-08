@@ -34,7 +34,10 @@ from ..bridges import PrepareToolsBridge
 from ..config import AdapterConfig
 from ..models import ModelOverride
 from ..session.state import AcpSessionContext, JsonValue
-from ._adapter_mixins import _PromptRuntimeDelegationMixin, _SessionRuntimeDelegationMixin
+from ._adapter_mixins import (
+    _PromptRuntimeDelegationMixin,
+    _SessionRuntimeDelegationMixin,
+)
 from ._adapter_prompt import _AdapterPromptHandler
 from ._prompt_runtime import NativePlanGeneration, TaskPlan, _PromptRuntime
 from ._session_runtime import _SessionRuntime

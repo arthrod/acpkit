@@ -38,7 +38,10 @@ class CodexResponsesModel(OpenAIResponsesModel):
         resolved = super()._get_instruction_parts(messages, model_request_parameters)
         if resolved:
             return list(messages)
-        return [ModelRequest(parts=(), instructions=self._default_instructions), *messages]
+        return [
+            ModelRequest(parts=(), instructions=self._default_instructions),
+            *messages,
+        ]
 
     async def request(
         self,

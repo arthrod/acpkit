@@ -447,7 +447,9 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
 
 
 def _known_pydantic_model_ids() -> tuple[str, ...]:
-    from ._session_runtime import _known_pydantic_model_ids as load_known_pydantic_model_ids
+    from ._session_runtime import (
+        _known_pydantic_model_ids as load_known_pydantic_model_ids,
+    )
 
     return load_known_pydantic_model_ids()
 

@@ -24,7 +24,11 @@ from pydantic_ai import (
     ToolCallPart,
     ToolReturnPart,
 )
-from pydantic_ai.messages import CompactionPart, NativeToolCallPart, NativeToolReturnPart
+from pydantic_ai.messages import (
+    CompactionPart,
+    NativeToolCallPart,
+    NativeToolReturnPart,
+)
 from typing_extensions import TypeIs
 
 from ._projection_text import format_code_block, single_line_summary, truncate_text

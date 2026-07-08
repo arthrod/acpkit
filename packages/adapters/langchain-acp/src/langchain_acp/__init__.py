@@ -26,7 +26,12 @@ from .bridges import (
     ToolSurfaceBridge,
 )
 from .builders import GraphBridgeBuilder, GraphBuildContributions
-from .config import DEFAULT_AGENT_NAME, DEFAULT_AGENT_TITLE, DEFAULT_AGENT_VERSION, AdapterConfig
+from .config import (
+    DEFAULT_AGENT_NAME,
+    DEFAULT_AGENT_TITLE,
+    DEFAULT_AGENT_VERSION,
+    AdapterConfig,
+)
 from .event_projection import (
     CompositeEventProjectionMap,
     EventProjectionMap,

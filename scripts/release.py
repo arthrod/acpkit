@@ -232,7 +232,12 @@ def _artifact_metadata(path: Path) -> tuple[str, Message]:
 def _validate_root_requirements(metadata: Message, version: str) -> None:
     requirements = metadata.get_all("Requires-Dist", [])
     upper_bound = _next_major(version)
-    for package_name in ("acpremote", "codex-auth-helper", "langchain-acp", "pydantic-acp"):
+    for package_name in (
+        "acpremote",
+        "codex-auth-helper",
+        "langchain-acp",
+        "pydantic-acp",
+    ):
         matching = [
             requirement
             for requirement in requirements

@@ -9,7 +9,12 @@ from acp.interfaces import Agent as AcpAgent
 
 from ..config import DEFAULT_AGENT_NAME, AdapterConfig
 from ..event_projection import EventProjectionMap
-from ..graph_source import FactoryGraphSource, GraphFactory, GraphSource, StaticGraphSource
+from ..graph_source import (
+    FactoryGraphSource,
+    GraphFactory,
+    GraphSource,
+    StaticGraphSource,
+)
 from ..projection import ProjectionMap
 from .adapter import LangChainAcpAgent
 
@@ -90,12 +95,18 @@ def _resolve_config(
         resolved_config = replace(
             resolved_config,
             event_projection_maps=tuple(
-                event_projection_maps
-                if event_projection_maps is not None
-                else resolved_config.event_projection_maps,
+                (
+                    event_projection_maps
+                    if event_projection_maps is not None
+                    else resolved_config.event_projection_maps
+                ),
             ),
             projection_maps=tuple(
-                projection_maps if projection_maps is not None else resolved_config.projection_maps,
+                (
+                    projection_maps
+                    if projection_maps is not None
+                    else resolved_config.projection_maps
+                ),
             ),
         )
     if graph_name is None or resolved_config.agent_name != DEFAULT_AGENT_NAME:

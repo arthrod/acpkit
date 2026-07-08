@@ -8,7 +8,10 @@ import pytest
 from acp.exceptions import RequestError
 from acp.schema import McpServerStdio
 from pydantic_acp.bridges.base import CapabilityBridge
-from pydantic_acp.runtime._agent_state import clear_selected_model_id, set_selected_model_id
+from pydantic_acp.runtime._agent_state import (
+    clear_selected_model_id,
+    set_selected_model_id,
+)
 from pydantic_acp.runtime._session_runtime import (
     _default_available_models,
     _known_codex_model_ids,

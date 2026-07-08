@@ -755,7 +755,14 @@ def test_slash_command_helpers_cover_validation_and_rendering_edges() -> None:
     assert render_mcp_server_listing([]) == "No MCP servers are currently attached."
     assert (
         render_mcp_server_listing(
-            [McpServerInfo(name="repo", transport="http", target="https://repo", source="session")],
+            [
+                McpServerInfo(
+                    name="repo",
+                    transport="http",
+                    target="https://repo",
+                    source="session",
+                )
+            ],
         )
         == "MCP servers:\n- repo (http, session): https://repo"
     )
@@ -785,7 +792,12 @@ def test_slash_command_helpers_cover_graph_tool_and_mcp_server_edge_paths() -> N
     session.mcp_servers = [
         {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
         {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
-        {"name": "repo-stdio", "type": "stdio", "command": "python", "args": ["server.py"]},
+        {
+            "name": "repo-stdio",
+            "type": "stdio",
+            "command": "python",
+            "args": ["server.py"],
+        },
         {"name": "stdio-no-args", "type": "stdio", "command": "python"},
         {"name": "bad-transport"},
         {"transport": "http"},
@@ -2843,7 +2855,14 @@ def test_memory_and_file_session_stores_cover_lifecycle(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="session path"):
         _store_child_path(file_store.root, "../escape.json")
 
-    unsafe_session_ids = ["", "../escape", "nested/session", ".hidden", "two words", "x" * 129]
+    unsafe_session_ids = [
+        "",
+        "../escape",
+        "nested/session",
+        ".hidden",
+        "two words",
+        "x" * 129,
+    ]
     for unsafe_session_id in unsafe_session_ids:
         with pytest.raises(ValueError, match="session_id"):
             file_store._session_path(unsafe_session_id)
@@ -3440,7 +3459,9 @@ def test_langchain_adapter_lifecycle_replay_and_helper_paths(tmp_path: Path) -> 
         asyncio.run(adapter.fork_session(cwd=str(tmp_path), session_id="missing", mcp_servers=[]))
 
 
-def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(tmp_path: Path) -> None:
+def test_langchain_session_lifecycle_preserves_mcp_servers_when_omitted(
+    tmp_path: Path,
+) -> None:
     adapter = _make_adapter()
     server = McpServerStdio(name="stdio", command="python", args=["server.py"], env=[])
     created = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[server]))
@@ -3999,7 +4020,10 @@ def test_streamed_tool_start_waits_for_complete_json_arguments(tmp_path: Path) -
 
     assert active_tool_calls["call-next-round"]["raw_input"] == {"file_path": "next.txt"}
     starts = [update for _, update in client.updates if isinstance(update, ToolCallStart)]
-    assert [update.title for update in starts] == ["Read `proof.txt`", "Read `next.txt`"]
+    assert [update.title for update in starts] == [
+        "Read `proof.txt`",
+        "Read `next.txt`",
+    ]
 
 
 def test_streamed_tool_start_accepts_empty_arguments(tmp_path: Path) -> None:
@@ -4364,7 +4388,9 @@ def test_langchain_adapter_prompt_cancels_mid_stream(tmp_path: Path) -> None:
     assert response.stop_reason == "cancelled"
 
 
-def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(tmp_path: Path) -> None:
+def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(
+    tmp_path: Path,
+) -> None:
     async def run_scenario() -> None:
         started = asyncio.Event()
 
@@ -4408,7 +4434,9 @@ def test_langchain_adapter_cancel_interrupts_graph_before_next_chunk(tmp_path: P
     asyncio.run(run_scenario())
 
 
-def test_langchain_adapter_does_not_swallow_external_task_cancellation(tmp_path: Path) -> None:
+def test_langchain_adapter_does_not_swallow_external_task_cancellation(
+    tmp_path: Path,
+) -> None:
     async def run_scenario() -> None:
         started = asyncio.Event()
 

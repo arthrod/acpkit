@@ -5,7 +5,13 @@ import importlib.util
 from pathlib import Path
 from typing import Any, cast
 
-from pydantic_ai import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai import (
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.messages import UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 

@@ -730,7 +730,13 @@ class AcpModel(Model[AcpAgent]):
 
 
 class _AcpBufferedStreamedResponse(StreamedResponse):
-    __slots__ = ("_response", "_usage", "finish_reason", "provider_details", "provider_response_id")
+    __slots__ = (
+        "_response",
+        "_usage",
+        "finish_reason",
+        "provider_details",
+        "provider_response_id",
+    )
 
     def __init__(
         self,
@@ -745,7 +751,9 @@ class _AcpBufferedStreamedResponse(StreamedResponse):
         self.provider_details = response.provider_details
         self.finish_reason = response.finish_reason
 
-    async def _get_event_iterator(self) -> AsyncGenerator[ModelResponseStreamEvent, None]:
+    async def _get_event_iterator(
+        self,
+    ) -> AsyncGenerator[ModelResponseStreamEvent, None]:
         for part in self._response.parts:
             if not isinstance(part, TextPart):
                 continue

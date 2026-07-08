@@ -11,7 +11,11 @@ from pydantic_ai.tools import ToolDefinition
 from ..awaitables import resolve_value
 from ..bridges import PrepareToolsBridge
 from ..session.state import AcpSessionContext, utc_now
-from ._agent_state import has_native_plan_tools, set_native_plan_tools_installed, try_active_session
+from ._agent_state import (
+    has_native_plan_tools,
+    set_native_plan_tools_installed,
+    try_active_session,
+)
 
 if TYPE_CHECKING:
     from .adapter import PydanticAcpAgent

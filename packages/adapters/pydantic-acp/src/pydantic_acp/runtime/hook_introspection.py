@@ -10,7 +10,12 @@ from uuid import uuid4
 
 import anyio
 from pydantic_ai import Agent as PydanticAgent
-from pydantic_ai.capabilities import AbstractCapability, CombinedCapability, Hooks, HookTimeoutError
+from pydantic_ai.capabilities import (
+    AbstractCapability,
+    CombinedCapability,
+    Hooks,
+    HookTimeoutError,
+)
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models import ModelRequestContext
 

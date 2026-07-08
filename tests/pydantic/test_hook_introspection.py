@@ -22,7 +22,12 @@ from pydantic_acp.runtime.hook_introspection import (
     list_agent_hooks,
     observe_agent_hooks,
 )
-from pydantic_ai.capabilities import CapabilityOrdering, CombinedCapability, Hooks, HookTimeoutError
+from pydantic_ai.capabilities import (
+    CapabilityOrdering,
+    CombinedCapability,
+    Hooks,
+    HookTimeoutError,
+)
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from typing_extensions import Sentinel
 

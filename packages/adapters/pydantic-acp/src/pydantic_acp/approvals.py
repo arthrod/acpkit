@@ -8,7 +8,12 @@ from acp.exceptions import RequestError
 from acp.interfaces import Client as AcpClient
 from acp.schema import PermissionOption
 from pydantic_ai.messages import ToolCallPart
-from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults, ToolApproved, ToolDenied
+from pydantic_ai.tools import (
+    DeferredToolRequests,
+    DeferredToolResults,
+    ToolApproved,
+    ToolDenied,
+)
 from typing_extensions import TypeIs
 
 from .approval_store import (
