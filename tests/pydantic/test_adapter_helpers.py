@@ -788,6 +788,14 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
         ),
     )
     assert no_bridge_outcome.stop_reason == "end_turn"
+    assert (
+        adapter._prompt_runtime._execution._prepare_run_output_type(
+            agent,
+            session,
+            str,
+        )
+        is str
+    )
 
     bridge_adapter = _adapter(
         agent=agent,
@@ -799,6 +807,14 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
     )
     bridge_response = asyncio.run(bridge_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     bridge_session = _stored_session(bridge_adapter, bridge_response.session_id)
+    assert (
+        bridge_adapter._prompt_runtime._execution._prepare_run_output_type(
+            agent,
+            bridge_session,
+            DeferredToolRequests,
+        )
+        is DeferredToolRequests
+    )
 
     async def calls_present_run(prompt_text: str | None, **kwargs: Any) -> Any:
         del prompt_text, kwargs

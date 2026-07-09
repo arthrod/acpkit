@@ -1,7 +1,7 @@
 from __future__ import annotations as _annotations
 
 from contextlib import nullcontext
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar, cast
 from uuid import uuid4
 
 from acp.exceptions import RequestError
@@ -63,6 +63,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         agent: PydanticAgent[AgentDepsT, OutputDataT],
         prompt: list[PromptBlock],
         session: AcpSessionContext,
+        output_type_override: object | None = None,
     ) -> PromptRunOutcome:
         message_history = load_message_history(session.message_history_json)
         deferred_tool_results: DeferredToolResults | None = None
@@ -75,6 +76,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
                 session=session,
                 message_history=message_history,
                 deferred_tool_results=deferred_tool_results,
+                output_type_override=output_type_override,
             )
             try:
                 result, streamed_output = await self._runtime._execute_prompt(
@@ -95,6 +97,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
                     session=session,
                     message_history=message_history,
                     deferred_tool_results=deferred_tool_results,
+                    output_type_override=output_type_override,
                 )
                 result, streamed_output = await self._runtime._execute_prompt(
                     agent=agent,
@@ -366,6 +369,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         session: AcpSessionContext,
         message_history: list[ModelMessage] | None,
         deferred_tool_results: DeferredToolResults | None,
+        output_type_override: object | None,
     ) -> tuple[dict[str, Any], Any, RunOutputType | None]:
         deps = await self._runtime._owner._agent_source.get_deps(session, agent)
         model_override = await self._runtime._owner._resolve_model_override(session, agent)
@@ -375,7 +379,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
             prompt=prompt,
             model_override=model_override,
         )
-        run_output_type = self._runtime._owner._build_run_output_type(agent, session=session)
+        run_output_type = self._prepare_run_output_type(agent, session, output_type_override)
         run_kwargs = self._runtime._owner._build_run_kwargs(
             session=session,
             message_history=message_history,
@@ -386,6 +390,20 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
             output_type=run_output_type,
         )
         return run_kwargs, model_override, run_output_type
+
+    def _prepare_run_output_type(
+        self,
+        agent: PydanticAgent[AgentDepsT, OutputDataT],
+        session: AcpSessionContext,
+        output_type_override: object | None,
+    ) -> RunOutputType | None:
+        if output_type_override is None:
+            return self._runtime._owner._build_run_output_type(agent, session=session)
+        if not self._runtime._owner._supports_deferred_approval_bridge():
+            return cast("RunOutputType", output_type_override)
+        if output_type_override is DeferredToolRequests:
+            return output_type_override
+        return [cast("RunOutputType", output_type_override), DeferredToolRequests]
 
     async def _record_execution_updates(
         self,

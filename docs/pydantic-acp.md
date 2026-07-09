@@ -70,31 +70,46 @@ This is the lower-level construction seam behind `run_acp(...)`.
 
 ## ACP Client Provider Bridge
 
-Use `AcpProvider` when the thing you already have is an ACP agent and the host
-application needs to consume it through normal Pydantic AI v2 model/provider
-APIs.
+Use `create_acp_model(...)` when the thing you already have is an ACP agent or
+ACP stdio command and the host application needs to consume it through normal
+Pydantic AI v2 model APIs.
 
 This is the inverse of `create_acp_agent(...)`:
 
 - `create_acp_agent(...)` exposes a `pydantic_ai.Agent` as ACP
-- `AcpProvider` consumes an ACP agent as a Pydantic AI provider/model
+- `create_acp_model(...)` consumes an ACP agent as a Pydantic AI model
 
 ```python
 from pydantic_ai import Agent
-from pydantic_acp import AcpProvider
+from pydantic_acp import create_acp_agent, create_acp_model
 
-# `remote_acp_agent` can be any object implementing the ACP Agent interface.
-provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
-model = provider.model()
+inner_acp = create_acp_agent(agent=some_pydantic_agent)
+model = create_acp_model(acp_agent=inner_acp, cwd="/workspace")
 agent = Agent(model)
 
 result = await agent.run("Summarize the current workspace state.")
 print(result.output)
 ```
 
-`provider.model()` intentionally leaves ACP model selection to the wrapped
-agent's session default. Pass `provider.model("zed-agent")` only when the
-wrapped ACP agent accepts that concrete `session/set_model` id.
+`acp_command` is for child processes that speak ACP JSON-RPC on stdin/stdout.
+It is not an arbitrary CLI wrapper:
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(
+    acp_command=("npx", "@zed-industries/codex-acp"),
+    cwd="/workspace",
+    stderr_mode="inherit",
+)
+agent = Agent(model)
+```
+
+`create_acp_model(...)` intentionally leaves ACP model selection to the wrapped
+agent's session default. Pass `model_name="zed-agent"` only when the wrapped
+ACP agent accepts that concrete `session/set_model` id. `AcpProvider` and
+`AcpModel` remain available when lower-level provider ownership is needed.
 
 The bridge keeps ownership explicit:
 

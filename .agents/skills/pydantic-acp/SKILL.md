@@ -109,6 +109,7 @@ High-value public seams:
 
 - `run_acp(agent=...)`
 - `create_acp_agent(...)`
+- `create_acp_model(...)`
 - `AcpProvider`
 - `AcpModel`
 - `AcpHostBridge`
@@ -323,20 +324,40 @@ Use `create_acp_agent(...)` when another runner or transport layer should own st
 
 ### ACP-backed Pydantic AI provider
 
-Use `AcpProvider(acp_agent=...)` when the runtime you have is already an ACP agent and the host
-application needs to consume it through normal Pydantic AI v2 provider/model APIs.
+Use `create_acp_model(acp_agent=...)` when the runtime you have is already an ACP agent and the
+host application needs to consume it through normal Pydantic AI v2 model APIs.
 
 ```python
 from pydantic_ai import Agent
-from pydantic_acp import AcpProvider
+from pydantic_acp import create_acp_model
 
-provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
-agent = Agent(provider.model())
+model = create_acp_model(acp_agent=remote_acp_agent, cwd="/workspace")
+agent = Agent(model)
 ```
 
-`provider.model()` leaves ACP model selection to the wrapped ACP agent's session default. Pass a
-model id only when that ACP agent accepts the concrete `session/set_model` id. Do not use this as a
-replacement for `create_acp_agent(...)`; it is the inverse bridge.
+`create_acp_model(...)` leaves ACP model selection to the wrapped ACP agent's session default. Pass
+`model_name=...` only when that ACP agent accepts the concrete `session/set_model` id. Do not use
+this as a replacement for `create_acp_agent(...)`; it is the inverse bridge.
+
+Use `create_acp_model(acp_command=...)` for local child processes that already speak ACP JSON-RPC
+over stdin/stdout, such as external ACP agent servers:
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(
+    acp_command=("npx", "@zed-industries/codex-acp"),
+    cwd="/workspace",
+)
+agent = Agent(model)
+```
+
+Do not pass arbitrary CLI commands here; the process must be an ACP server. Each command-backed
+model owns one child ACP process and should be reused for repeated subagent calls.
+
+Use `AcpProvider(acp_agent=...)` directly only when provider ownership, host delegation, or lower
+level lifecycle control matters.
 
 ### Session-aware construction
 

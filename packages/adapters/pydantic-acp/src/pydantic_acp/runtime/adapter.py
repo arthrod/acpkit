@@ -3,7 +3,7 @@ from __future__ import annotations as _annotations
 import asyncio
 from collections.abc import Sequence
 from dataclasses import replace
-from typing import Any, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
@@ -56,6 +56,8 @@ class PydanticAcpAgent(
     Generic[AgentDepsT, OutputDataT],
 ):
     """Expose a `pydantic_ai.Agent` as an ACP-compatible session runtime."""
+
+    _pydantic_acp_meta_supported: ClassVar[bool] = True
 
     def __init__(
         self,

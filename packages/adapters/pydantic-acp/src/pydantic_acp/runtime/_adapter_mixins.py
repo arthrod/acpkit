@@ -27,6 +27,7 @@ from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
 
+from .._meta_protocol import extract_field_meta
 from ..approvals import ApprovalResolution
 from ..awaitables import resolve_value
 from ..config import AdapterConfig
@@ -68,11 +69,13 @@ class _PromptRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
         agent: PydanticAgent[AgentDepsT, OutputDataT],
         prompt: list[PromptBlock],
         session: AcpSessionContext,
+        output_type_override: object | None = None,
     ) -> PromptRunOutcome:
         return await self._prompt_runtime._run_prompt(
             agent=agent,
             prompt=prompt,
             session=session,
+            output_type_override=output_type_override,
         )
 
     async def _record_tool_updates(
@@ -519,9 +522,9 @@ class _SessionRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
         **kwargs: Any,
     ) -> PromptResponse:
         """Run one ACP prompt turn against the bound Pydantic AI agent."""
-        del kwargs
         return await self._adapter_prompt.prompt(
             prompt,
             session_id,
             message_id=message_id,
+            request_meta=extract_field_meta(kwargs),
         )

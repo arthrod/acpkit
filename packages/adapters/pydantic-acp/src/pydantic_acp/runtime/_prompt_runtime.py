@@ -76,8 +76,14 @@ class _PromptRuntime(Generic[AgentDepsT, OutputDataT]):
         agent: PydanticAgent[AgentDepsT, OutputDataT],
         prompt: list[PromptBlock],
         session: AcpSessionContext,
+        output_type_override: object | None = None,
     ) -> PromptRunOutcome:
-        return await self._execution.run_prompt(agent=agent, prompt=prompt, session=session)
+        return await self._execution.run_prompt(
+            agent=agent,
+            prompt=prompt,
+            session=session,
+            output_type_override=output_type_override,
+        )
 
     async def _execute_prompt(
         self,

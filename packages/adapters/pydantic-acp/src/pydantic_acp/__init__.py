@@ -66,6 +66,7 @@ from .client import (
     AcpUpdateRecord,
 )
 from .config import AdapterConfig
+from .factory import create_acp_model
 from .hook_projection import HookEvent, HookProjectionMap
 from .host import (
     ClientFilesystemBackend,
@@ -282,6 +283,7 @@ __all__ = (
     "caution_for_path",
     "compose_projection_maps",
     "create_acp_agent",
+    "create_acp_model",
     "format_code_block",
     "format_diff_preview",
     "format_terminal_status",

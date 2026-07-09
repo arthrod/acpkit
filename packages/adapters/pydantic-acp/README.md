@@ -80,7 +80,35 @@ run_agent(acp_agent)
 
 ## ACP Client Provider Bridge
 
-`AcpProvider` is the client-side mirror of the ACP server adapter. It wraps an ACP agent as a Pydantic AI v2 `Provider`; `AcpModel` is the model object Pydantic AI agents run against.
+`create_acp_model(...)` is the client-side mirror of the ACP server adapter. It wraps an ACP agent, or an ACP stdio command, as a Pydantic AI v2 model. `AcpProvider` and `AcpModel` remain available when lower-level provider ownership is needed.
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_agent, create_acp_model
+
+inner_acp = create_acp_agent(agent=some_pydantic_agent)
+model = create_acp_model(acp_agent=inner_acp, cwd="/workspace")
+agent = Agent(model)
+
+result = await agent.run("Summarize the current workspace state.")
+print(result.output)
+```
+
+`acp_command` is for child processes that speak ACP JSON-RPC on stdin/stdout. It is not an arbitrary CLI wrapper.
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(
+    acp_command=("npx", "@zed-industries/codex-acp"),
+    cwd="/workspace",
+    stderr_mode="inherit",
+)
+agent = Agent(model)
+```
+
+For lower-level ownership, construct the provider directly:
 
 ```python
 from pydantic_ai import Agent
@@ -99,7 +127,7 @@ This keeps ownership boundaries explicit:
 
 - Pydantic AI owns the outer agent run, output validation, and normal model/provider lifecycle.
 - ACP owns the delegated agent session, ACP-visible updates, and any editor or host capabilities requested by that agent.
-- `provider.model()` leaves ACP model selection to the wrapped agent's session default; pass `provider.model("zed-agent")` only when the ACP agent accepts that concrete `session/set_model` ID.
+- `create_acp_model(...)` and `provider.model()` leave ACP model selection to the wrapped agent's session default; pass `model_name="zed-agent"` or `provider.model("zed-agent")` only when the ACP agent accepts that concrete `session/set_model` ID.
 - `AcpHostBridge` records ACP `session_update` messages and can delegate filesystem, terminal, approval, and extension callbacks to a real ACP host client when one is supplied.
 - Pydantic AI function tools are intentionally not executed directly by `AcpModel`; register tools on the ACP agent or expose host capabilities through ACP.
 

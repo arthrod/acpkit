@@ -1,11 +1,13 @@
 from __future__ import annotations as _annotations
 
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any, Literal, cast
 from unittest.mock import AsyncMock
 
 import pydantic_acp
+import pydantic_acp.command_agent as command_agent_module
 import pytest
 from acp import PROTOCOL_VERSION
 from acp.exceptions import RequestError
@@ -26,8 +28,18 @@ from acp.schema import (
     Usage,
     UsageUpdate,
 )
-from pydantic_acp import AcpHostBridge, AcpModel, AcpProvider, create_acp_agent
+from pydantic import BaseModel
+from pydantic_acp import AcpHostBridge, AcpModel, AcpProvider, create_acp_agent, create_acp_model
 from pydantic_acp import client as client_module
+from pydantic_acp._meta_protocol import (
+    MISSING_STRUCTURED_OUTPUT,
+    build_structured_output_request_meta,
+    build_structured_output_response_meta,
+    build_structured_output_type,
+    extract_field_meta,
+    extract_structured_output,
+    has_structured_output_request,
+)
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import (
@@ -50,6 +62,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai.native_tools import WebSearchTool
 from pydantic_ai.providers import Provider
 from pydantic_ai.tools import ToolDefinition
+from pydantic_ai.usage import RequestUsage
 
 from .support import HostRecordingClient, RecordingClient
 
@@ -167,6 +180,34 @@ class SetModelErrorACPAgent(EchoACPAgent):
         raise self.error
 
 
+class StructuredMetaACPAgent(EchoACPAgent):
+    def __init__(self, *, structured_output: dict[str, Any]) -> None:
+        super().__init__()
+        self.structured_output = structured_output
+        self.prompt_kwargs: list[dict[str, Any]] = []
+
+    async def prompt(
+        self,
+        prompt: list[Any],
+        session_id: str,
+        message_id: str | None = None,
+        **kwargs: Any,
+    ) -> PromptResponse:
+        del message_id
+        rendered_prompt = "".join(str(getattr(block, "text", "")) for block in prompt)
+        self.prompts.append((session_id, rendered_prompt))
+        self.prompt_kwargs.append(kwargs)
+        return PromptResponse(
+            field_meta=build_structured_output_response_meta(self.structured_output),
+            stop_reason=self.stop_reason,
+            usage=self.usage,
+        )
+
+
+class StructuredAnswer(BaseModel):
+    answer: str
+
+
 def test_acp_client_provider_is_plain_pydantic_ai_provider() -> None:
     acp_agent = EchoACPAgent()
     provider, model = _build_provider_and_model(acp_agent)
@@ -260,6 +301,39 @@ def test_acp_provider_model_factory_uses_default_model_name() -> None:
     assert model.provider is provider
 
 
+def test_create_acp_model_requires_exactly_one_agent_source() -> None:
+    acp_agent = cast(AcpAgent, EchoACPAgent())
+
+    with pytest.raises(ValueError, match="Exactly one of acp_agent or acp_command"):
+        create_acp_model()
+
+    with pytest.raises(ValueError, match="Exactly one of acp_agent or acp_command"):
+        create_acp_model(acp_agent=acp_agent, acp_command=(sys.executable, "-c", "pass"))
+
+    with pytest.raises(ValueError, match="at least one executable argument"):
+        create_acp_model(acp_command=())
+
+    with pytest.raises(TypeError, match="not a string"):
+        create_acp_model(acp_command=cast(Any, sys.executable))
+
+
+async def test_create_acp_model_wraps_in_process_acp_agent() -> None:
+    acp_agent = EchoACPAgent()
+    model = create_acp_model(
+        acp_agent=cast(AcpAgent, acp_agent),
+        model_name="zed-agent",
+        cwd="/workspace",
+    )
+    agent = Agent(model)
+
+    result = await agent.run("factory path")
+
+    assert "factory path" in result.output
+    assert acp_agent.initialized_protocols == [PROTOCOL_VERSION]
+    assert acp_agent.session_cwds == ["/workspace"]
+    assert acp_agent.session_models == [("session-1", "zed-agent")]
+
+
 async def test_acp_provider_default_model_leaves_remote_model_selection_to_agent() -> None:
     acp_agent = EchoACPAgent()
     set_session_model = AsyncMock(
@@ -276,6 +350,400 @@ async def test_acp_provider_default_model_leaves_remote_model_selection_to_agent
     assert acp_agent.session_cwds == ["/workspace"]
     assert acp_agent.session_models == []
     set_session_model.assert_not_awaited()
+
+
+async def test_create_acp_model_command_runs_stdio_agent_without_model_selection(
+    tmp_path: Path,
+) -> None:
+    server_script = tmp_path / "stdio_acp_agent.py"
+    server_script.write_text(
+        """
+from __future__ import annotations
+
+import asyncio
+import os
+from typing import Any
+
+from acp import run_agent
+from acp.helpers import text_block
+from acp.schema import AgentCapabilities, AgentMessageChunk, Implementation, InitializeResponse, NewSessionResponse, PromptResponse
+
+
+class StdioAgent:
+    def __init__(self) -> None:
+        self.client: Any | None = None
+
+    def on_connect(self, conn: Any) -> None:
+        self.client = conn
+
+    async def initialize(self, protocol_version: int, **kwargs: Any) -> InitializeResponse:
+        del kwargs
+        return InitializeResponse(
+            protocol_version=protocol_version,
+            agent_info=Implementation(name="stdio-test-agent", version="test"),
+            agent_capabilities=AgentCapabilities(),
+        )
+
+    async def new_session(self, cwd: str, **kwargs: Any) -> NewSessionResponse:
+        del cwd, kwargs
+        return NewSessionResponse(session_id="stdio-session")
+
+    async def set_session_model(self, **kwargs: Any) -> None:
+        raise AssertionError(f"set_session_model must not be called: {kwargs!r}")
+
+    async def prompt(self, prompt: list[Any], session_id: str, **kwargs: Any) -> PromptResponse:
+        del kwargs
+        if self.client is None:
+            raise AssertionError("agent was not connected")
+        rendered = "".join(str(getattr(block, "text", "")) for block in prompt)
+        payload = f"{os.environ['ACP_COMMAND_MARKER']}|{os.getcwd()}|{rendered}"
+        await self.client.session_update(
+            session_id=session_id,
+            update=AgentMessageChunk(
+                session_update="agent_message_chunk",
+                content=text_block(payload),
+            ),
+            source="stdio-test-agent",
+        )
+        return PromptResponse(stop_reason="end_turn")
+
+
+asyncio.run(run_agent(StdioAgent()))
+""",
+    )
+    model = create_acp_model(
+        acp_command=(sys.executable, str(server_script)),
+        cwd=tmp_path,
+        env={"ACP_COMMAND_MARKER": "from-env"},
+        stderr_mode="discard",
+        terminate_timeout=1.0,
+    )
+
+    async with model:
+        result = await Agent(model).run("stdio factory path")
+
+    assert result.output == f"from-env|{tmp_path}|stdio factory path"
+    command_agent = cast(Any, model.provider).client
+    assert command_agent._process is None
+    assert command_agent._connection is None
+
+
+def test_acp_command_options_validate_runtime_settings(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="at least one executable argument"):
+        command_agent_module.AcpCommandOptions(command=(), cwd=tmp_path)
+
+    with pytest.raises(ValueError, match="stderr_mode"):
+        command_agent_module.AcpCommandOptions(
+            command=("agent",),
+            cwd=tmp_path,
+            stderr_mode=cast(Any, "pipe"),
+        )
+
+    with pytest.raises(ValueError, match="positive finite"):
+        command_agent_module.AcpCommandOptions(
+            command=("agent",),
+            cwd=tmp_path,
+            terminate_timeout=0,
+        )
+
+    assert command_agent_module._build_process_env(None) is None
+    merged = command_agent_module._build_process_env({"ACP_COMMAND_MARKER": "merged"})
+    assert merged is not None
+    assert merged["ACP_COMMAND_MARKER"] == "merged"
+
+
+async def test_acp_provider_close_is_noop_for_agents_without_close() -> None:
+    provider = AcpProvider(acp_agent=cast(AcpAgent, EchoACPAgent()))
+
+    await provider.close()
+
+    assert provider.client is not None
+
+
+async def test_acp_command_agent_delegates_session_methods_through_existing_connection(
+    tmp_path: Path,
+) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class LiveProcess:
+        returncode = None
+
+    class DelegatingConnection:
+        async def load_session(self, **kwargs: Any) -> str:
+            calls.append(("load_session", kwargs))
+            return "load"
+
+        async def list_sessions(self, **kwargs: Any) -> str:
+            calls.append(("list_sessions", kwargs))
+            return "list"
+
+        async def set_session_mode(self, **kwargs: Any) -> str:
+            calls.append(("set_session_mode", kwargs))
+            return "mode"
+
+        async def set_session_model(self, **kwargs: Any) -> str:
+            calls.append(("set_session_model", kwargs))
+            return "model"
+
+        async def set_config_option(self, **kwargs: Any) -> str:
+            calls.append(("set_config_option", kwargs))
+            return "config"
+
+        async def authenticate(self, **kwargs: Any) -> str:
+            calls.append(("authenticate", kwargs))
+            return "auth"
+
+        async def fork_session(self, **kwargs: Any) -> str:
+            calls.append(("fork_session", kwargs))
+            return "fork"
+
+        async def resume_session(self, **kwargs: Any) -> str:
+            calls.append(("resume_session", kwargs))
+            return "resume"
+
+        async def close_session(self, **kwargs: Any) -> str:
+            calls.append(("close_session", kwargs))
+            return "close-session"
+
+        async def cancel(self, **kwargs: Any) -> None:
+            calls.append(("cancel", kwargs))
+
+        async def ext_method(self, **kwargs: Any) -> dict[str, Any]:
+            calls.append(("ext_method", kwargs))
+            return {"ok": True}
+
+        async def ext_notification(self, **kwargs: Any) -> None:
+            calls.append(("ext_notification", kwargs))
+
+    command_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(command=("agent",), cwd=tmp_path),
+    )
+    cast(Any, command_agent)._process = LiveProcess()
+    cast(Any, command_agent)._connection = DelegatingConnection()
+
+    assert await command_agent.load_session(cwd="/workspace", session_id="s1") == "load"
+    assert await command_agent.list_sessions(cursor="c1", cwd="/workspace") == "list"
+    assert await command_agent.set_session_mode(mode_id="review", session_id="s1") == "mode"
+    assert await command_agent.set_session_model(model_id="m1", session_id="s1") == "model"
+    assert (
+        await command_agent.set_config_option(
+            config_id="effort",
+            session_id="s1",
+            value="high",
+        )
+        == "config"
+    )
+    assert await command_agent.authenticate(method_id="oauth") == "auth"
+    assert await command_agent.fork_session(cwd="/workspace", session_id="s1") == "fork"
+    assert await command_agent.resume_session(cwd="/workspace", session_id="s1") == "resume"
+    assert await command_agent.close_session(session_id="s1") == "close-session"
+    await command_agent.cancel(session_id="s1")
+    assert await command_agent.ext_method(method="x/test", params={"a": 1}) == {"ok": True}
+    await command_agent.ext_notification(method="x/event", params={"b": 2})
+
+    assert [name for name, _kwargs in calls] == [
+        "load_session",
+        "list_sessions",
+        "set_session_mode",
+        "set_session_model",
+        "set_config_option",
+        "authenticate",
+        "fork_session",
+        "resume_session",
+        "close_session",
+        "cancel",
+        "ext_method",
+        "ext_notification",
+    ]
+
+
+async def test_acp_command_agent_reuses_connection_created_while_waiting_for_lock(
+    tmp_path: Path,
+) -> None:
+    class LiveProcess:
+        returncode = None
+
+    class MutatingLock:
+        async def __aenter__(self) -> None:
+            cast(Any, command_agent)._process = LiveProcess()
+            cast(Any, command_agent)._connection = connection
+
+        async def __aexit__(self, *args: Any) -> None:
+            del args
+
+    command_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(command=("agent",), cwd=tmp_path),
+    )
+    connection = object()
+    cast(Any, command_agent)._get_connect_lock = lambda: MutatingLock()
+
+    assert await cast(Any, command_agent)._ensure_connection() is connection
+
+
+async def test_acp_command_agent_open_connection_errors_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    command_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(command=("agent",), cwd=tmp_path),
+    )
+
+    await command_agent.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        await command_agent.initialize(protocol_version=PROTOCOL_VERSION)
+
+    unconnected_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(command=("agent",), cwd=tmp_path),
+    )
+    with pytest.raises(RuntimeError, match="on_connect"):
+        await cast(Any, unconnected_agent)._open_connection()
+
+    terminations: list[tuple[Any, float]] = []
+
+    async def fake_terminate(process: Any, *, timeout: float) -> None:
+        terminations.append((process, timeout))
+
+    class MissingPipeProcess:
+        returncode = None
+        stdin = None
+        stdout = None
+
+    async def create_missing_pipe_process(
+        options: command_agent_module.AcpCommandOptions,
+    ) -> MissingPipeProcess:
+        del options
+        return MissingPipeProcess()
+
+    monkeypatch.setattr(command_agent_module, "_terminate_process", fake_terminate)
+    monkeypatch.setattr(
+        command_agent_module, "_create_command_process", create_missing_pipe_process
+    )
+
+    missing_pipe_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(
+            command=("agent",),
+            cwd=tmp_path,
+            terminate_timeout=2.0,
+        ),
+    )
+    missing_pipe_agent.on_connect(cast(AcpClient, object()))
+    with pytest.raises(RuntimeError, match="stdio pipes"):
+        await cast(Any, missing_pipe_agent)._open_connection()
+    assert terminations[-1][1] == 2.0
+
+    class PipeProcess:
+        returncode = None
+        stdin = object()
+        stdout = object()
+
+    pipe_process = PipeProcess()
+
+    async def create_pipe_process(
+        options: command_agent_module.AcpCommandOptions,
+    ) -> PipeProcess:
+        del options
+        return pipe_process
+
+    def raise_connect(*args: Any, **kwargs: Any) -> None:
+        del args, kwargs
+        raise RuntimeError("connect failed")
+
+    monkeypatch.setattr(command_agent_module, "_create_command_process", create_pipe_process)
+    monkeypatch.setattr(command_agent_module, "connect_to_agent", raise_connect)
+
+    failing_connect_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(command=("agent",), cwd=tmp_path),
+    )
+    failing_connect_agent.on_connect(cast(AcpClient, object()))
+    with pytest.raises(RuntimeError, match="connect failed"):
+        await cast(Any, failing_connect_agent)._open_connection()
+    assert terminations[-1][0] is pipe_process
+
+
+async def test_acp_command_agent_terminate_process_paths() -> None:
+    class AlreadyExitedProcess:
+        returncode = 0
+        stdin = None
+
+    await command_agent_module._terminate_process(cast(Any, AlreadyExitedProcess()), timeout=0.01)
+
+    class ClosingStdin:
+        def __init__(self, process: Any) -> None:
+            self.process = process
+            self.closed = False
+
+        def close(self) -> None:
+            self.closed = True
+            self.process.returncode = 0
+
+        async def wait_closed(self) -> None:
+            return None
+
+    class ExitsAfterStdinCloseProcess:
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+            self.stdin = ClosingStdin(self)
+
+    exits_after_stdin = ExitsAfterStdinCloseProcess()
+    await command_agent_module._terminate_process(cast(Any, exits_after_stdin), timeout=0.01)
+    assert exits_after_stdin.stdin.closed
+
+    class LookupErrorProcess:
+        returncode = None
+        stdin = None
+
+        def __init__(self) -> None:
+            self.terminate_calls = 0
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+
+        async def wait(self) -> None:
+            raise ProcessLookupError
+
+    lookup_error_process = LookupErrorProcess()
+    await command_agent_module._terminate_process(cast(Any, lookup_error_process), timeout=0.01)
+    assert lookup_error_process.terminate_calls == 1
+
+    class ExitsAfterTimeoutProcess:
+        returncode = None
+        stdin = None
+
+        def terminate(self) -> None:
+            return None
+
+        async def wait(self) -> None:
+            self.returncode = 0
+            raise TimeoutError
+
+    exits_after_timeout = ExitsAfterTimeoutProcess()
+    await command_agent_module._terminate_process(cast(Any, exits_after_timeout), timeout=0.01)
+    assert exits_after_timeout.returncode == 0
+
+    class TimeoutProcess:
+        returncode = None
+        stdin = None
+
+        def __init__(self) -> None:
+            self.terminate_calls = 0
+            self.kill_calls = 0
+            self.wait_calls = 0
+
+        def terminate(self) -> None:
+            self.terminate_calls += 1
+
+        def kill(self) -> None:
+            self.kill_calls += 1
+
+        async def wait(self) -> None:
+            self.wait_calls += 1
+            raise TimeoutError
+
+    timeout_process = TimeoutProcess()
+    await command_agent_module._terminate_process(cast(Any, timeout_process), timeout=0.01)
+    assert timeout_process.terminate_calls == 1
+    assert timeout_process.kill_calls == 1
+    assert timeout_process.wait_calls == 2
 
 
 async def test_acp_provider_model_history_mode_is_model_scoped() -> None:
@@ -506,6 +974,179 @@ async def test_acp_model_rejects_disallowed_text_output() -> None:
             ModelRequestParameters(allow_text_output=False),
         )
     assert acp_agent.prompts == []
+
+
+async def test_acp_model_can_round_trip_structured_output_over_private_meta() -> None:
+    acp_agent = StructuredMetaACPAgent(structured_output={"answer": "42"})
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        enable_pydantic_acp_meta=True,
+    )
+    model = AcpModel(model_name="agent", provider=provider)
+    output_tool = ToolDefinition(
+        name="final_result",
+        parameters_json_schema=StructuredAnswer.model_json_schema(),
+    )
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("answer structurally")])],
+        None,
+        ModelRequestParameters(output_tools=[output_tool], allow_text_output=False),
+    )
+
+    request_meta = acp_agent.prompt_kwargs[0]["_meta"]
+    structured_request = request_meta["pydantic_acp"]["structured_output"]
+    assert structured_request["allow_text_output"] is False
+    assert structured_request["output_tools"][0]["name"] == "final_result"
+    assert len(response.parts) == 1
+    assert isinstance(response.parts[0], ToolCallPart)
+    assert response.parts[0].tool_name == "final_result"
+    assert response.parts[0].args == {"answer": "42"}
+
+
+async def test_acp_provider_private_meta_supports_outer_agent_structured_output() -> None:
+    acp_agent = StructuredMetaACPAgent(structured_output={"answer": "42"})
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        enable_pydantic_acp_meta=True,
+    )
+    agent = Agent(provider.model(), output_type=StructuredAnswer)
+
+    result = await agent.run("answer structurally")
+
+    assert result.output == StructuredAnswer(answer="42")
+    request_meta = acp_agent.prompt_kwargs[0]["_meta"]
+    structured_request = request_meta["pydantic_acp"]["structured_output"]
+    assert structured_request["output_tools"][0]["parameters_json_schema"]["title"] == (
+        "StructuredAnswer"
+    )
+
+
+async def test_acp_provider_auto_enables_private_meta_for_pydantic_acp_agents() -> None:
+    inner_model = TestModel(custom_output_args={"answer": "42"})
+    acp_agent = create_acp_agent(agent=Agent(inner_model, output_type=StructuredAnswer))
+    provider = AcpProvider(acp_agent=acp_agent, cwd="/workspace")
+    outer_agent = Agent(provider.model(), output_type=StructuredAnswer)
+
+    result = await outer_agent.run("answer structurally")
+
+    assert provider.enable_pydantic_acp_meta is True
+    assert result.output == StructuredAnswer(answer="42")
+
+
+async def test_acp_provider_can_disable_auto_private_meta_for_pydantic_acp_agents() -> None:
+    inner_model = TestModel(custom_output_args={"answer": "42"})
+    acp_agent = create_acp_agent(agent=Agent(inner_model, output_type=StructuredAnswer))
+    provider = AcpProvider(
+        acp_agent=acp_agent,
+        cwd="/workspace",
+        enable_pydantic_acp_meta=False,
+    )
+    outer_agent = Agent(provider.model(), output_type=StructuredAnswer)
+
+    with pytest.raises(UserError, match="Tool output is not supported"):
+        await outer_agent.run("answer structurally")
+
+
+async def test_acp_model_fails_closed_when_structured_meta_is_missing() -> None:
+    acp_agent = EchoACPAgent()
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        enable_pydantic_acp_meta=True,
+    )
+    model = AcpModel(model_name="agent", provider=provider)
+    output_tool = ToolDefinition(
+        name="final_result",
+        parameters_json_schema=StructuredAnswer.model_json_schema(),
+    )
+
+    with pytest.raises(UserError, match="did not return pydantic_acp structured output"):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("answer structurally")])],
+            None,
+            ModelRequestParameters(output_tools=[output_tool], allow_text_output=False),
+        )
+
+
+def test_acp_model_rejects_unsolicited_structured_output_meta() -> None:
+    acp_agent = EchoACPAgent()
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        enable_pydantic_acp_meta=True,
+    )
+    model = AcpModel(model_name="agent", provider=provider)
+    prompt_result = client_module._AcpPromptResult(
+        text="",
+        usage=RequestUsage(),
+        stop_reason="end_turn",
+        session_id="session-1",
+        structured_output={"answer": "42"},
+    )
+
+    with pytest.raises(UserError, match="did not include an output tool"):
+        model._response_parts(prompt_result, ModelRequestParameters())
+
+
+def test_pydantic_acp_private_meta_helpers_ignore_missing_or_invalid_payloads() -> None:
+    class AliasMeta:
+        _meta = {"alias": True}
+
+    assert build_structured_output_request_meta(ModelRequestParameters()) is None
+    assert extract_field_meta({"_meta": {"ok": True}}) == {"ok": True}
+    assert extract_field_meta({"field_meta": "bad"}) is None
+    assert extract_field_meta(AliasMeta()) == {"alias": True}
+    assert has_structured_output_request(None) is False
+    assert has_structured_output_request({"pydantic_acp": "bad"}) is False
+    assert has_structured_output_request({"pydantic_acp": {"version": 999}}) is False
+    assert (
+        build_structured_output_type(
+            {"pydantic_acp": {"version": 1, "structured_output": "bad"}},
+        )
+        is None
+    )
+    assert (
+        build_structured_output_type(
+            {"pydantic_acp": {"version": 1, "structured_output": {}}},
+        )
+        is None
+    )
+    assert (
+        build_structured_output_type(
+            {
+                "pydantic_acp": {
+                    "version": 1,
+                    "structured_output": {"output_tools": ["bad"]},
+                },
+            },
+        )
+        is None
+    )
+    assert (
+        build_structured_output_type(
+            {
+                "pydantic_acp": {
+                    "version": 1,
+                    "structured_output": {
+                        "output_tools": [{"parameters_json_schema": "bad"}],
+                    },
+                },
+            },
+        )
+        is None
+    )
+    assert extract_structured_output({"pydantic_acp": {"version": 1}}) is (
+        MISSING_STRUCTURED_OUTPUT
+    )
+    assert (
+        extract_structured_output(
+            {"pydantic_acp": {"version": 1, "structured_output": {}}},
+        )
+        is MISSING_STRUCTURED_OUTPUT
+    )
 
 
 async def test_acp_model_request_stream_yields_the_buffered_response_text() -> None:
@@ -1062,6 +1703,33 @@ async def test_prior_server_adapter_direction_still_works_standalone() -> None:
         update for _, update in client.updates if isinstance(update, AgentMessageChunk)
     ]
     assert "".join(chunk.content.text for chunk in agent_updates) == "Hello from ACP"
+
+
+async def test_server_adapter_returns_structured_output_private_meta_when_requested() -> None:
+    inner_model = TestModel(custom_output_args={"answer": "42"})
+    adapter = create_acp_agent(agent=Agent(inner_model, output_type=StructuredAnswer))
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    await adapter.initialize(protocol_version=PROTOCOL_VERSION)
+    new_session_response = await adapter.new_session(cwd="/workspace", mcp_servers=[])
+    output_tool = ToolDefinition(
+        name="final_result",
+        parameters_json_schema=StructuredAnswer.model_json_schema(),
+    )
+    request_meta = build_structured_output_request_meta(
+        ModelRequestParameters(output_tools=[output_tool], allow_text_output=False),
+    )
+
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Return structured data.")],
+        session_id=new_session_response.session_id,
+        message_id="user-message-1",
+        _meta=request_meta,
+    )
+
+    response_meta = extract_field_meta(prompt_response)
+    assert extract_structured_output(response_meta) == {"answer": "42"}
 
 
 async def test_prior_server_adapter_can_be_consumed_through_new_client_provider() -> None:
