@@ -81,6 +81,7 @@ Test:
 - configured tool metadata appears as intended
 - host-backed and local tool families are distinguishable
 - client-facing labels and categories are not ambiguous
+- when using `SessionMcpBridge`, a `session/new.mcpServers` payload is converted into a Pydantic AI MCP toolset instead of only appearing in `/mcp-servers`
 
 ## Recommended Test Style
 

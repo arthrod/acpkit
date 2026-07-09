@@ -23,6 +23,7 @@ from .support import (
     SessionConfigSelectGroup,
     SessionConfigSelectOption,
     SessionInfoUpdate,
+    SessionMcpBridge,
     TestModel,
     create_acp_agent,
     datetime,
@@ -107,6 +108,96 @@ def test_mcp_bridge_handles_empty_and_prefix_scoped_behaviour() -> None:
     assert metadata["approval_policy_scope"] == "prefix"
     assert metadata["config_option_ids"] == ["mcp_enabled", "mcp_scope"]
     assert metadata["config"] == {"mcp_enabled": True, "mcp_scope": "docs"}
+
+
+def test_session_mcp_bridge_builds_toolset_from_session_servers() -> None:
+    session = AcpSessionContext(
+        session_id="session-mcp-toolset",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        mcp_servers=[
+            {
+                "headers": {"Authorization": "Bearer secret"},
+                "name": "repo",
+                "transport": "http",
+                "url": "https://repo.example/mcp",
+            },
+            {
+                "args": ["server.py"],
+                "command": "python",
+                "env": {"TOKEN": "secret"},
+                "name": "repo",
+                "transport": "stdio",
+            },
+        ],
+    )
+    bridge = SessionMcpBridge(
+        include_return_schema=True,
+        tool_name_prefixes=frozenset({"repo_"}),
+    )
+
+    capabilities = bridge.build_agent_capabilities(session)
+
+    assert len(capabilities) == 1
+    assert (
+        bridge.build_agent_capabilities(
+            AcpSessionContext(
+                session_id="empty",
+                cwd=Path("/tmp"),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            ),
+        )
+        == ()
+    )
+    assert bridge.get_tool_kind("repo_search") == "execute"
+    assert bridge.get_tool_kind("search") is None
+    assert bridge.get_mcp_capabilities() is not None
+    assert (
+        SessionMcpBridge(advertise_http=False, advertise_sse=False).get_mcp_capabilities() is None
+    )
+
+    capability = cast("Any", capabilities[0])
+    toolset = capability.local
+    client = toolset.client
+    config = client.transport.config
+    servers = config.mcpServers
+
+    assert set(servers) == {"repo", "repo-2"}
+    assert servers["repo"].url == "https://repo.example/mcp"
+    assert servers["repo"].headers == {"Authorization": "Bearer secret"}
+    assert servers["repo-2"].command == "python"
+    assert servers["repo-2"].args == ["server.py"]
+    assert servers["repo-2"].env == {"TOKEN": "secret"}
+
+    metadata = bridge.get_session_metadata(session, Agent(TestModel()))
+    assert metadata == {
+        "allowed_tools": None,
+        "cache_prompts": True,
+        "cache_resources": True,
+        "cache_tools": True,
+        "include_instructions": True,
+        "include_return_schema": True,
+        "server_count": 2,
+        "servers": [
+            {
+                "header_names": ["Authorization"],
+                "name": "repo",
+                "transport": "http",
+                "url": "https://repo.example/mcp",
+            },
+            {
+                "args": ["server.py"],
+                "command": "python",
+                "env_names": ["TOKEN"],
+                "name": "repo",
+                "transport": "stdio",
+            },
+        ],
+        "tool_error_behavior": "retry",
+        "tool_name_prefixes": ["repo_"],
+    }
 
 
 def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:

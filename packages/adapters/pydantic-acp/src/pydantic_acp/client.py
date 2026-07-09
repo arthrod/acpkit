@@ -598,9 +598,11 @@ class AcpProvider(Provider[AcpAgent]):
         if request_meta is not None:
             prompt_kwargs["_meta"] = request_meta
         prompt_response = await self._client.prompt(**prompt_kwargs)
-        text = self._host.agent_message_text_since(start_index, session_id=session_id)
-        if not text:
-            text = _extract_text(prompt_response)
+        text = await self._agent_message_text_after_prompt(
+            start_index,
+            session_id=session_id,
+            prompt_response=prompt_response,
+        )
 
         response_meta = extract_field_meta(prompt_response)
         usage = _usage_from_acp(getattr(prompt_response, "usage", None))
@@ -618,6 +620,28 @@ class AcpProvider(Provider[AcpAgent]):
             session_id=session_id,
             structured_output=extract_structured_output(response_meta),
         )
+
+    async def _agent_message_text_after_prompt(
+        self,
+        start_index: int,
+        *,
+        session_id: str,
+        prompt_response: Any,
+    ) -> str:
+        text = self._host.agent_message_text_since(start_index, session_id=session_id)
+        if text:
+            return text
+
+        text = _extract_text(prompt_response)
+        if text:
+            return text
+
+        for _ in range(5):
+            await asyncio.sleep(0)
+            text = self._host.agent_message_text_since(start_index, session_id=session_id)
+            if text:
+                return text
+        return ""
 
     async def _ensure_session(self, *, model_name: str | None) -> str:
         async with self._get_session_lock():

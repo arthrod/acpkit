@@ -1206,31 +1206,46 @@ This is the lower-level construction seam behind `run_acp(...)`.
 
 ## ACP Client Provider Bridge
 
-Use `AcpProvider` when the thing you already have is an ACP agent and the host
-application needs to consume it through normal Pydantic AI v2 model/provider
-APIs.
+Use `create_acp_model(...)` when the thing you already have is an ACP agent or
+ACP stdio command and the host application needs to consume it through normal
+Pydantic AI v2 model APIs.
 
 This is the inverse of `create_acp_agent(...)`:
 
 - `create_acp_agent(...)` exposes a `pydantic_ai.Agent` as ACP
-- `AcpProvider` consumes an ACP agent as a Pydantic AI provider/model
+- `create_acp_model(...)` consumes an ACP agent as a Pydantic AI model
 
 ```python
 from pydantic_ai import Agent
-from pydantic_acp import AcpProvider
+from pydantic_acp import create_acp_agent, create_acp_model
 
-# `remote_acp_agent` can be any object implementing the ACP Agent interface.
-provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
-model = provider.model()
+inner_acp = create_acp_agent(agent=some_pydantic_agent)
+model = create_acp_model(acp_agent=inner_acp, cwd="/workspace")
 agent = Agent(model)
 
 result = await agent.run("Summarize the current workspace state.")
 print(result.output)
 ```
 
-`provider.model()` intentionally leaves ACP model selection to the wrapped
-agent's session default. Pass `provider.model("zed-agent")` only when the
-wrapped ACP agent accepts that concrete `session/set_model` id.
+`acp_command` is for child processes that speak ACP JSON-RPC on stdin/stdout.
+It is not an arbitrary CLI wrapper:
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(
+    acp_command=("npx", "@zed-industries/codex-acp"),
+    cwd="/workspace",
+    stderr_mode="inherit",
+)
+agent = Agent(model)
+```
+
+`create_acp_model(...)` intentionally leaves ACP model selection to the wrapped
+agent's session default. Pass `model_name="zed-agent"` only when the wrapped
+ACP agent accepts that concrete `session/set_model` id. `AcpProvider` and
+`AcpModel` remain available when lower-level provider ownership is needed.
 
 The bridge keeps ownership explicit:
 
@@ -1354,6 +1369,8 @@ Common bridges:
   powers ACP approval workflows
 - `McpBridge`
   exposes MCP metadata and config options
+- `SessionMcpBridge`
+  converts ACP client-provided `session/new.mcpServers` payloads into real Pydantic AI MCP toolsets
 - `HookBridge`
   exposes or suppresses hook activity
 - `HistoryProcessorBridge`
@@ -2233,6 +2250,10 @@ An `AcpSessionContext` captures:
 - MCP server metadata
 - adapter-owned session metadata
 
+ACP client-supplied MCP servers are stored in `session.mcp_servers` so load, fork, resume, and
+`/mcp-servers` can reflect the same session surface. They become runnable Pydantic AI MCP tools
+only when the agent build includes `SessionMcpBridge`.
+
 ## Session Lifecycle Operations
 
 `pydantic-acp` supports the full ACP session lifecycle:
@@ -2588,7 +2609,24 @@ The MCP server listing is assembled from:
 - session MCP server payloads
 - bridge-contributed MCP metadata
 
-It is primarily intended as a client-visible observability surface, not as the source of truth for server wiring.
+It is primarily intended as a client-visible observability surface, not as the source of truth for
+server wiring.
+
+If client-provided `session/new.mcpServers` should become runnable model tools, configure
+`SessionMcpBridge` and build the agent through `AgentBridgeBuilder`:
+
+```python
+from pydantic_acp import AdapterConfig, SessionMcpBridge
+
+config = AdapterConfig(
+    capability_bridges=[
+        SessionMcpBridge(include_instructions=True),
+    ],
+)
+```
+
+Without that bridge, session MCP payloads are retained for resume/listing and shown by
+`/mcp-servers`, but the adapter does not connect to those servers.
 
 ## Common Failure Modes
 
@@ -3814,6 +3852,38 @@ UI note:
 
 - add `BuiltinToolProjectionMap()` when you want ACP transcript cards to summarize builtin MCP calls such as `call_tool`, `list_tools`, and output previews instead of generic execute cards
 
+### `SessionMcpBridge`
+
+Turns ACP client-provided `session/new.mcpServers` payloads into a real Pydantic AI
+`MCPToolset` capability for the active session.
+
+Use it when:
+
+- the client, editor, or host process should decide which MCP servers attach to a session
+- `session.mcp_servers` should become runnable model tools instead of observability metadata only
+- server instructions and tool return schemas should flow through Pydantic AI's normal toolset path
+
+Without this bridge, `pydantic-acp` still stores session MCP server payloads and shows them in
+`/mcp-servers`, but it does not connect to those servers or register their tools.
+
+```python
+from pydantic_acp import AdapterConfig, SessionMcpBridge
+
+config = AdapterConfig(
+    capability_bridges=[
+        SessionMcpBridge(
+            include_instructions=True,
+            include_return_schema=True,
+            tool_name_prefixes=frozenset({"docs_", "repo_"}),
+        ),
+    ],
+)
+```
+
+Client-side `mcpServers` payloads may contain stdio, streamable HTTP, or SSE servers. The bridge
+keeps env/header values available to the underlying MCP connection but only publishes env/header
+names in session metadata, so secrets are not echoed into ACP-visible metadata.
+
 ### `OpenAICompactionBridge`
 
 Adds provider-owned OpenAI Responses compaction through the bridge-builder seam.
@@ -3967,6 +4037,7 @@ That makes it a natural fit inside `agent_factory` or `AgentSource.get_agent(...
 - `HookBridge(hide_all=True)` hides hook listing output; it does not remove hook capability wiring
 - `run_event_stream` wrappers must return an async iterable; returning a coroutine or plain object breaks stream execution
 - `McpBridge` only contributes MCP metadata and classification; it does not register the underlying tools for you
+- `SessionMcpBridge` registers client-provided `session/new.mcpServers`; use it when those payloads should become real Pydantic AI MCP toolsets
 
 ## Existing Hook Introspection vs HookBridge
 
@@ -5796,6 +5867,7 @@ Source directory:
 | [`finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py) | persistent finance sessions with ACP plans, approvals, mode-aware tool shaping, and projected note diffs |
 | [`travel_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py) | travel planning runtime with hook projection, approval-gated trip files, and prompt-model override behavior for media prompts |
 | [`mock_harness_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py) | real harness filesystem and shell capabilities with bounded policy and opt-in code mode |
+| [`session_mcp_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/session_mcp_agent.py) | client-provided `session/new.mcpServers` converted into Pydantic AI MCP toolsets with `SessionMcpBridge` |
 
 ## Maintained LangChain Examples
 
@@ -5845,6 +5917,7 @@ Not every important integration seam needs another runnable demo file. Some patt
 6. [DeepAgents Compatibility Example](deepagents.md)
 7. [acpremote Overview](../acpremote.md)
 8. [Dynamic Factory Agents](dynamic-factory.md)
+9. [Session MCP Agent](session-mcp.md)
 
 ### Finance Agent
 URL: https://vcoderun.github.io/acpkit/examples/finance/
@@ -6426,6 +6499,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.create_acp_agent
 
+::: pydantic_acp.create_acp_model
+
 ::: pydantic_acp.run_acp
 
 ::: pydantic_acp.compose_projection_maps
@@ -6537,6 +6612,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 ::: pydantic_acp.WebFetchBridge
 
 ::: pydantic_acp.McpCapabilityBridge
+
+::: pydantic_acp.SessionMcpBridge
 
 ::: pydantic_acp.OpenAICompactionBridge
 

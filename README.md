@@ -479,6 +479,7 @@ Current built-in bridges include:
 - `WebFetchBridge`
 - `ImageGenerationBridge`
 - `McpCapabilityBridge`
+- `SessionMcpBridge`
 - `ToolsetBridge`
 - `PrefixToolsBridge`
 - `OpenAICompactionBridge`

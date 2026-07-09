@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import asyncio
 import json
 import sys
 import tomllib
@@ -181,6 +182,36 @@ class SetModelErrorACPAgent(EchoACPAgent):
         raise self.error
 
 
+class DelayedUpdateACPAgent(EchoACPAgent):
+    async def prompt(
+        self,
+        prompt: list[Any],
+        session_id: str,
+        message_id: str | None = None,
+        **kwargs: Any,
+    ) -> PromptResponse:
+        del message_id, kwargs
+        if self.client is None:
+            raise AssertionError("ACP agent was not connected to a host client")
+        rendered_prompt = "".join(str(getattr(block, "text", "")) for block in prompt)
+        self.prompts.append((session_id, rendered_prompt))
+
+        async def publish_update() -> None:
+            await asyncio.sleep(0)
+            assert self.client is not None
+            await self.client.session_update(
+                session_id=session_id,
+                update=AgentMessageChunk(
+                    session_update="agent_message_chunk",
+                    content=text_block(f"delayed acp echo: {rendered_prompt}"),
+                ),
+                source="delayed-update-agent",
+            )
+
+        asyncio.create_task(publish_update())
+        return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)
+
+
 class StructuredMetaACPAgent(EchoACPAgent):
     def __init__(self, *, structured_output: dict[str, Any]) -> None:
         super().__init__()
@@ -290,6 +321,21 @@ async def test_acp_provider_reuses_session_and_model_across_multiple_requests() 
     assert acp_agent.session_cwds == ["/workspace"]
     assert acp_agent.session_models == [("session-1", "zed-agent")]
     assert len(acp_agent.prompts) == 2
+
+
+async def test_acp_provider_waits_for_prompt_session_update_notifications() -> None:
+    acp_agent = DelayedUpdateACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("late notification")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert len(response.parts) == 1
+    assert isinstance(response.parts[0], TextPart)
+    assert response.parts[0].content == "delayed acp echo: late notification"
 
 
 def test_acp_provider_model_factory_uses_default_model_name() -> None:

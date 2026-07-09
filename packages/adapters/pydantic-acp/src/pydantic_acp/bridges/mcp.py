@@ -1,7 +1,7 @@
 from __future__ import annotations as _annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal, cast
 
 from acp.schema import (
     McpCapabilities,
@@ -10,6 +10,7 @@ from acp.schema import (
     SessionConfigSelectGroup,
     ToolKind,
 )
+from pydantic_ai.capabilities import AbstractCapability
 
 from ..agent_types import RuntimeAgent
 from ..providers import ConfigOption
@@ -18,11 +19,13 @@ from .base import CapabilityBridge
 
 McpApprovalScope = Literal["tool", "server", "prefix"]
 McpTransport = Literal["http", "sse"]
+SessionMcpToolErrorBehavior = Literal["retry", "error"]
 
 __all__ = (
     "McpBridge",
     "McpServerDefinition",
     "McpToolDefinition",
+    "SessionMcpBridge",
 )
 
 
@@ -41,6 +44,102 @@ class McpToolDefinition:
     tool_name: str
     server_id: str
     kind: ToolKind = "execute"
+
+
+@dataclass(slots=True, kw_only=True)
+class SessionMcpBridge(CapabilityBridge):
+    """Attach ACP client-provided MCP servers to the Pydantic AI agent run.
+
+    ACP clients may pass MCP server definitions during `session/new`, `session/load`,
+    `session/fork`, or `session/resume`. The adapter persists those definitions on
+    `AcpSessionContext.mcp_servers`; this bridge turns them into a Pydantic AI
+    `MCPToolset` capability for the active session.
+    """
+
+    metadata_key: str | None = "session_mcp"
+    include_instructions: bool = True
+    include_return_schema: bool | None = None
+    cache_tools: bool = True
+    cache_resources: bool = True
+    cache_prompts: bool = True
+    tool_error_behavior: SessionMcpToolErrorBehavior = "retry"
+    max_retries: int | None = None
+    allowed_tools: list[str] | None = None
+    tool_name_prefixes: frozenset[str] = frozenset()
+    toolset_id_prefix: str = "acp-session-mcp"
+    advertise_http: bool = True
+    advertise_sse: bool = True
+
+    def build_agent_capabilities(
+        self,
+        session: AcpSessionContext,
+    ) -> tuple[AbstractCapability[Any], ...]:
+        config = _session_mcp_config(session.mcp_servers)
+        if config is None:
+            return ()
+
+        try:
+            from pydantic_ai.capabilities import MCP
+            from pydantic_ai.mcp import MCPToolset
+        except ImportError as exc:
+            raise ImportError(
+                "Pydantic AI MCP support is required for SessionMcpBridge. "
+                "Install `pydantic-ai-slim[mcp]` or a pydantic-ai distribution with MCP extras.",
+            ) from exc
+
+        toolset = MCPToolset(
+            cast("Any", config),
+            id=f"{self.toolset_id_prefix}:{session.session_id}",
+            max_retries=self.max_retries,
+            tool_error_behavior=self.tool_error_behavior,
+            cache_tools=self.cache_tools,
+            cache_resources=self.cache_resources,
+            cache_prompts=self.cache_prompts,
+            include_instructions=self.include_instructions,
+            include_return_schema=self.include_return_schema,
+        )
+        return (
+            MCP(
+                native=False,
+                local=toolset,
+                id=f"{self.toolset_id_prefix}:{session.session_id}",
+                allowed_tools=self.allowed_tools,
+            ),
+        )
+
+    def get_mcp_capabilities(self, agent: RuntimeAgent | None = None) -> McpCapabilities | None:
+        del agent
+        if not self.advertise_http and not self.advertise_sse:
+            return None
+        return McpCapabilities(http=self.advertise_http, sse=self.advertise_sse)
+
+    def get_session_metadata(
+        self,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
+    ) -> dict[str, JsonValue] | None:
+        del agent
+        servers = _session_mcp_metadata(session.mcp_servers)
+        if not servers:
+            return None
+        return {
+            "allowed_tools": _json_string_list(self.allowed_tools),
+            "cache_prompts": self.cache_prompts,
+            "cache_resources": self.cache_resources,
+            "cache_tools": self.cache_tools,
+            "include_instructions": self.include_instructions,
+            "include_return_schema": self.include_return_schema,
+            "server_count": len(servers),
+            "servers": servers,
+            "tool_error_behavior": self.tool_error_behavior,
+            "tool_name_prefixes": _json_string_list(self.tool_name_prefixes),
+        }
+
+    def get_tool_kind(self, tool_name: str, raw_input: JsonValue | None = None) -> ToolKind | None:
+        del raw_input
+        if any(tool_name.startswith(prefix) for prefix in self.tool_name_prefixes):
+            return "execute"
+        return None
 
 
 @dataclass(slots=True, kw_only=True)
@@ -212,3 +311,122 @@ def _select_option_values(option: SessionConfigOptionSelect) -> set[str]:
         else:
             values.add(item.value)
     return values
+
+
+def _session_mcp_config(
+    servers: list[dict[str, JsonValue]],
+) -> dict[str, Any] | None:
+    mcp_servers: dict[str, Any] = {}
+    for server in servers:
+        transport = server.get("transport")
+        name = _json_string_value(server.get("name")) or f"server-{len(mcp_servers) + 1}"
+        server_name = _unique_session_mcp_name(name, mcp_servers)
+        server_config = _session_mcp_server_config(server, transport)
+        if server_config is not None:
+            mcp_servers[server_name] = server_config
+    if not mcp_servers:
+        return None
+    return {"mcpServers": mcp_servers}
+
+
+def _session_mcp_server_config(
+    server: dict[str, JsonValue],
+    transport: JsonValue | None,
+) -> dict[str, Any] | None:
+    if transport == "stdio":
+        command = _json_string_value(server.get("command"))
+        if command is None:
+            return None
+        server_config: dict[str, Any] = {
+            "command": command,
+            "transport": "stdio",
+        }
+        args = _json_string_sequence(server.get("args"))
+        if args:
+            server_config["args"] = args
+        env = _json_string_mapping(server.get("env"))
+        if env:
+            server_config["env"] = env
+        return server_config
+
+    if transport == "http" or transport == "sse":
+        url = _json_string_value(server.get("url"))
+        if url is None:
+            return None
+        server_config = {
+            "transport": transport,
+            "url": url,
+        }
+        headers = _json_string_mapping(server.get("headers"))
+        if headers:
+            server_config["headers"] = headers
+        return server_config
+
+    return None
+
+
+def _session_mcp_metadata(
+    servers: list[dict[str, JsonValue]],
+) -> list[JsonValue]:
+    metadata: list[JsonValue] = []
+    for server in servers:
+        transport = server.get("transport")
+        if not isinstance(transport, str):
+            continue
+        name = _json_string_value(server.get("name"))
+        server_metadata: dict[str, JsonValue] = {
+            "name": name,
+            "transport": transport,
+        }
+        if transport == "stdio":
+            server_metadata["args"] = _json_string_sequence(server.get("args"))
+            server_metadata["command"] = _json_string_value(server.get("command"))
+            server_metadata["env_names"] = _json_string_mapping_keys(server.get("env"))
+        elif transport == "http" or transport == "sse":
+            server_metadata["header_names"] = _json_string_mapping_keys(server.get("headers"))
+            server_metadata["url"] = _json_string_value(server.get("url"))
+        metadata.append(server_metadata)
+    return metadata
+
+
+def _unique_session_mcp_name(name: str, existing: dict[str, JsonValue]) -> str:
+    if name not in existing:
+        return name
+    index = 2
+    while f"{name}-{index}" in existing:
+        index += 1
+    return f"{name}-{index}"
+
+
+def _json_string_value(value: JsonValue | None) -> str | None:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _json_string_sequence(value: JsonValue | None) -> list[JsonValue]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _json_string_list(values: frozenset[str] | list[str] | None) -> list[JsonValue] | None:
+    if values is None:
+        return None
+    result: list[JsonValue] = []
+    result.extend(sorted(values))
+    return result
+
+
+def _json_string_mapping(value: JsonValue | None) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        key: item for key, item in value.items() if isinstance(key, str) and isinstance(item, str)
+    }
+
+
+def _json_string_mapping_keys(value: JsonValue | None) -> list[JsonValue]:
+    result: list[JsonValue] = []
+    result.extend(sorted(_json_string_mapping(value)))
+    return result

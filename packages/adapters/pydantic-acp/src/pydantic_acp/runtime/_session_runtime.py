@@ -530,13 +530,16 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
         server: HttpMcpServer | McpServerStdio | SseMcpServer,
     ) -> dict[str, JsonValue]:
         if isinstance(server, McpServerStdio):
-            return {
+            payload: dict[str, JsonValue] = {
                 "args": list(server.args),
                 "command": server.command,
+                "env": {item.name: item.value for item in server.env},
                 "name": server.name,
                 "transport": "stdio",
             }
+            return payload
         return {
+            "headers": {item.name: item.value for item in server.headers},
             "name": server.name,
             "transport": server.type,
             "url": server.url,

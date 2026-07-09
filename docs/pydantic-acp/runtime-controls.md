@@ -202,7 +202,24 @@ The MCP server listing is assembled from:
 - session MCP server payloads
 - bridge-contributed MCP metadata
 
-It is primarily intended as a client-visible observability surface, not as the source of truth for server wiring.
+It is primarily intended as a client-visible observability surface, not as the source of truth for
+server wiring.
+
+If client-provided `session/new.mcpServers` should become runnable model tools, configure
+`SessionMcpBridge` and build the agent through `AgentBridgeBuilder`:
+
+```python
+from pydantic_acp import AdapterConfig, SessionMcpBridge
+
+config = AdapterConfig(
+    capability_bridges=[
+        SessionMcpBridge(include_instructions=True),
+    ],
+)
+```
+
+Without that bridge, session MCP payloads are retained for resume/listing and shown by
+`/mcp-servers`, but the adapter does not connect to those servers.
 
 ## Common Failure Modes
 

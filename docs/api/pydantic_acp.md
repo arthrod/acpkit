@@ -120,6 +120,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.McpCapabilityBridge
 
+::: pydantic_acp.SessionMcpBridge
+
 ::: pydantic_acp.OpenAICompactionBridge
 
 ::: pydantic_acp.AnthropicCompactionBridge

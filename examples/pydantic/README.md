@@ -74,6 +74,47 @@ interactive processes, bounds runtime and output, and confines work to
 `agent_demos/harness-agent/`. `--codemode` is the only path that enables
 the code-mode bridge.
 
+## Session MCP Agent
+
+The session MCP example keeps MCP server choice client-owned. The ACP client
+passes `session/new.mcpServers`; `SessionMcpBridge` converts those payloads into
+Pydantic AI `MCPToolset` capabilities for that session:
+
+```bash
+uv run python -m examples.pydantic.session_mcp_agent
+```
+
+Use a real model when you want the model to call attached MCP tools:
+
+```bash
+ACP_SESSION_MCP_MODEL="openai:gpt-5.4-mini" \
+uv run python -m examples.pydantic.session_mcp_agent
+```
+
+Example client payload shape:
+
+```json
+{
+  "mcpServers": [
+    {
+      "name": "repo",
+      "type": "http",
+      "url": "https://repo.example/mcp",
+      "headers": [{"name": "Authorization", "value": "Bearer ..."}]
+    },
+    {
+      "name": "local-docs",
+      "command": "python",
+      "args": ["docs_mcp_server.py"],
+      "env": [{"name": "DOCS_ROOT", "value": "agent_demos/docs"}]
+    }
+  ]
+}
+```
+
+Without `SessionMcpBridge`, those payloads are still stored and visible through
+`/mcp-servers`, but they are not connected as runnable Pydantic AI tools.
+
 ## Session Storage
 
 All examples use `FileSessionStore` under `agent_demos/acp-sessions/`. Override

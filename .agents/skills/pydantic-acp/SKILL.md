@@ -124,6 +124,7 @@ High-value public seams:
 - `PrepareToolsMode`
 - `PrepareOutputToolsBridge`
 - `PrepareOutputToolsMode`
+- `SessionMcpBridge`
 - `ThinkingBridge`
 - `HookBridge`
 - `SlashCommandProvider`
@@ -249,6 +250,7 @@ High-value bridges include:
 - `WebFetchBridge`
 - `ImageGenerationBridge`
 - `McpCapabilityBridge`
+- `SessionMcpBridge`
 - `ToolsetBridge`
 - `PrefixToolsBridge`
 - `ExternalHookEventBridge`
@@ -379,6 +381,7 @@ Maintained public examples:
 - [Finance agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py)
 - [Travel agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py)
 - [Harness agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py)
+- [Session MCP agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/session_mcp_agent.py)
 
 Use `finance_agent.py` for:
 
@@ -398,6 +401,12 @@ Use `mock_harness_agent.py` for:
 - `pydantic-ai-harness` filesystem and shell capability bridges
 - optional CodeMode capability wiring through `--codemode`
 - bounded workspace behavior under `agent_demos/harness-agent/`
+
+Use `session_mcp_agent.py` for:
+
+- client-owned `session/new.mcpServers`
+- `SessionMcpBridge` converting session payloads into Pydantic AI `MCPToolset` capabilities
+- env/header values kept available for connection while metadata exposes only names
 
 Skill-local example index:
 

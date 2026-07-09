@@ -277,6 +277,7 @@ def test_session_runtime_misc_runtime_helpers_and_serialization(
         {
             "args": ["-m", "server"],
             "command": "python",
+            "env": {},
             "name": "repo",
             "transport": "stdio",
         },

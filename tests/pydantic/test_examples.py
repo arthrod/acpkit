@@ -22,7 +22,7 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from examples.pydantic import finance_agent, mock_harness_agent, travel_agent
+from examples.pydantic import finance_agent, mock_harness_agent, session_mcp_agent, travel_agent
 
 from .support import (
     UTC,
@@ -100,15 +100,18 @@ def test_example_main_functions_dispatch_run_acp(
     monkeypatch.setattr(finance_agent, "run_acp", fake_run_acp)
     monkeypatch.setattr(mock_harness_agent, "_ensure_workspace", lambda: None)
     monkeypatch.setattr(mock_harness_agent, "run_acp", fake_run_acp)
+    monkeypatch.setattr(session_mcp_agent, "run_acp", fake_run_acp)
     monkeypatch.setattr(travel_agent, "run_acp", fake_run_acp)
 
     finance_agent.main()
     mock_harness_agent.main()
+    session_mcp_agent.main()
     travel_agent.main()
 
     assert captured == [
         (finance_agent.agent, None, finance_agent.config),
         (None, mock_harness_agent.agent_factory, mock_harness_agent.config),
+        (None, session_mcp_agent.agent_factory, session_mcp_agent.config),
         (travel_agent.agent, None, travel_agent.config),
     ]
 

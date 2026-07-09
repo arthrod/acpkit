@@ -24,6 +24,10 @@ An `AcpSessionContext` captures:
 - MCP server metadata
 - adapter-owned session metadata
 
+ACP client-supplied MCP servers are stored in `session.mcp_servers` so load, fork, resume, and
+`/mcp-servers` can reflect the same session surface. They become runnable Pydantic AI MCP tools
+only when the agent build includes `SessionMcpBridge`.
+
 ## Session Lifecycle Operations
 
 `pydantic-acp` supports the full ACP session lifecycle:

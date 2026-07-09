@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import pytest
 from acp.exceptions import RequestError
-from acp.schema import PromptResponse
+from acp.schema import EnvVariable, HttpHeader, PromptResponse
 from pydantic_acp.runtime import _native_plan_runtime as native_plan_runtime_module
 from pydantic_acp.runtime import _prompt_execution as prompt_execution_module
 from pydantic_acp.runtime._agent_state import (
@@ -677,22 +677,40 @@ def test_sessions_normalize_cwd_and_serialize_mcp_servers(tmp_path: Path) -> Non
     adapter._update_session_mcp_servers(session, None)
     assert session.mcp_servers == []
 
-    stdio_server = McpServerStdio(name="stdio", command="python", args=["server.py"], env=[])
-    http_server = HttpMcpServer(name="http", url="https://example.com", headers=[], type="http")
-    sse_server = SseMcpServer(name="sse", url="https://example.com/sse", headers=[], type="sse")
+    stdio_server = McpServerStdio(
+        name="stdio",
+        command="python",
+        args=["server.py"],
+        env=[EnvVariable(name="TOKEN", value="secret")],
+    )
+    http_server = HttpMcpServer(
+        name="http",
+        url="https://example.com",
+        headers=[HttpHeader(name="Authorization", value="Bearer secret")],
+        type="http",
+    )
+    sse_server = SseMcpServer(
+        name="sse",
+        url="https://example.com/sse",
+        headers=[HttpHeader(name="X-Trace", value="trace-id")],
+        type="sse",
+    )
 
     assert adapter._serialize_mcp_server(stdio_server) == {
         "args": ["server.py"],
         "command": "python",
+        "env": {"TOKEN": "secret"},
         "name": "stdio",
         "transport": "stdio",
     }
     assert adapter._serialize_mcp_server(http_server) == {
+        "headers": {"Authorization": "Bearer secret"},
         "name": "http",
         "transport": "http",
         "url": "https://example.com",
     }
     assert adapter._serialize_mcp_server(sse_server) == {
+        "headers": {"X-Trace": "trace-id"},
         "name": "sse",
         "transport": "sse",
         "url": "https://example.com/sse",

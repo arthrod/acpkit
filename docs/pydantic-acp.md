@@ -236,6 +236,8 @@ Common bridges:
   powers ACP approval workflows
 - `McpBridge`
   exposes MCP metadata and config options
+- `SessionMcpBridge`
+  converts ACP client-provided `session/new.mcpServers` payloads into real Pydantic AI MCP toolsets
 - `HookBridge`
   exposes or suppresses hook activity
 - `HistoryProcessorBridge`

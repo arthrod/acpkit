@@ -14,6 +14,7 @@ Source directory:
 | [`finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py) | persistent finance sessions with ACP plans, approvals, mode-aware tool shaping, and projected note diffs |
 | [`travel_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py) | travel planning runtime with hook projection, approval-gated trip files, and prompt-model override behavior for media prompts |
 | [`mock_harness_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py) | real harness filesystem and shell capabilities with bounded policy and opt-in code mode |
+| [`session_mcp_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/session_mcp_agent.py) | client-provided `session/new.mcpServers` converted into Pydantic AI MCP toolsets with `SessionMcpBridge` |
 
 ## Maintained LangChain Examples
 
@@ -63,3 +64,4 @@ Not every important integration seam needs another runnable demo file. Some patt
 6. [DeepAgents Compatibility Example](deepagents.md)
 7. [acpremote Overview](../acpremote.md)
 8. [Dynamic Factory Agents](dynamic-factory.md)
+9. [Session MCP Agent](session-mcp.md)

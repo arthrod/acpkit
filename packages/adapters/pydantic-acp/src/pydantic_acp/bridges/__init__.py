@@ -27,7 +27,7 @@ from .history_processor import (
     HistoryProcessorWithContextSync,
 )
 from .hooks import HookBridge
-from .mcp import McpBridge, McpServerDefinition, McpToolDefinition
+from .mcp import McpBridge, McpServerDefinition, McpToolDefinition, SessionMcpBridge
 from .prepare_tools import (
     PlanGenerationType,
     PrepareOutputToolsBridge,
@@ -67,6 +67,7 @@ __all__ = (
     "PrepareToolsBridge",
     "PrepareToolsMode",
     "SetToolMetadataBridge",
+    "SessionMcpBridge",
     "ThinkingBridge",
     "ThreadExecutorBridge",
     "ToolsetBridge",
