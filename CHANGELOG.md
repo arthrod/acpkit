@@ -3,6 +3,23 @@
 ACP Kit uses synchronized versions for `acpkit`, `pydantic-acp`, `langchain-acp`,
 `codex-auth-helper`, and `acpremote`.
 
+## [1.1.1] - 2026-07-09
+
+### Added
+
+- `pydantic-acp` now exposes `create_acp_model(...)`, allowing ACP agents to be
+  consumed as Pydantic AI models through the public factory surface.
+- `create_acp_model(acp_command=...)` can launch a local stdio ACP command and
+  use it as an ACP-backed Pydantic AI model, enabling external ACP agent servers
+  to participate in Pydantic AI orchestration.
+
+### Fixed
+
+- ACP-backed model tests now validate command transport and cleanup at the model
+  boundary instead of depending on Pydantic AI output retry formatting details.
+- Coverage metadata now reflects full line and branch coverage for the ACP
+  provider and stdio command bridge paths.
+
 ## [1.1.0] - 2026-07-07
 
 ### Added
@@ -79,5 +96,6 @@ This is the first stable release of the synchronized ACP Kit workspace.
   failure paths close every owned resource deterministically.
 - CLI target import failures retain actionable root-cause details.
 
+[1.1.1]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.0.0

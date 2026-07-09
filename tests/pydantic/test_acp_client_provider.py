@@ -420,11 +420,16 @@ asyncio.run(run_agent(StdioAgent()))
     )
 
     async with model:
-        result = await Agent(model).run("stdio factory path")
+        response = await model.request(
+            [ModelRequest(parts=[UserPromptPart("stdio factory path")])],
+            None,
+            ModelRequestParameters(),
+        )
 
     output_prefix = f"from-env|{tmp_path}|"
-    assert result.output.startswith(output_prefix)
-    assert "stdio factory path" in result.output.removeprefix(output_prefix)
+    assert len(response.parts) == 1
+    assert isinstance(response.parts[0], TextPart)
+    assert response.parts[0].content == f"{output_prefix}stdio factory path"
     command_agent = cast(Any, model.provider).client
     assert command_agent._process is None
     assert command_agent._connection is None
