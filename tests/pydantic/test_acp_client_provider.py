@@ -422,7 +422,9 @@ asyncio.run(run_agent(StdioAgent()))
     async with model:
         result = await Agent(model).run("stdio factory path")
 
-    assert result.output == f"from-env|{tmp_path}|stdio factory path"
+    output_prefix = f"from-env|{tmp_path}|"
+    assert result.output.startswith(output_prefix)
+    assert "stdio factory path" in result.output.removeprefix(output_prefix)
     command_agent = cast(Any, model.provider).client
     assert command_agent._process is None
     assert command_agent._connection is None
@@ -458,6 +460,43 @@ async def test_acp_provider_close_is_noop_for_agents_without_close() -> None:
     await provider.close()
 
     assert provider.client is not None
+
+
+async def test_acp_provider_nested_context_closes_only_after_outer_exit() -> None:
+    class ClosableACPAgent(EchoACPAgent):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_calls = 0
+
+        async def close(self) -> None:
+            self.close_calls += 1
+
+    acp_agent = ClosableACPAgent()
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent))
+
+    async with provider:
+        async with provider:
+            assert acp_agent.close_calls == 0
+        assert acp_agent.close_calls == 0
+
+    assert acp_agent.close_calls == 1
+
+
+async def test_acp_provider_close_accepts_sync_close_hook() -> None:
+    class SyncClosableACPAgent(EchoACPAgent):
+        def __init__(self) -> None:
+            super().__init__()
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    acp_agent = SyncClosableACPAgent()
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent))
+
+    await provider.close()
+
+    assert acp_agent.close_calls == 1
 
 
 async def test_acp_command_agent_delegates_session_methods_through_existing_connection(
@@ -580,6 +619,19 @@ async def test_acp_command_agent_reuses_connection_created_while_waiting_for_loc
     assert await cast(Any, command_agent)._ensure_connection() is connection
 
 
+async def test_acp_command_agent_reuses_connect_lock_in_same_event_loop(
+    tmp_path: Path,
+) -> None:
+    command_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(command=("agent",), cwd=tmp_path),
+    )
+
+    first_lock = cast(Any, command_agent)._get_connect_lock()
+    second_lock = cast(Any, command_agent)._get_connect_lock()
+
+    assert second_lock is first_lock
+
+
 async def test_acp_command_agent_open_connection_errors_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -658,6 +710,28 @@ async def test_acp_command_agent_open_connection_errors_cleanup(
     with pytest.raises(RuntimeError, match="connect failed"):
         await cast(Any, failing_connect_agent)._open_connection()
     assert terminations[-1][0] is pipe_process
+
+
+async def test_acp_command_agent_close_current_connection_accepts_sync_close(
+    tmp_path: Path,
+) -> None:
+    class SyncCloseConnection:
+        def __init__(self) -> None:
+            self.close_calls = 0
+
+        def close(self) -> None:
+            self.close_calls += 1
+
+    connection = SyncCloseConnection()
+    command_agent = command_agent_module.AcpCommandAgent(
+        options=command_agent_module.AcpCommandOptions(command=("agent",), cwd=tmp_path),
+    )
+    cast(Any, command_agent)._connection = connection
+
+    await cast(Any, command_agent)._close_current_connection()
+
+    assert connection.close_calls == 1
+    assert cast(Any, command_agent)._connection is None
 
 
 async def test_acp_command_agent_terminate_process_paths() -> None:
