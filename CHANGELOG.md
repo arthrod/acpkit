@@ -3,6 +3,25 @@
 ACP Kit uses synchronized versions for `acpkit`, `pydantic-acp`, `langchain-acp`,
 `codex-auth-helper`, and `acpremote`.
 
+## [1.2.0] - 2026-07-09
+
+### Added
+
+- `pydantic-acp` now exposes `SessionMcpBridge`, allowing ACP
+  `session/new.mcpServers` payloads to become real Pydantic AI MCP toolsets
+  instead of only appearing in `/mcp-servers` session metadata.
+- Pydantic examples and docs now include a session MCP agent showing
+  client-provided stdio, streamable HTTP, and SSE MCP server wiring.
+
+### Fixed
+
+- ACP-backed Pydantic model responses now tolerate prompt response and
+  `session_update` notification ordering differences, avoiding empty text
+  responses from stdio ACP command agents.
+- Session MCP serialization now preserves stdio environment variables and
+  HTTP/SSE headers for connection setup while documenting secret-safe metadata
+  behavior.
+
 ## [1.1.1] - 2026-07-09
 
 ### Added
@@ -96,6 +115,7 @@ This is the first stable release of the synchronized ACP Kit workspace.
   failure paths close every owned resource deterministically.
 - CLI target import failures retain actionable root-cause details.
 
+[1.2.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.2.0
 [1.1.1]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.0
 [1.0.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.0.0
