@@ -2,12 +2,28 @@ from __future__ import annotations as _annotations
 
 import subprocess
 import sys
+import tomllib
+from collections.abc import Mapping
 from pathlib import Path
+from shutil import copy2
 
 import acpkit
 
 _ROOT = Path(__file__).resolve().parents[1]
 _SCRIPT = _ROOT / "scripts" / "release.py"
+_BUMP_SCRIPT = _ROOT / "bump.sh"
+_BUMP_VERSION_FILES = (
+    Path("src/acpkit/_version.py"),
+    Path("packages/adapters/langchain-acp/src/langchain_acp/_version.py"),
+    Path("packages/adapters/pydantic-acp/src/pydantic_acp/_version.py"),
+    Path("packages/helpers/codex-auth-helper/src/codex_auth_helper/_version.py"),
+    Path("packages/transports/acpremote/src/acpremote/_version.py"),
+    Path("VERSION"),
+    Path("packages/adapters/langchain-acp/VERSION"),
+    Path("packages/adapters/pydantic-acp/VERSION"),
+    Path("packages/helpers/codex-auth-helper/VERSION"),
+    Path("packages/transports/acpremote/VERSION"),
+)
 
 
 def _run_release(*args: str) -> subprocess.CompletedProcess[str]:
@@ -46,3 +62,42 @@ def test_release_metadata_rejects_invalid_release_date() -> None:
 
     assert result.returncode == 1
     assert "does not match workspace version" in result.stderr
+
+
+def test_bump_script_updates_version_files_and_root_extras(tmp_path: Path) -> None:
+    for relative_path in (*_BUMP_VERSION_FILES, Path("pyproject.toml")):
+        source = _ROOT / relative_path
+        destination = tmp_path / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        copy2(source, destination)
+    copy2(_BUMP_SCRIPT, tmp_path / "bump.sh")
+
+    result = subprocess.run(
+        ["bash", "bump.sh", "1.2.3"],
+        cwd=tmp_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    for relative_path in _BUMP_VERSION_FILES:
+        content = (tmp_path / relative_path).read_text(encoding="utf-8")
+        if relative_path.name == "_version.py":
+            assert '__version__ = "1.2.3"' in content
+        else:
+            assert content == "1.2.3\n"
+
+    optional = _root_optional_dependencies(tmp_path)
+    assert optional["codex"] == ["codex-auth-helper>=1.2.3,<2.0.0"]
+    assert optional["deepagents"] == ["langchain-acp[deepagents]>=1.2.3,<2.0.0"]
+    assert optional["langchain"] == ["langchain-acp>=1.2.3,<2.0.0"]
+    assert optional["pydantic"] == ["pydantic-acp>=1.2.3,<2.0.0"]
+    assert optional["remote"] == ["acpremote>=1.2.3,<2.0.0"]
+
+
+def _root_optional_dependencies(root: Path) -> Mapping[str, list[str]]:
+    metadata = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = metadata["project"]["optional-dependencies"]
+    assert isinstance(optional, dict)
+    return optional

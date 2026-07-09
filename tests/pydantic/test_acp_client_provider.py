@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import json
 import sys
 import tomllib
 from pathlib import Path
@@ -430,6 +431,90 @@ asyncio.run(run_agent(StdioAgent()))
     assert len(response.parts) == 1
     assert isinstance(response.parts[0], TextPart)
     assert response.parts[0].content == f"{output_prefix}stdio factory path"
+    command_agent = cast(Any, model.provider).client
+    assert command_agent._process is None
+    assert command_agent._connection is None
+
+
+async def test_create_acp_model_command_supports_outer_agent_structured_output(
+    tmp_path: Path,
+) -> None:
+    server_script = tmp_path / "stdio_structured_acp_agent.py"
+    seen_meta_path = tmp_path / "seen_meta.json"
+    server_script.write_text(
+        """
+from __future__ import annotations
+
+import asyncio
+import json
+from pathlib import Path
+from typing import Any
+
+from acp import run_agent
+from acp.schema import AgentCapabilities, Implementation, InitializeResponse, NewSessionResponse, PromptResponse
+
+
+class StructuredStdioAgent:
+    def __init__(self) -> None:
+        self.client: Any | None = None
+
+    def on_connect(self, conn: Any) -> None:
+        self.client = conn
+
+    async def initialize(self, protocol_version: int, **kwargs: Any) -> InitializeResponse:
+        del kwargs
+        return InitializeResponse(
+            protocol_version=protocol_version,
+            agent_info=Implementation(name="structured-stdio-agent", version="test"),
+            agent_capabilities=AgentCapabilities(),
+        )
+
+    async def new_session(self, cwd: str, **kwargs: Any) -> NewSessionResponse:
+        del cwd, kwargs
+        return NewSessionResponse(session_id="structured-stdio-session")
+
+    async def set_session_model(self, **kwargs: Any) -> None:
+        raise AssertionError(f"set_session_model must not be called: {kwargs!r}")
+
+    async def prompt(self, prompt: list[Any], session_id: str, **kwargs: Any) -> PromptResponse:
+        del prompt, session_id
+        request_meta = kwargs.get("_meta")
+        Path("seen_meta.json").write_text(json.dumps(request_meta), encoding="utf-8")
+        return PromptResponse(
+            field_meta={
+                "pydantic_acp": {
+                    "version": 1,
+                    "structured_output": {
+                        "output": {"answer": "from stdio"},
+                    },
+                },
+            },
+            stop_reason="end_turn",
+        )
+
+
+asyncio.run(run_agent(StructuredStdioAgent()))
+""",
+    )
+    model = create_acp_model(
+        acp_command=(sys.executable, str(server_script)),
+        cwd=tmp_path,
+        stderr_mode="discard",
+        terminate_timeout=1.0,
+        enable_pydantic_acp_meta=True,
+    )
+    agent = Agent(model, output_type=StructuredAnswer)
+
+    async with model:
+        result = await agent.run("answer through stdio structured meta")
+
+    assert result.output == StructuredAnswer(answer="from stdio")
+    seen_meta = json.loads(seen_meta_path.read_text(encoding="utf-8"))
+    structured_request = seen_meta["pydantic_acp"]["structured_output"]
+    assert isinstance(structured_request["allow_text_output"], bool)
+    assert structured_request["output_tools"][0]["parameters_json_schema"]["title"] == (
+        "StructuredAnswer"
+    )
     command_agent = cast(Any, model.provider).client
     assert command_agent._process is None
     assert command_agent._connection is None
