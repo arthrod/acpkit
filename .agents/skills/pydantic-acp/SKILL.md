@@ -141,7 +141,7 @@ Package entrypoint:
 
 ## Current Pydantic AI Compatibility
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Do not restore
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.9.1`. Do not restore
 Pydantic AI V1 compatibility or widen the upper bound without running the
 runtime and type-check matrix:
 
@@ -161,6 +161,9 @@ When working on this surface, remember:
 - `run_stream_events()` is consumed as an async context manager throughout the supported range; 2.4.0 starts the run lazily on first event iteration
 - keep the direct async-iterable fallback only for tests and compatibility fakes
 - `OpenAICompactionBridge` must not pass deprecated `instructions=` into upstream `OpenAICompaction`
+- Harness filesystem, shell, and CodeMode bridges are regression-tested against
+  `pydantic-ai-harness[code-mode]==0.7.0` through its public imports; do not
+  duplicate unrelated Harness capabilities such as Memory or Guardrails in ACP Kit.
 
 ## Module Guide
 

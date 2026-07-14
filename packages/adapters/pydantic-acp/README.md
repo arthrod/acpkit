@@ -414,7 +414,7 @@ Focused docs recipes:
 
 ## Compatibility Policy
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.9.1`. Pydantic AI V1 is
 no longer supported.
 
 The ACP client provider bridge depends on the Pydantic AI v2 `Provider` and `Model` contracts. Upgrades across major Pydantic AI versions should be deliberate because the adapter exposes both server-side ACP translation and client-side ACP provider integration.
@@ -439,4 +439,7 @@ agent: Agent[None, str] = Agent(
 
 The supported surface includes tool and output-tool preparation, output
 validation and processing hooks, deferred tool-call hooks, run metadata,
-conversation IDs, and the `run_stream_events()` lifecycle used through 2.4.0.
+conversation IDs, and the `run_stream_events()` lifecycle used through 2.9.1.
+
+Harness-backed filesystem, shell, and CodeMode bridges are validated against
+`pydantic-ai-harness[code-mode]==0.7.0` using its public capability imports.

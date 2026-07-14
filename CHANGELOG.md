@@ -3,6 +3,21 @@
 ACP Kit uses synchronized versions for `acpkit`, `pydantic-acp`, `langchain-acp`,
 `codex-auth-helper`, and `acpremote`.
 
+## [1.3.0] - 2026-07-15
+
+### Changed
+
+- `pydantic-acp` now supports `pydantic-ai-slim>=2.0.0,<=2.9.1`; the runtime
+  and type-check matrix covers every supported Pydantic AI 2.x minor through
+  2.9.1.
+- Development and CI now use `pydantic-ai-harness[code-mode]==0.7.0`.
+
+### Fixed
+
+- Harness bridge coverage now constructs real `FileSystem`, `Shell`, and
+  `CodeMode` capabilities, guarding the public upstream imports and constructor
+  contracts used by ACP Kit.
+
 ## [1.2.0] - 2026-07-09
 
 ### Added
@@ -115,6 +130,7 @@ This is the first stable release of the synchronized ACP Kit workspace.
   failure paths close every owned resource deterministically.
 - CLI target import failures retain actionable root-cause details.
 
+[1.3.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.3.0
 [1.2.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.2.0
 [1.1.1]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.0

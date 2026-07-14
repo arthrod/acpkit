@@ -49,7 +49,7 @@ make check-pydantic-ai-matrix
 ```
 
 This runs the Pydantic adapter runtime tests and type checks independently
-against Pydantic AI 2.0.0, 2.1.0, 2.2.0, 2.3.0, and 2.4.0. The same matrix runs
+against Pydantic AI 2.0.0 through 2.9.1. The same matrix runs
 in CI. Add a version only after both parts pass.
 
 LangChain stack compatibility checks:

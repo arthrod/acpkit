@@ -73,7 +73,7 @@ uv add pydantic-acp
 pip install pydantic-acp
 ```
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0` and pins the ACP
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.9.1` and pins the ACP
 protocol version it integrates against. Pydantic AI V1 is not supported.
 
 For LangChain, LangGraph, or DeepAgents runtimes:

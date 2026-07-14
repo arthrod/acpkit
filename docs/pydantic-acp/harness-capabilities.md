@@ -9,6 +9,12 @@ This is the supported path when you want a Pydantic agent to use:
 - bounded shell execution
 - optional CodeMode execution tools
 
+ACP Kit validates its maintained harness bridge surface against
+`pydantic-ai-harness[code-mode]==0.7.0`. The bridges intentionally use the
+public `FileSystem`, `Shell`, and `CodeMode` imports; newer Harness capabilities
+such as Memory and Guardrails remain available to the underlying agent without
+being reimplemented as ACP Kit-specific tool bridges.
+
 The adapter surface is split in two parts:
 
 - bridges add real upstream tool capability to the Pydantic runtime
