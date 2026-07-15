@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Generic, TypeAlias, TypeVar
 
 from acp.schema import (
+    AcpMcpServer,
     HttpMcpServer,
     ListSessionsResponse,
     LoadSessionResponse,
@@ -14,7 +15,6 @@ from acp.schema import (
     PromptResponse,
     ResumeSessionResponse,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
     SseMcpServer,
     ToolCallStart,
@@ -437,35 +437,43 @@ class _SessionRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
     async def new_session(
         self,
         cwd: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
         **kwargs: Any,
     ) -> NewSessionResponse:
         """Create a new ACP session rooted at the provided working directory."""
         del kwargs
-        return await self._session_runtime.new_session(cwd, mcp_servers)
+        return await self._session_runtime.new_session(cwd, additional_directories, mcp_servers)
 
     async def load_session(
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
+        additional_directories: list[str] | None = None,
         **kwargs: Any,
     ) -> LoadSessionResponse | None:
         """Load a persisted ACP session and rebuild its visible surface."""
         del kwargs
-        response = await self._session_runtime.load_session(cwd, session_id, mcp_servers)
+        response = await self._session_runtime.load_session(
+            cwd,
+            session_id,
+            mcp_servers,
+            additional_directories,
+        )
         if response is None:
             return None
         return LoadSessionResponse(
             config_options=response.config_options,
-            models=response.models,
             modes=response.modes,
         )
 
     async def list_sessions(
         self,
-        cursor: str | None = None,
         cwd: str | None = None,
+        cursor: str | None = None,
         **kwargs: Any,
     ) -> ListSessionsResponse:
         """List persisted sessions visible from the current runtime."""
@@ -474,34 +482,31 @@ class _SessionRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
 
     async def resume_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
         **kwargs: Any,
     ) -> ResumeSessionResponse:
         """Resume a session and replay the ACP-visible session surface."""
         del kwargs
-        return await self._session_runtime.resume_session(cwd, session_id, mcp_servers)
+        return await self._session_runtime.resume_session(
+            session_id,
+            cwd,
+            additional_directories,
+            mcp_servers,
+        )
 
     async def set_session_mode(
         self,
-        mode_id: str,
         session_id: str,
+        mode_id: str,
         **kwargs: Any,
     ) -> SetSessionModeResponse | None:
         """Set the current ACP session mode through the active mode provider."""
         del kwargs
-        return await self._session_runtime.set_session_mode(mode_id, session_id)
-
-    async def set_session_model(
-        self,
-        model_id: str,
-        session_id: str,
-        **kwargs: Any,
-    ) -> SetSessionModelResponse | None:
-        """Set the current ACP session model selection."""
-        del kwargs
-        return await self._session_runtime.set_session_model(model_id, session_id)
+        return await self._session_runtime.set_session_mode(session_id, mode_id)
 
     async def set_config_option(
         self,
@@ -514,17 +519,23 @@ class _SessionRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
         del kwargs
         return await self._session_runtime.set_config_option(config_id, session_id, value)
 
+    async def set_session_model(
+        self,
+        model_id: str,
+        session_id: str,
+    ) -> SetSessionConfigOptionResponse | None:
+        """Compatibility helper that maps model selection to ACP 0.11 config options."""
+        return await self.set_config_option("model", session_id, model_id)
+
     async def prompt(
         self,
-        prompt: list[PromptBlock],
         session_id: str,
-        message_id: str | None = None,
+        prompt: list[PromptBlock],
         **kwargs: Any,
     ) -> PromptResponse:
         """Run one ACP prompt turn against the bound Pydantic AI agent."""
         return await self._adapter_prompt.prompt(
-            prompt,
             session_id,
-            message_id=message_id,
+            prompt,
             request_meta=extract_field_meta(kwargs),
         )

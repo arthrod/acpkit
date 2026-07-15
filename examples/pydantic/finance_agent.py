@@ -254,6 +254,8 @@ config = AdapterConfig(
     ],
     approval_bridge=NativeApprovalBridge(),
     native_plan_persistence_provider=FinancePlanPersistenceProvider(),
+    plan_id="finance-research-plan",
+    plan_update_mode="content",
     projection_maps=[
         FileSystemProjectionMap(
             default_read_tool=_READ_NOTE_TOOL,

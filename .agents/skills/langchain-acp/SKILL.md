@@ -300,6 +300,26 @@ Stay in this skill when the main issue is:
 
 ## Guardrails
 
+### ACP 0.11 Protocol Rules
+
+- Depend on `agent-client-protocol==0.11.0`; use `AdapterModel`, never the
+  removed SDK `ModelInfo` surface.
+- Map model and mode changes to `session/set_config_option`; do not add a
+  wire-level `session/set_model` implementation. The adapter-only convenience
+  helper may exist for internal compatibility.
+- Bind negotiated `ClientCapabilities` to every new, loaded, forked, and
+  resumed session before building graph or config surfaces.
+- Emit config options only when `session.configOptions` is advertised, and
+  only emit boolean options when `session.configOptions.boolean` is present.
+- `plan_update_mode="content"` requires an advertised `plan` capability;
+  fall back to complete `AgentPlanUpdate` otherwise.
+- Preserve `additional_directories` in session lifecycle state and expose
+  typed elicitation through `AcpSessionContext` rather than untyped RPC calls.
+  Pass one of `ElicitationFormSessionMode`, `ElicitationFormRequestMode`,
+  `ElicitationUrlSessionMode`, or `ElicitationUrlRequestMode` directly.
+- Store `AcpMcpServer` session definitions but do not claim ACP MCP transport
+  support without a public SDK router.
+
 - Do not describe LangChain support as secondary to Pydantic.
 - Do not reuse Pydantic-only host-policy language when the bug is really about graph or tool seams.
 - Do not claim a projection preset exists for an unstable tool family unless it is implemented.

@@ -99,7 +99,6 @@ from pydantic_acp.runtime.session_surface import (
     build_mode_config_option,
     build_mode_state_from_selection,
     build_model_config_option,
-    build_model_state_from_selection,
     find_model_option,
 )
 from pydantic_acp.serialization import DefaultOutputSerializer
@@ -1049,7 +1048,6 @@ def test_session_surface_helpers_handle_missing_state_and_errors() -> None:
     with pytest.raises(RequestError):
         build_mode_config_option(ModeState(current_mode_id=None, modes=[]))
 
-    assert build_model_state_from_selection(None) is None
     assert build_mode_state_from_selection(None) is None
     assert build_mode_state_from_selection(ModeState(current_mode_id=None, modes=[])) is None
     assert find_model_option("missing", available_models=[model]) is None

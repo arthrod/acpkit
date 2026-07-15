@@ -212,7 +212,7 @@ async def test_phase3_connect_acp_returns_local_agent_proxy_with_remote_passthro
         await proxy.ext_notification("demo.note", {"value": 2})
 
         prompt_response = await proxy.prompt(
-            [text_block("phase3 passthrough")],
+            prompt=[text_block("phase3 passthrough")],
             session_id=new_session.session_id,
         )
         assert prompt_response.stop_reason == "end_turn"
@@ -369,7 +369,7 @@ async def test_phase3_proxy_supports_local_acp_stream_clients_transparently() ->
         assert session.session_id == "phase3-session"
 
         prompt_response = await local_connection.prompt(
-            [text_block("stdio passthrough")],
+            prompt=[text_block("stdio passthrough")],
             session_id=session.session_id,
         )
         assert prompt_response.stop_reason == "end_turn"
@@ -410,7 +410,7 @@ async def test_phase3_proxy_can_emit_transport_latency_meta_and_projection() -> 
         await proxy.initialize(protocol_version=1)
         session = await proxy.new_session(cwd="/tmp")
         response = await proxy.prompt(
-            [text_block("latency please")],
+            prompt=[text_block("latency please")],
             session_id=session.session_id,
         )
         assert response.stop_reason == "end_turn"

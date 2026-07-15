@@ -168,6 +168,41 @@ def test_host_access_policy_warns_for_command_cwd_outside_workspace() -> None:
     assert "Command cwd escapes the workspace root" in evaluation.message
 
 
+def test_additional_directories_extend_session_scope_without_expanding_workspace() -> None:
+    workspace_root = Path("/tmp/acpkit-host-policy").resolve()
+    session_cwd = workspace_root / "app"
+    additional_directory = workspace_root / "shared"
+    policy = HostAccessPolicy.strict()
+
+    path_evaluation = policy.enforce_path(
+        additional_directory / "notes.txt",
+        session_cwd=session_cwd,
+        additional_directories=(additional_directory,),
+        workspace_root=workspace_root,
+    )
+    command_evaluation = policy.enforce_command(
+        "python",
+        args=["task.py"],
+        cwd=additional_directory,
+        session_cwd=session_cwd,
+        additional_directories=(additional_directory,),
+        workspace_root=workspace_root,
+    )
+
+    assert path_evaluation.outside_cwd is False
+    assert path_evaluation.outside_workspace is False
+    assert command_evaluation.outside_cwd is False
+    assert command_evaluation.outside_workspace is False
+
+    with pytest.raises(PermissionError, match="workspace root"):
+        policy.enforce_path(
+            "/tmp/outside-workspace.txt",
+            session_cwd=session_cwd,
+            additional_directories=(Path("/tmp"),),
+            workspace_root=workspace_root,
+        )
+
+
 def test_command_path_helpers_extract_relative_flag_and_assignment_tokens() -> None:
     session_cwd = Path("/tmp/acpkit-host-policy").resolve()
 

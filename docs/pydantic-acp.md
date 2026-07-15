@@ -108,7 +108,8 @@ agent = Agent(model)
 
 `create_acp_model(...)` intentionally leaves ACP model selection to the wrapped
 agent's session default. Pass `model_name="zed-agent"` only when the wrapped
-ACP agent accepts that concrete `session/set_model` id. `AcpProvider` and
+ACP agent exposes a selectable `"model"` `session/set_config_option` option.
+`AcpProvider` and
 `AcpModel` remain available when lower-level provider ownership is needed.
 
 The bridge keeps ownership explicit:

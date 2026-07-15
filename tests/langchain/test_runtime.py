@@ -8,20 +8,23 @@ from typing import Any, cast
 
 from acp.interfaces import Client as AcpClient
 from acp.schema import (
+    AcpMcpServer,
     AgentPlanUpdate,
     AudioContentBlock,
     AvailableCommand,
     AvailableCommandsUpdate,
     BlobResourceContents,
+    ClientCapabilities,
+    ClientSessionCapabilities,
     ConfigOptionUpdate,
     ContentToolCallContent,
     CurrentModeUpdate,
     EmbeddedResourceContentBlock,
-    ModelInfo,
     PlanEntry,
     PlanEntryPriority,
     PlanEntryStatus,
     ResourceContentBlock,
+    SessionConfigOptionsCapabilities,
     SessionMode,
     TerminalToolCallContent,
     TextResourceContents,
@@ -32,6 +35,7 @@ from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain_acp import (
     AdapterConfig,
+    AdapterModel,
     AdapterPromptCapabilities,
     BrowserProjectionMap,
     CapabilityBridge,
@@ -144,6 +148,93 @@ def test_langchain_acp_initialize_uses_configured_prompt_capabilities() -> None:
     assert response.agent_capabilities.prompt_capabilities.audio is False
     assert response.agent_capabilities.prompt_capabilities.image is False
     assert response.agent_capabilities.prompt_capabilities.embedded_context is True
+    assert response.agent_capabilities.mcp_capabilities is not None
+    assert response.agent_capabilities.mcp_capabilities.acp is False
+
+
+def test_acp_mcp_server_input_is_persisted_without_enabling_acp_transport(tmp_path: Path) -> None:
+    adapter = create_acp_agent(
+        graph=create_agent(
+            model=GenericFakeChatModel(messages=iter([])),
+            tools=[],
+            name="acp-mcp",
+        ),
+        config=AdapterConfig(),
+    )
+    server = AcpMcpServer.model_validate(
+        {
+            "_meta": {"source": "host"},
+            "id": "delegated-agent",
+            "name": "Delegated agent",
+            "type": "acp",
+        },
+    )
+
+    session = asyncio.run(
+        adapter.new_session(cwd=str(tmp_path), mcp_servers=[server]),
+    )
+    loaded = asyncio.run(
+        adapter.load_session(cwd=str(tmp_path), session_id=session.session_id),
+    )
+    stored_session = adapter._store.get(session.session_id)
+
+    assert loaded is not None
+    assert stored_session is not None
+    assert stored_session.mcp_servers == [
+        {
+            "_meta": {"source": "host"},
+            "id": "delegated-agent",
+            "name": "Delegated agent",
+            "type": "acp",
+        },
+    ]
+
+
+def test_client_config_capabilities_gate_langchain_session_options(tmp_path) -> None:
+    adapter = create_acp_agent(
+        graph=create_agent(
+            model=GenericFakeChatModel(messages=iter([])),
+            tools=[],
+            name="config-capabilities",
+        ),
+        config=AdapterConfig(
+            available_models=[AdapterModel(model_id="base", name="Base")],
+            available_modes=[SessionMode(id="ask", name="Ask")],
+            default_model_id="base",
+            default_mode_id="ask",
+        ),
+    )
+    client = RecordingACPClient()
+    adapter.on_connect(cast("AcpClient", client))
+
+    asyncio.run(
+        adapter.initialize(
+            protocol_version=1,
+            client_capabilities=ClientCapabilities(
+                session=ClientSessionCapabilities(
+                    config_options=SessionConfigOptionsCapabilities(),
+                ),
+            ),
+        ),
+    )
+    select_only = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+
+    assert select_only.config_options is not None
+    assert [option.id for option in select_only.config_options] == ["mode", "model"]
+
+    asyncio.run(
+        adapter.initialize(
+            protocol_version=1,
+            client_capabilities=ClientCapabilities(session=ClientSessionCapabilities()),
+        ),
+    )
+    unsupported = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+
+    assert unsupported.config_options is None
+    available_commands = [
+        update for _, update in client.updates if isinstance(update, AvailableCommandsUpdate)
+    ]
+    assert all(command.name != "model" for command in available_commands[-1].available_commands)
 
 
 def test_langchain_acp_slash_commands_emit_surface_updates_and_skip_graph(
@@ -164,8 +255,8 @@ def test_langchain_acp_slash_commands_emit_surface_updates_and_skip_graph(
         graph=graph,
         config=AdapterConfig(
             available_models=[
-                ModelInfo(model_id="openai:gpt-5-mini", name="GPT-5 Mini"),
-                ModelInfo(model_id="openai:gpt-5", name="GPT-5"),
+                AdapterModel(model_id="openai:gpt-5-mini", name="GPT-5 Mini"),
+                AdapterModel(model_id="openai:gpt-5", name="GPT-5"),
             ],
             available_modes=[
                 SessionMode(id="ask", name="Ask"),
@@ -867,8 +958,8 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
         def get_model_state(self, session):
             return ModelSelectionState(
                 available_models=[
-                    ModelInfo(model_id="base", name="Base"),
-                    ModelInfo(model_id="gpt-5", name="GPT-5"),
+                    AdapterModel(model_id="base", name="Base"),
+                    AdapterModel(model_id="gpt-5", name="GPT-5"),
                 ],
                 current_model_id=session.session_model_id or "base",
                 enable_config_option=False,
@@ -878,8 +969,8 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
             session.metadata["selected_model"] = model_id
             return ModelSelectionState(
                 available_models=[
-                    ModelInfo(model_id="base", name="Base"),
-                    ModelInfo(model_id="gpt-5", name="GPT-5"),
+                    AdapterModel(model_id="base", name="Base"),
+                    AdapterModel(model_id="gpt-5", name="GPT-5"),
                 ],
                 current_model_id=model_id,
                 allow_any_model_id=True,
@@ -928,8 +1019,8 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
     adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
-    assert session.models is not None
-    assert session.models.current_model_id == "base"
+    stored_session = adapter._require_session(session.session_id)
+    assert stored_session.session_model_id == "base"
     assert session.modes is not None
     assert session.modes.current_mode_id == "ask"
 
@@ -938,7 +1029,7 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
     assert agent_message_texts(client)[-1] == "base:ask"
 
     asyncio.run(adapter.set_session_model("gpt-5", session_id=session.session_id))
-    asyncio.run(adapter.set_session_mode("plan", session_id=session.session_id))
+    asyncio.run(adapter.set_session_mode(session.session_id, "plan"))
     second = asyncio.run(
         adapter.prompt(prompt=[text_block("again")], session_id=session.session_id),
     )

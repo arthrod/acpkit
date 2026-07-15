@@ -138,6 +138,7 @@ nav:
       - pydantic_acp: api/pydantic_acp.md
       - codex_auth_helper: api/codex_auth_helper.md
   - Release Notes:
+      - ACP Kit 1.4.0: releases/acpkit-1.4.0.md
       - ACP Kit 1.1.0: releases/acpkit-1.1.0.md
       - ACP Kit 1.0.0: releases/acpkit-1.0.0.md
   - Versioning: versioning.md

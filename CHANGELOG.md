@@ -3,6 +3,46 @@
 ACP Kit uses synchronized versions for `acpkit`, `pydantic-acp`, `langchain-acp`,
 `codex-auth-helper`, and `acpremote`.
 
+## [1.4.0] - 2026-07-15
+
+### Changed
+
+- All ACP-facing packages now require `agent-client-protocol==0.11.0` and use
+  its public Python SDK contracts.
+- `pydantic-acp` and `langchain-acp` expose adapter-owned `AdapterModel`
+  values instead of the removed SDK `ModelInfo` surface. Model selection is
+  negotiated through the standard selectable `"model"` session config option,
+  not the removed wire-level `session/set_model` request.
+- Plan emission defaults to complete `AgentPlanUpdate` messages. When
+  `AdapterConfig(plan_update_mode="content")` is selected, adapters emit
+  content/removal deltas only after the client advertises the ACP `plan`
+  capability; otherwise they retain complete-update behavior.
+- Session lifecycle now persists ACP 0.11 `additional_directories` and
+  `AcpMcpServer` descriptors across new, load, fork, and resume flows.
+
+### Added
+
+- Typed form and URL elicitation forwarding through `AcpSessionContext`, with
+  explicit client capability checks and ACP host delegation support for the
+  Pydantic provider bridge.
+- `AcpMcpServer` descriptors appear in persisted session state and
+  `/mcp-servers` inspection output. They remain host-owned descriptors: ACP
+  Kit does not claim ACP-MCP transport support without a public SDK router.
+- `acpremote` mirrors the ACP 0.11 lifecycle, config-option model selection,
+  elicitation callbacks, descriptor types, and protocol-correct client method
+  signatures.
+- Updated Pydantic and LangChain examples, package READMEs, guides, and agent
+  skills covering config-option selection, capability-gated plans, additional
+  directories, typed elicitation, and the ACP-MCP ownership boundary.
+
+### Fixed
+
+- Client filesystem, terminal, permission, and prompt delegation now use the
+  ACP 0.11 positional contract, preventing session identifiers from being
+  interpreted as file paths in direct SDK callers.
+- The maintained test harness accepts ACP 0.11 MCP descriptor variants, and
+  full repository coverage validates all public migration paths.
+
 ## [1.3.0] - 2026-07-15
 
 ### Changed
@@ -131,6 +171,7 @@ This is the first stable release of the synchronized ACP Kit workspace.
 - CLI target import failures retain actionable root-cause details.
 
 [1.3.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.3.0
+[1.4.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.4.0
 [1.2.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.2.0
 [1.1.1]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/vcoderun/acpkit/releases/tag/v1.1.0

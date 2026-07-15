@@ -142,11 +142,15 @@ class FileSessionStore:
             return AcpSessionContext(
                 session_id=payload["session_id"],
                 cwd=Path(payload["cwd"]),
+                additional_directories=tuple(
+                    Path(directory) for directory in payload.get("additional_directories", [])
+                ),
                 created_at=self._parse_datetime(payload["created_at"]),
                 updated_at=self._parse_datetime(payload["updated_at"]),
                 title=payload["title"],
                 session_model_id=payload["session_model_id"],
                 message_history_json=payload["message_history_json"],
+                active_plan_id=payload.get("active_plan_id"),
                 plan_markdown=payload.get("plan_markdown"),
                 plan_entries=payload.get("plan_entries", []),
                 config_values=payload["config_values"],
@@ -159,9 +163,13 @@ class FileSessionStore:
 
     def _save_unlocked(self, session: AcpSessionContext) -> None:
         payload = {
+            "active_plan_id": session.active_plan_id,
             "config_values": session.config_values,
             "created_at": session.created_at.isoformat(),
             "cwd": str(session.cwd),
+            "additional_directories": [
+                str(directory) for directory in session.additional_directories
+            ],
             "message_history_json": session.message_history_json,
             "plan_markdown": session.plan_markdown,
             "plan_entries": session.plan_entries,
@@ -236,11 +244,13 @@ def _clone_session(session: AcpSessionContext) -> AcpSessionContext:
     return AcpSessionContext(
         session_id=session.session_id,
         cwd=session.cwd,
+        additional_directories=session.additional_directories,
         created_at=session.created_at,
         updated_at=session.updated_at,
         title=session.title,
         session_model_id=session.session_model_id,
         message_history_json=session.message_history_json,
+        active_plan_id=session.active_plan_id,
         plan_markdown=session.plan_markdown,
         plan_entries=json.loads(json.dumps(session.plan_entries)),
         config_values=json.loads(json.dumps(session.config_values)),

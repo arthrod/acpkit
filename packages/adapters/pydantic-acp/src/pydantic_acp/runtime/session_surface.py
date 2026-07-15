@@ -11,7 +11,6 @@ from acp.schema import (
     SessionConfigOptionBoolean,
     SessionConfigOptionSelect,
     SessionConfigSelectOption,
-    SessionModelState,
     SessionModeState,
 )
 
@@ -26,7 +25,6 @@ __all__ = (
     "build_mode_config_option",
     "build_mode_state_from_selection",
     "build_model_config_option",
-    "build_model_state_from_selection",
     "find_model_option",
 )
 
@@ -34,7 +32,6 @@ __all__ = (
 @dataclass(slots=True, kw_only=True)
 class SessionSurface:
     config_options: list[ConfigOption] | None
-    model_state: SessionModelState | None
     mode_state: SessionModeState | None
     plan_entries: list[PlanEntry] | None
     available_commands: list[AvailableCommand] | None = None
@@ -83,19 +80,6 @@ def build_mode_config_option(mode_state: ModeState) -> SessionConfigOptionSelect
             )
             for mode in mode_state.modes
         ],
-    )
-
-
-def build_model_state_from_selection(
-    model_selection_state: ModelSelectionState | None,
-) -> SessionModelState | None:
-    if model_selection_state is None or model_selection_state.current_model_id is None:
-        return None
-    return SessionModelState(
-        available_models=[
-            model.to_model_info() for model in model_selection_state.available_models
-        ],
-        current_model_id=model_selection_state.current_model_id,
     )
 
 

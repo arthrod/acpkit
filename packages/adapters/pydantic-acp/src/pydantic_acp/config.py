@@ -2,6 +2,7 @@ from __future__ import annotations as _annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Literal, TypeAlias
 
 from ._version import __version__
 from .approvals import ApprovalBridge, NativeApprovalBridge
@@ -28,11 +29,14 @@ DEFAULT_AGENT_NAME = "pydantic-acp"
 DEFAULT_AGENT_TITLE = "Pydantic ACP"
 DEFAULT_AGENT_VERSION = __version__
 
+PlanUpdateMode: TypeAlias = Literal["full", "content"]
+
 __all__ = (
     "DEFAULT_AGENT_NAME",
     "DEFAULT_AGENT_TITLE",
     "DEFAULT_AGENT_VERSION",
     "AdapterConfig",
+    "PlanUpdateMode",
 )
 
 
@@ -54,7 +58,9 @@ class AdapterConfig:
     modes_provider: SessionModesProvider | None = None
     native_plan_additional_instructions: str | None = None
     native_plan_persistence_provider: NativePlanPersistenceProvider | None = None
+    plan_id: str = "acpkit.plan"
     plan_provider: PlanProvider | None = None
+    plan_update_mode: PlanUpdateMode = "full"
     prompt_capabilities: AdapterPromptCapabilities = field(
         default_factory=AdapterPromptCapabilities,
     )

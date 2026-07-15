@@ -5,6 +5,7 @@ import json
 import sys
 import tomllib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Literal, cast
 from unittest.mock import AsyncMock
 
@@ -17,15 +18,22 @@ from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
 from acp.schema import (
+    AcceptElicitationResponse,
     AgentCapabilities,
     AgentMessageChunk,
     AllowedOutcome,
     ClientCapabilities,
+    ElicitationFormSessionMode,
+    ElicitationMode,
+    ElicitationSchema,
     Implementation,
     InitializeResponse,
     NewSessionResponse,
     PermissionOption,
     PromptResponse,
+    SessionConfigOptionSelect,
+    SessionConfigSelectOption,
+    SetSessionConfigOptionResponse,
     ToolCallUpdate,
     Usage,
     UsageUpdate,
@@ -120,7 +128,31 @@ class EchoACPAgent:  # type: ignore[misc]
         del kwargs
         self.session_cwds.append(cwd)
         self.mcp_servers_seen.append(mcp_servers)
-        return NewSessionResponse(session_id=f"session-{len(self.session_cwds)}")
+        return NewSessionResponse(
+            session_id=f"session-{len(self.session_cwds)}",
+            config_options=[
+                SessionConfigOptionSelect(
+                    id="model",
+                    name="Model",
+                    category="agent",
+                    type="select",
+                    current_value="agent",
+                    options=[SessionConfigSelectOption(value="agent", name="Agent")],
+                ),
+            ],
+        )
+
+    async def set_config_option(
+        self,
+        config_id: str,
+        session_id: str,
+        value: str | bool,
+        **kwargs: Any,
+    ) -> SetSessionConfigOptionResponse:
+        del kwargs
+        if config_id == "model" and isinstance(value, str):
+            self.session_models.append((session_id, value))
+        return SetSessionConfigOptionResponse(config_options=[])
 
     async def set_session_model(
         self,
@@ -167,18 +199,19 @@ def _build_provider_and_model(
     return provider, model
 
 
-class SetModelErrorACPAgent(EchoACPAgent):
+class SetConfigOptionErrorACPAgent(EchoACPAgent):
     def __init__(self, error: RequestError) -> None:
         super().__init__()
         self.error = error
 
-    async def set_session_model(
+    async def set_config_option(
         self,
-        model_id: str,
+        config_id: str,
         session_id: str,
+        value: str | bool,
         **kwargs: Any,
-    ) -> None:
-        del model_id, session_id, kwargs
+    ) -> SetSessionConfigOptionResponse:
+        del config_id, session_id, value, kwargs
         raise self.error
 
 
@@ -656,10 +689,6 @@ async def test_acp_command_agent_delegates_session_methods_through_existing_conn
             calls.append(("set_session_mode", kwargs))
             return "mode"
 
-        async def set_session_model(self, **kwargs: Any) -> str:
-            calls.append(("set_session_model", kwargs))
-            return "model"
-
         async def set_config_option(self, **kwargs: Any) -> str:
             calls.append(("set_config_option", kwargs))
             return "config"
@@ -699,7 +728,7 @@ async def test_acp_command_agent_delegates_session_methods_through_existing_conn
     assert await command_agent.load_session(cwd="/workspace", session_id="s1") == "load"
     assert await command_agent.list_sessions(cursor="c1", cwd="/workspace") == "list"
     assert await command_agent.set_session_mode(mode_id="review", session_id="s1") == "mode"
-    assert await command_agent.set_session_model(model_id="m1", session_id="s1") == "model"
+    assert await command_agent.set_session_model(model_id="m1", session_id="s1") == "config"
     assert (
         await command_agent.set_config_option(
             config_id="effort",
@@ -720,7 +749,7 @@ async def test_acp_command_agent_delegates_session_methods_through_existing_conn
         "load_session",
         "list_sessions",
         "set_session_mode",
-        "set_session_model",
+        "set_config_option",
         "set_config_option",
         "authenticate",
         "fork_session",
@@ -974,20 +1003,13 @@ async def test_acp_provider_model_history_mode_is_model_scoped() -> None:
     assert acp_agent.prompts[1] == ("session-1", "second turn")
 
 
-async def test_acp_provider_accepts_sync_set_session_model_hooks() -> None:
+async def test_acp_provider_selects_model_through_config_option() -> None:
     acp_agent = EchoACPAgent()
-    set_model_calls: list[tuple[str, str]] = []
-
-    def set_session_model(model_id: str, session_id: str, **kwargs: Any) -> None:
-        del kwargs
-        set_model_calls.append((session_id, model_id))
-
-    cast(Any, acp_agent).set_session_model = set_session_model
     _provider, model = _build_provider_and_model(acp_agent)
 
     await Agent(model).run("sync model hook")
 
-    assert set_model_calls == [("session-1", "zed-agent")]
+    assert acp_agent.session_models == [("session-1", "zed-agent")]
 
 
 async def test_acp_provider_ensure_session_returns_existing_session_for_same_model() -> None:
@@ -1002,6 +1024,44 @@ async def test_acp_provider_ensure_session_returns_existing_session_for_same_mod
     assert acp_agent.session_models == [("session-1", "zed-agent")]
 
 
+async def test_acp_provider_uses_prompt_response_metadata_as_a_text_fallback() -> None:
+    provider, _model = _build_provider_and_model(EchoACPAgent())
+
+    text = await provider._agent_message_text_after_prompt(
+        0,
+        session_id="session-1",
+        prompt_response=SimpleNamespace(response="metadata fallback"),
+    )
+
+    assert text == "metadata fallback"
+
+
+async def test_acp_provider_requires_a_model_config_option_for_explicit_model_selection() -> None:
+    class NoModelConfigACPAgent(EchoACPAgent):
+        async def new_session(
+            self,
+            cwd: str,
+            mcp_servers: list[Any] | None = None,
+            **kwargs: Any,
+        ) -> NewSessionResponse:
+            response = await super().new_session(cwd, mcp_servers, **kwargs)
+            return NewSessionResponse(session_id=response.session_id, config_options=[])
+
+    _provider, model = _build_provider_and_model(NoModelConfigACPAgent())
+
+    with pytest.raises(UserError, match="does not expose a selectable 'model'"):
+        await Agent(model).run("hello")
+
+
+async def test_acp_agent_test_doubles_preserve_legacy_model_and_connection_failures() -> None:
+    acp_agent = EchoACPAgent()
+    await acp_agent.set_session_model(model_id="legacy-model", session_id="session-1")
+    assert acp_agent.session_models == [("session-1", "legacy-model")]
+
+    with pytest.raises(AssertionError, match="not connected"):
+        await DelayedUpdateACPAgent().prompt(prompt=[], session_id="session-1")
+
+
 @pytest.mark.parametrize(
     "error",
     [
@@ -1009,33 +1069,10 @@ async def test_acp_provider_ensure_session_returns_existing_session_for_same_mod
         RequestError(-32601, "session/set_model is unavailable"),
     ],
 )
-async def test_acp_provider_treats_missing_set_model_as_supported_fallback(
+async def test_acp_provider_reraises_model_config_option_errors(
     error: RequestError,
 ) -> None:
-    acp_agent = SetModelErrorACPAgent(error)
-    _provider, model = _build_provider_and_model(acp_agent)
-
-    response = await model.request(
-        [ModelRequest(parts=[UserPromptPart("hello")])],
-        None,
-        ModelRequestParameters(),
-    )
-
-    assert response.provider_details == {"acp_session_id": "session-1"}
-    assert acp_agent.prompts == [("session-1", "hello")]
-
-
-@pytest.mark.parametrize(
-    "error",
-    [
-        RequestError(-32000, "backend failed"),
-        RequestError(-32601, "different missing method", {"method": "session/load"}),
-    ],
-)
-async def test_acp_provider_reraises_unexpected_set_model_errors(
-    error: RequestError,
-) -> None:
-    acp_agent = SetModelErrorACPAgent(error)
+    acp_agent = SetConfigOptionErrorACPAgent(error)
     _provider, model = _build_provider_and_model(acp_agent)
 
     with pytest.raises(RequestError):
@@ -1193,7 +1230,7 @@ async def test_acp_model_can_round_trip_structured_output_over_private_meta() ->
         cwd="/workspace",
         enable_pydantic_acp_meta=True,
     )
-    model = AcpModel(model_name="agent", provider=provider)
+    model = provider.model()
     output_tool = ToolDefinition(
         name="final_result",
         parameters_json_schema=StructuredAnswer.model_json_schema(),
@@ -1267,7 +1304,7 @@ async def test_acp_model_fails_closed_when_structured_meta_is_missing() -> None:
         cwd="/workspace",
         enable_pydantic_acp_meta=True,
     )
-    model = AcpModel(model_name="agent", provider=provider)
+    model = provider.model()
     output_tool = ToolDefinition(
         name="final_result",
         parameters_json_schema=StructuredAnswer.model_json_schema(),
@@ -1489,7 +1526,7 @@ class NoHandshakeACPAgent:  # type: ignore[misc]
 async def test_acp_provider_does_not_require_the_agent_to_support_on_connect() -> None:
     acp_agent = NoHandshakeACPAgent()
     provider = AcpProvider(acp_agent=acp_agent, cwd="/workspace")  # type: ignore
-    model = AcpModel(model_name="agent", provider=provider)
+    model = provider.model()
 
     response = await model.request(
         [ModelRequest(parts=[UserPromptPart("hello")])],
@@ -1626,6 +1663,42 @@ async def test_host_bridge_delegates_request_permission_to_host_client() -> None
 
     assert isinstance(response.outcome, AllowedOutcome)
     assert response.outcome.option_id == "allow"
+
+
+async def test_host_bridge_delegates_elicitation_lifecycle_to_host_client() -> None:
+    class ElicitationRecordingClient(RecordingClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.create_calls: list[tuple[str, ElicitationMode]] = []
+            self.completed_ids: list[str] = []
+
+        async def create_elicitation(
+            self,
+            message: str,
+            mode: ElicitationMode,
+            **kwargs: Any,
+        ) -> AcceptElicitationResponse:
+            del kwargs
+            self.create_calls.append((message, mode))
+            return AcceptElicitationResponse(action="accept", content={"confirmed": True})
+
+        async def complete_elicitation(self, elicitation_id: str, **kwargs: Any) -> None:
+            del kwargs
+            self.completed_ids.append(elicitation_id)
+
+    delegate = ElicitationRecordingClient()
+    bridge = AcpHostBridge(delegate=cast(AcpClient, delegate))
+    mode = ElicitationFormSessionMode(
+        session_id="session-1",
+        requested_schema=ElicitationSchema(),
+    )
+
+    response = await bridge.create_elicitation(message="Confirm", mode=mode)
+    await bridge.complete_elicitation(elicitation_id="elicitation-1")
+
+    assert response.action == "accept"
+    assert delegate.create_calls == [("Confirm", mode)]
+    assert delegate.completed_ids == ["elicitation-1"]
 
 
 async def test_host_bridge_on_connect_forwards_to_delegate_when_supported() -> None:  # type: ignore[misc]
@@ -2061,7 +2134,7 @@ def test_pydantic_acp_pins_agent_client_protocol_version_used_by_client_module()
     data: dict[str, Any] = tomllib.loads(package_pyproject.read_text())
     dependencies: list[str] = data["project"]["dependencies"]
 
-    assert "agent-client-protocol==0.9.0" in dependencies
+    assert "agent-client-protocol==0.11.0" in dependencies
 
 
 # --- Additional coverage: public package exports for the client bridge (__init__.py) -----

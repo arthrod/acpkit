@@ -6,7 +6,6 @@ from dataclasses import replace
 from typing import TypeVar
 
 from acp import run_agent
-from acp.interfaces import Agent as AcpAgent
 from pydantic_ai import Agent as PydanticAgent
 
 from ..agent_source import (
@@ -33,7 +32,7 @@ def create_acp_agent(
     agent_source: AgentSource[AgentDepsT, OutputDataT] | None = None,
     config: AdapterConfig | None = None,
     projection_maps: Sequence[ProjectionMap | HookProjectionMap] | None = None,
-) -> AcpAgent:
+) -> PydanticAcpAgent[AgentDepsT, OutputDataT]:
     resolved_source = _resolve_agent_source(
         agent=agent,
         agent_factory=agent_factory,

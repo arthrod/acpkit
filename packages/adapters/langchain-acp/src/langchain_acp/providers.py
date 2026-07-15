@@ -5,13 +5,13 @@ from dataclasses import dataclass
 from typing import Protocol, TypeAlias
 
 from acp.schema import (
-    ModelInfo,
     PlanEntry,
     SessionConfigOptionBoolean,
     SessionConfigOptionSelect,
     SessionMode,
 )
 
+from .models import AdapterModel
 from .session.state import AcpSessionContext
 
 ConfigOption: TypeAlias = SessionConfigOptionSelect | SessionConfigOptionBoolean
@@ -30,7 +30,7 @@ __all__ = (
 
 @dataclass(slots=True, frozen=True, kw_only=True)
 class ModelSelectionState:
-    available_models: list[ModelInfo]
+    available_models: list[AdapterModel]
     current_model_id: str | None
     allow_any_model_id: bool = False
     enable_config_option: bool = True

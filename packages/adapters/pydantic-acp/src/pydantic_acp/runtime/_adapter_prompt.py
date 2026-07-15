@@ -48,17 +48,16 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
 
     async def prompt(
         self,
-        prompt: list[PromptBlock],
         session_id: str,
+        prompt: list[PromptBlock],
         *,
-        message_id: str | None,
         request_meta: dict[str, object] | None = None,
     ) -> PromptResponse:
         session = self._owner._require_session(session_id)
         current_task = asyncio.current_task()
         if current_task is not None:
             self._owner._active_prompt_tasks[session_id] = current_task
-        acknowledged_message_id = message_id or uuid4().hex
+        acknowledged_message_id = uuid4().hex
         prompt_text = self._prepare_prompt_session(
             prompt,
             session=session,
@@ -107,7 +106,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                 return PromptResponse(
                     stop_reason=prompt_result.stop_reason,
                     usage=prompt_result.usage,
-                    user_message_id=acknowledged_message_id,
                 )
             return await self._finalize_prompt_outcome(
                 session=session,
@@ -159,7 +157,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         return PromptResponse(
             stop_reason="end_turn",
             usage=None,
-            user_message_id=acknowledged_message_id,
         )
 
     async def _handle_custom_slash_command(
@@ -224,7 +221,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         return PromptResponse(
             stop_reason=result.stop_reason,
             usage=None,
-            user_message_id=acknowledged_message_id,
         )
 
     async def _run_prompt(
@@ -294,7 +290,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         return PromptResponse(
             stop_reason="cancelled",
             usage=None,
-            user_message_id="",
         )
 
     def _handle_prompt_error(
@@ -381,5 +376,4 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
             field_meta=response_meta,
             stop_reason=prompt_outcome.stop_reason,
             usage=usage_from_run(result.usage),
-            user_message_id=acknowledged_message_id,
         )

@@ -144,6 +144,9 @@ Today the repo ships production-grade adapters for both Pydantic AI and the Lang
 
 ### Release Notes
 
+- [ACP Kit 1.4.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.4.0/)
+  Source: `docs/releases/acpkit-1.4.0.md`
+  Summary: ACP Python SDK 0.11 migration across adapters and remote transport.
 - [ACP Kit 1.1.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.1.0/)
   Source: `docs/releases/acpkit-1.1.0.md`
   Summary: ACP-backed Pydantic AI provider bridge, example output paths, and v1.1 compatibility notes.

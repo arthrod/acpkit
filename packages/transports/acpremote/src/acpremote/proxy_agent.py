@@ -10,6 +10,7 @@ from acp.client.connection import ClientSideConnection
 from acp.helpers import text_block, tool_content
 from acp.interfaces import Agent, Client
 from acp.schema import (
+    AcpMcpServer,
     AudioContentBlock,
     AuthenticateResponse,
     ClientCapabilities,
@@ -27,7 +28,6 @@ from acp.schema import (
     ResourceContentBlock,
     ResumeSessionResponse,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
     SseMcpServer,
     TextContentBlock,
@@ -109,15 +109,15 @@ class _LatencyClient:
 
     async def request_permission(
         self,
-        options: list[Any],
         session_id: str,
         tool_call: Any,
+        options: list[Any],
         **kwargs: Any,
     ) -> Any:
         return await self.delegate.request_permission(
-            options,
             session_id,
             tool_call,
+            options,
             **_merge_field_meta(kwargs, self._meta(session_id)),
         )
 
@@ -133,6 +133,12 @@ class _LatencyClient:
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         await self.delegate.ext_notification(method, params)
+
+    async def create_elicitation(self, message: str, mode: Any, **kwargs: Any) -> Any:
+        return await self.delegate.create_elicitation(message=message, mode=mode, **kwargs)
+
+    async def complete_elicitation(self, elicitation_id: str, **kwargs: Any) -> None:
+        await self.delegate.complete_elicitation(elicitation_id=elicitation_id, **kwargs)
 
     def _meta(self, session_id: str) -> dict[str, Any] | None:
         if not self.emit_latency_meta:
@@ -195,12 +201,15 @@ class RemoteProxyAgent:
     async def new_session(
         self,
         cwd: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
         **kwargs: Any,
     ) -> Any:
         connection = await self._connection()
         return await connection.new_session(
             cwd=self._resolve_cwd(cwd),
+            additional_directories=additional_directories,
             mcp_servers=mcp_servers,
             **kwargs,
         )
@@ -209,7 +218,9 @@ class RemoteProxyAgent:
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        mcp_servers: list[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
+        additional_directories: list[str] | None = None,
         **kwargs: Any,
     ) -> LoadSessionResponse | None:
         connection = await self._connection()
@@ -217,13 +228,14 @@ class RemoteProxyAgent:
             cwd=self._resolve_cwd(cwd),
             session_id=session_id,
             mcp_servers=mcp_servers,
+            additional_directories=additional_directories,
             **kwargs,
         )
 
     async def list_sessions(
         self,
-        cursor: str | None = None,
         cwd: str | None = None,
+        cursor: str | None = None,
         **kwargs: Any,
     ) -> ListSessionsResponse:
         connection = await self._connection()
@@ -235,25 +247,12 @@ class RemoteProxyAgent:
 
     async def set_session_mode(
         self,
-        mode_id: str,
         session_id: str,
+        mode_id: str,
         **kwargs: Any,
     ) -> SetSessionModeResponse | None:
         connection = await self._connection()
         return await connection.set_session_mode(mode_id=mode_id, session_id=session_id, **kwargs)
-
-    async def set_session_model(
-        self,
-        model_id: str,
-        session_id: str,
-        **kwargs: Any,
-    ) -> SetSessionModelResponse | None:
-        connection = await self._connection()
-        return await connection.set_session_model(
-            model_id=model_id,
-            session_id=session_id,
-            **kwargs,
-        )
 
     async def set_config_option(
         self,
@@ -270,6 +269,14 @@ class RemoteProxyAgent:
             **kwargs,
         )
 
+    async def set_session_model(
+        self,
+        model_id: str,
+        session_id: str,
+    ) -> SetSessionConfigOptionResponse | None:
+        """Compatibility helper that maps model selection to ACP 0.11 config options."""
+        return await self.set_config_option("model", session_id, model_id)
+
     async def authenticate(
         self,
         method_id: str,
@@ -280,6 +287,7 @@ class RemoteProxyAgent:
 
     async def prompt(
         self,
+        session_id: str,
         prompt: list[
             TextContentBlock
             | ImageContentBlock
@@ -287,8 +295,6 @@ class RemoteProxyAgent:
             | ResourceContentBlock
             | EmbeddedResourceContentBlock
         ],
-        session_id: str,
-        message_id: str | None = None,
         **kwargs: Any,
     ) -> PromptResponse:
         self._latency_tracker.start_prompt(session_id)
@@ -296,9 +302,8 @@ class RemoteProxyAgent:
         response: PromptResponse
         try:
             response = await connection.prompt(
-                prompt=prompt,
                 session_id=session_id,
-                message_id=message_id,
+                prompt=prompt,
                 **kwargs,
             )
         finally:
@@ -309,30 +314,36 @@ class RemoteProxyAgent:
 
     async def fork_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
         **kwargs: Any,
     ) -> ForkSessionResponse:
         connection = await self._connection()
         return await connection.fork_session(
             cwd=self._resolve_cwd(cwd),
             session_id=session_id,
+            additional_directories=additional_directories,
             mcp_servers=mcp_servers,
             **kwargs,
         )
 
     async def resume_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
         **kwargs: Any,
     ) -> ResumeSessionResponse:
         connection = await self._connection()
         return await connection.resume_session(
             cwd=self._resolve_cwd(cwd),
             session_id=session_id,
+            additional_directories=additional_directories,
             mcp_servers=mcp_servers,
             **kwargs,
         )

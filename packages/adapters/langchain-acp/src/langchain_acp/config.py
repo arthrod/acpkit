@@ -2,13 +2,15 @@ from __future__ import annotations as _annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import Literal, TypeAlias
 
-from acp.schema import ModelInfo, SessionMode
+from acp.schema import SessionMode
 
 from ._version import __version__
 from .approvals import ApprovalBridge, NativeApprovalBridge
 from .bridges import CapabilityBridge
 from .event_projection import EventProjectionMap
+from .models import AdapterModel
 from .plan import PlanGenerationType
 from .projection import DefaultToolClassifier, ProjectionMap, ToolClassifier
 from .prompt_capabilities import AdapterPromptCapabilities
@@ -27,11 +29,14 @@ DEFAULT_AGENT_NAME = "langchain-acp"
 DEFAULT_AGENT_TITLE = "LangChain ACP"
 DEFAULT_AGENT_VERSION = __version__
 
+PlanUpdateMode: TypeAlias = Literal["full", "content"]
+
 __all__ = (
     "DEFAULT_AGENT_NAME",
     "DEFAULT_AGENT_TITLE",
     "DEFAULT_AGENT_VERSION",
     "AdapterConfig",
+    "PlanUpdateMode",
 )
 
 
@@ -41,7 +46,7 @@ class AdapterConfig:
     agent_title: str = DEFAULT_AGENT_TITLE
     agent_version: str = DEFAULT_AGENT_VERSION
     approval_bridge: ApprovalBridge | None = field(default_factory=NativeApprovalBridge)
-    available_models: list[ModelInfo] = field(default_factory=list)
+    available_models: list[AdapterModel] = field(default_factory=list)
     available_modes: list[SessionMode] = field(default_factory=list)
     capability_bridges: Sequence[CapabilityBridge] = field(default_factory=tuple)
     config_options_provider: ConfigOptionsProvider | None = None
@@ -55,8 +60,10 @@ class AdapterConfig:
     native_plan_additional_instructions: str | None = None
     native_plan_persistence_provider: NativePlanPersistenceProvider | None = None
     output_serializer: OutputSerializer = field(default_factory=DefaultOutputSerializer)
+    plan_id: str = "acpkit.plan"
     plan_mode_id: str | None = None
     plan_provider: PlanProvider | None = None
+    plan_update_mode: PlanUpdateMode = "full"
     projection_maps: Sequence[ProjectionMap] = field(default_factory=tuple)
     prompt_capabilities: AdapterPromptCapabilities = field(
         default_factory=AdapterPromptCapabilities,

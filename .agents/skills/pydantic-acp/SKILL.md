@@ -341,7 +341,8 @@ agent = Agent(model)
 ```
 
 `create_acp_model(...)` leaves ACP model selection to the wrapped ACP agent's session default. Pass
-`model_name=...` only when that ACP agent accepts the concrete `session/set_model` id. Do not use
+`model_name=...` only when that ACP agent exposes a selectable `"model"`
+`session/set_config_option` option. Do not use
 this as a replacement for `create_acp_agent(...)`; it is the inverse bridge.
 
 Use `create_acp_model(acp_command=...)` for local child processes that already speak ACP JSON-RPC
@@ -440,6 +441,27 @@ Stay in this skill when the main issue is:
 - session lifecycle
 
 ## Guardrails
+
+### ACP 0.11 Protocol Rules
+
+- Depend on `agent-client-protocol==0.11.0`; do not reintroduce `ModelInfo` or
+  wire-level `session/set_model` calls.
+- Model selection travels through `session/set_config_option` with
+  `config_id="model"`. `AcpProvider.model()` leaves the remote default intact;
+  an explicit provider model requires the remote agent to expose that select
+  option.
+- Preserve `additional_directories` in every lifecycle method. They extend the
+  session scope for host-backed file and terminal operations, but never bypass
+  a configured `workspace_root`.
+- Use `AcpSessionContext.create_elicitation(...)` only with an exact
+  `ElicitationFormSessionMode`, `ElicitationFormRequestMode`,
+  `ElicitationUrlSessionMode`, or `ElicitationUrlRequestMode` that the client
+  advertised.
+- Keep full `AgentPlanUpdate` as the compatibility baseline. Use
+  `AdapterConfig(plan_update_mode="content")` only when the client advertises
+  `plan`; the runtime must fall back to full updates otherwise.
+- Accept and persist `AcpMcpServer` session payloads, but do not advertise ACP
+  MCP transport capability until the SDK exposes a public router.
 
 - Do not describe `pydantic-acp` as transport.
 - Do not promise ACP state the active `pydantic_ai.Agent` cannot honor.

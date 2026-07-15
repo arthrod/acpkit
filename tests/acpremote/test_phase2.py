@@ -247,7 +247,7 @@ async def test_phase2_websocket_path_and_bearer_auth_are_enforced() -> None:
             assert initialized.protocol_version == 1
             session = await remote.connection.new_session(cwd="/tmp")
             await remote.connection.prompt(
-                [text_block("phase2 auth success")],
+                prompt=[text_block("phase2 auth success")],
                 session_id=session.session_id,
             )
         finally:

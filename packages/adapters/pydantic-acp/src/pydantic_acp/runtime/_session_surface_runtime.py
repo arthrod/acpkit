@@ -4,12 +4,16 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Generic, TypeVar
 
 from acp.schema import (
+    AgentPlanContentUpdate,
+    AgentPlanRemovedUpdate,
     AgentPlanUpdate,
     AvailableCommand,
     AvailableCommandsUpdate,
     ConfigOptionUpdate,
     CurrentModeUpdate,
     PlanEntry,
+    PlanUpdateItems,
+    SessionConfigOptionBoolean,
     SessionInfoUpdate,
     SessionModeState,
 )
@@ -28,7 +32,6 @@ from .session_surface import (
     build_mode_config_option,
     build_mode_state_from_selection,
     build_model_config_option,
-    build_model_state_from_selection,
     find_model_option,
 )
 from .slash_commands import build_available_commands, validate_custom_commands
@@ -66,7 +69,6 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
                 mode_state=build_mode_state_from_selection(mode_state),
             ),
             config_options=config_options,
-            model_state=build_model_state_from_selection(model_selection_state),
             mode_state=build_mode_state_from_selection(mode_state),
             plan_entries=await self.get_plan_entries(session, agent),
         )
@@ -105,7 +107,8 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
                     session_update="available_commands_update",
                     available_commands=build_available_commands(
                         mode_state=surface.mode_state,
-                        model_state=surface.model_state,
+                        model_selection_enabled="model"
+                        in {option.id for option in surface.config_options or []},
                         config_options=surface.config_options,
                         custom_commands=surface.available_commands,
                     ),
@@ -127,11 +130,41 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
                     config_options=surface.config_options,
                 ),
             )
-        if emit_plan and surface.plan_entries is not None:
-            await client.session_update(
-                session_id=session.session_id,
-                update=AgentPlanUpdate(session_update="plan", entries=surface.plan_entries),
+        if emit_plan:
+            await self.emit_plan_update(session, surface.plan_entries)
+
+    async def emit_plan_update(
+        self,
+        session: AcpSessionContext,
+        entries: Sequence[PlanEntry] | None,
+    ) -> None:
+        client = self._runtime._owner._client
+        if client is None:
+            return
+        use_content_updates = (
+            self._runtime._owner._config.plan_update_mode == "content"
+            and session.supports_plan_content_updates()
+        )
+        if not use_content_updates:
+            if entries is None:
+                return
+            update = AgentPlanUpdate(session_update="plan", entries=list(entries))
+        elif entries is None:
+            if session.active_plan_id is None:
+                return
+            update = AgentPlanRemovedUpdate(
+                session_update="plan_removed", id=session.active_plan_id
             )
+            session.active_plan_id = None
+        else:
+            plan_id = self._runtime._owner._config.plan_id
+            update = AgentPlanContentUpdate(
+                session_update="plan_update",
+                plan=PlanUpdateItems(id=plan_id, type="items", entries=list(entries)),
+            )
+            session.active_plan_id = plan_id
+        await client.session_update(session_id=session.session_id, update=update)
+        self._runtime._owner._config.session_store.save(session)
 
     async def build_config_options(
         self,
@@ -141,6 +174,8 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         model_selection_state: ModelSelectionState | None,
         mode_state: ModeState | None,
     ) -> list[ConfigOption] | None:
+        if not session.supports_config_options():
+            return None
         provider_options = await self.get_provider_config_options(session, agent)
         provider_option_ids = {option.id for option in provider_options or []}
         options: list[ConfigOption] = []
@@ -166,6 +201,10 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         if bridge_options is not None:
             reserved_ids = {option.id for option in options}
             options.extend(option for option in bridge_options if option.id not in reserved_ids)
+        if not session.supports_boolean_config_options():
+            options = [
+                option for option in options if not isinstance(option, SessionConfigOptionBoolean)
+            ]
         return options or None
 
     async def get_model_selection_state(

@@ -326,7 +326,7 @@ This keeps ownership boundaries explicit:
 
 - Pydantic AI owns the outer agent run, output validation, and normal model/provider lifecycle.
 - ACP owns the delegated agent session, ACP-visible updates, and any editor or host capabilities requested by that agent.
-- `create_acp_model(...)` and `provider.model()` leave ACP model selection to the wrapped agent's session default; pass `model_name="zed-agent"` or `provider.model("zed-agent")` only when the ACP agent accepts that concrete `session/set_model` ID.
+- `create_acp_model(...)` and `provider.model()` leave ACP model selection to the wrapped agent's session default; pass `model_name="zed-agent"` or `provider.model("zed-agent")` only when the ACP agent exposes a selectable `"model"` `session/set_config_option` option.
 - `AcpHostBridge` records ACP `session_update` messages and can delegate filesystem, terminal, approval, and extension callbacks to a real ACP host client when one is supplied.
 - Pydantic AI function tools are intentionally not executed directly by `AcpModel`; register tools on the ACP agent or expose host capabilities through ACP.
 

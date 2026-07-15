@@ -6,11 +6,12 @@ from importlib.util import find_spec
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, TypeAlias, cast
 
-from acp.schema import ModelInfo, SessionMode
+from acp.schema import SessionMode
 from codex_auth_helper import create_codex_chat_openai
 from langchain_acp import (
     AcpSessionContext,
     AdapterConfig,
+    AdapterModel,
     DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     FileSessionStore,
@@ -63,8 +64,8 @@ MOCK_WORKSPACE_FILES = {
     ),
 }
 AVAILABLE_MODELS = (
-    ModelInfo(model_id="gpt-5.4-mini", name="GPT-5.4 Mini"),
-    ModelInfo(model_id=MODEL_NAME, name="GPT-5.4"),
+    AdapterModel(model_id="gpt-5.4-mini", name="GPT-5.4 Mini"),
+    AdapterModel(model_id=MODEL_NAME, name="GPT-5.4"),
 )
 AVAILABLE_MODES = (
     SessionMode(id="ask", name="Ask", description="Inspect the workspace and answer questions."),
@@ -255,7 +256,9 @@ config = AdapterConfig(
     default_mode_id=DEFAULT_MODE_ID,
     default_plan_generation_type="tools",
     enable_plan_progress_tools=True,
+    plan_id="deepagents-workspace-plan",
     plan_mode_id="plan",
+    plan_update_mode="content",
     projection_maps=[DeepAgentsProjectionMap()],
 )
 acp_agent = create_acp_agent(graph_factory=graph_from_session, config=config)

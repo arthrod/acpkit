@@ -4,7 +4,6 @@ import asyncio
 from dataclasses import replace
 
 from acp import run_agent
-from acp.interfaces import Agent as AcpAgent
 
 from ..config import DEFAULT_AGENT_NAME, AdapterConfig
 from ..event_projection import EventProjectionMap
@@ -29,7 +28,7 @@ def create_acp_agent(
     config: AdapterConfig | None = None,
     event_projection_maps: list[EventProjectionMap] | None = None,
     projection_maps: list[ProjectionMap] | None = None,
-) -> AcpAgent:
+) -> LangChainAcpAgent:
     resolved_source = _resolve_graph_source(
         graph=graph,
         graph_factory=graph_factory,

@@ -116,6 +116,27 @@ def test_example_main_functions_dispatch_run_acp(
     ]
 
 
+def test_session_mcp_example_selects_configured_model_and_builds_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ACP_SESSION_MCP_MODEL", raising=False)
+    assert isinstance(session_mcp_agent._model(), TestModel)
+
+    monkeypatch.setenv("ACP_SESSION_MCP_MODEL", "groq:qwen/qwen3-32b")
+    assert session_mcp_agent._model() == "groq:qwen/qwen3-32b"
+    monkeypatch.delenv("ACP_SESSION_MCP_MODEL")
+
+    session = AcpSessionContext(
+        session_id="session-mcp-example",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    agent = session_mcp_agent.agent_factory(session)
+
+    assert agent.name == "session-mcp-agent"
+
+
 def test_finance_example_helpers_cover_workspace_and_plan_paths(tmp_path: Path) -> None:
     finance_root = finance_agent._finance_root(tmp_path)
     finance_agent._ensure_finance_workspace(finance_root)
@@ -408,6 +429,8 @@ def test_finance_example_uses_env_override_and_raw_module_surfaces(
         "ThinkingBridge",
         "PrepareToolsBridge",
     ]
+    assert finance_agent.config.plan_id == "finance-research-plan"
+    assert finance_agent.config.plan_update_mode == "content"
 
 
 def test_finance_example_tools_and_adapter_cover_runtime_paths(

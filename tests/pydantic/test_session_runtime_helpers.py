@@ -6,7 +6,18 @@ from typing import Any, cast
 
 import pytest
 from acp.exceptions import RequestError
-from acp.schema import McpServerStdio
+from acp.schema import (
+    AcceptElicitationResponse,
+    ClientCapabilities,
+    ElicitationCapabilities,
+    ElicitationFormCapabilities,
+    ElicitationFormSessionMode,
+    ElicitationSchema,
+    ElicitationUrlCapabilities,
+    ElicitationUrlSessionMode,
+    McpServerStdio,
+)
+from pydantic import AnyUrl
 from pydantic_acp.bridges.base import CapabilityBridge
 from pydantic_acp.runtime._agent_state import (
     clear_selected_model_id,
@@ -17,8 +28,11 @@ from pydantic_acp.runtime._session_runtime import (
     _known_codex_model_ids,
     _known_pydantic_model_ids,
 )
+from pydantic_acp.runtime.session_surface import SessionSurface
 
 from .support import (
+    UTC,
+    AcpSessionContext,
     AdapterConfig,
     AdapterModel,
     Agent,
@@ -29,6 +43,7 @@ from .support import (
     PrepareToolsMode,
     TestModel,
     create_acp_agent,
+    datetime,
 )
 
 
@@ -49,6 +64,65 @@ def test_list_sessions_filters_by_cwd_and_close_session_handles_missing(
     assert asyncio.run(adapter_any._session_runtime.close_session("missing")) is False
     assert asyncio.run(adapter_any._session_runtime.close_session(second.session_id)) is True
     assert asyncio.run(adapter_any._session_runtime.close_session(second.session_id)) is False
+
+
+def test_session_context_forwards_supported_form_elicitation() -> None:
+    class ElicitationClient:
+        def __init__(self) -> None:
+            self.create_calls: list[tuple[str, Any]] = []
+            self.completed_ids: list[str] = []
+
+        async def create_elicitation(self, message: str, mode: Any) -> AcceptElicitationResponse:
+            self.create_calls.append((message, mode))
+            return AcceptElicitationResponse(action="accept", content={"answer": "yes"})
+
+        async def complete_elicitation(self, elicitation_id: str) -> None:
+            self.completed_ids.append(elicitation_id)
+
+    client = ElicitationClient()
+    session = AcpSessionContext(
+        session_id="elicitation-session",
+        cwd=Path("/tmp/acpkit-elicitation"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        client=cast("Any", client),
+        client_capabilities=ClientCapabilities(
+            elicitation=ElicitationCapabilities(form=ElicitationFormCapabilities()),
+        ),
+    )
+    mode = ElicitationFormSessionMode(
+        session_id=session.session_id,
+        requested_schema=ElicitationSchema(),
+    )
+
+    response = asyncio.run(session.create_elicitation("Confirm execution", mode))
+    asyncio.run(session.complete_elicitation("elicitation-1"))
+
+    assert response.action == "accept"
+    assert session.supports_elicitation(mode) is True
+    assert client.create_calls == [("Confirm execution", mode)]
+    assert client.completed_ids == ["elicitation-1"]
+
+    session.client_capabilities = ClientCapabilities()
+    with pytest.raises(RequestError):
+        asyncio.run(session.create_elicitation("Confirm execution", mode))
+
+    url_mode = ElicitationUrlSessionMode(
+        session_id=session.session_id,
+        elicitation_id="url-elicitation",
+        url=AnyUrl("https://example.com/confirm"),
+    )
+    session.client_capabilities = ClientCapabilities(
+        elicitation=ElicitationCapabilities(url=ElicitationUrlCapabilities()),
+    )
+    assert session.supports_elicitation(url_mode) is True
+    assert session.supports_elicitation(cast("Any", object())) is False
+
+    session.client = None
+    with pytest.raises(RequestError):
+        asyncio.run(session.create_elicitation("Confirm execution", url_mode))
+    with pytest.raises(RequestError):
+        asyncio.run(session.complete_elicitation("elicitation-1"))
 
 
 def test_session_runtime_rejects_invalid_model_and_mode_config_types(
@@ -84,6 +158,16 @@ def test_session_runtime_rejects_invalid_model_and_mode_config_types(
         asyncio.run(adapter.set_config_option("model", session.session_id, True))
     with pytest.raises(RequestError):
         asyncio.run(adapter.set_config_option("mode", session.session_id, True))
+
+
+def test_session_runtime_rejects_relative_additional_directories() -> None:
+    adapter = create_acp_agent(agent=Agent(TestModel(custom_output_text="ok")))
+    runtime = cast("Any", adapter)._session_runtime
+
+    assert runtime._normalize_additional_directories(["/tmp"]) == (Path("/tmp").resolve(),)
+
+    with pytest.raises(RequestError):
+        runtime._normalize_additional_directories(["relative"])
 
 
 def test_session_runtime_helper_inventory_and_missing_session_paths(
@@ -157,8 +241,12 @@ def test_set_session_model_covers_missing_state_and_unconfigured_selection(
             allow_any_model_id=True,
         )
 
-    async def fake_build_surface(*_args: Any, **_kwargs: Any) -> object:
-        return object()
+    async def fake_build_surface(*_args: Any, **_kwargs: Any) -> SessionSurface:
+        return SessionSurface(
+            config_options=[],
+            mode_state=None,
+            plan_entries=None,
+        )
 
     async def fake_emit_updates(*_args: Any, **_kwargs: Any) -> None:
         return None

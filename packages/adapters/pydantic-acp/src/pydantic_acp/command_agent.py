@@ -14,6 +14,7 @@ from acp import connect_to_agent
 from acp.client.connection import ClientSideConnection
 from acp.interfaces import Client as AcpClient
 from acp.schema import (
+    AcpMcpServer,
     AuthenticateResponse,
     ClientCapabilities,
     CloseSessionResponse,
@@ -28,7 +29,6 @@ from acp.schema import (
     PromptResponse,
     ResumeSessionResponse,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
     SseMcpServer,
 )
@@ -36,7 +36,7 @@ from acp.schema import (
 from .types import AgentPromptBlock
 
 CommandStderrMode = Literal["inherit", "discard"]
-McpServer = HttpMcpServer | SseMcpServer | McpServerStdio
+McpServer = HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio
 
 _DEFAULT_READER_LIMIT = 1024 * 1024
 
@@ -96,11 +96,13 @@ class AcpCommandAgent:
     async def new_session(
         self,
         cwd: str,
+        additional_directories: list[str] | None = None,
         mcp_servers: list[McpServer] | None = None,
         **kwargs: Any,
     ) -> NewSessionResponse:
         return await (await self._ensure_connection()).new_session(
             cwd=cwd,
+            additional_directories=additional_directories,
             mcp_servers=mcp_servers,
             **kwargs,
         )
@@ -110,19 +112,21 @@ class AcpCommandAgent:
         cwd: str,
         session_id: str,
         mcp_servers: list[McpServer] | None = None,
+        additional_directories: list[str] | None = None,
         **kwargs: Any,
     ) -> LoadSessionResponse | None:
         return await (await self._ensure_connection()).load_session(
             cwd=cwd,
             session_id=session_id,
             mcp_servers=mcp_servers,
+            additional_directories=additional_directories,
             **kwargs,
         )
 
     async def list_sessions(
         self,
-        cursor: str | None = None,
         cwd: str | None = None,
+        cursor: str | None = None,
         **kwargs: Any,
     ) -> ListSessionsResponse:
         return await (await self._ensure_connection()).list_sessions(
@@ -131,24 +135,12 @@ class AcpCommandAgent:
 
     async def set_session_mode(
         self,
-        mode_id: str,
         session_id: str,
+        mode_id: str,
         **kwargs: Any,
     ) -> SetSessionModeResponse | None:
         return await (await self._ensure_connection()).set_session_mode(
             mode_id=mode_id,
-            session_id=session_id,
-            **kwargs,
-        )
-
-    async def set_session_model(
-        self,
-        model_id: str,
-        session_id: str,
-        **kwargs: Any,
-    ) -> SetSessionModelResponse | None:
-        return await (await self._ensure_connection()).set_session_model(
-            model_id=model_id,
             session_id=session_id,
             **kwargs,
         )
@@ -167,47 +159,57 @@ class AcpCommandAgent:
             **kwargs,
         )
 
+    async def set_session_model(
+        self,
+        model_id: str,
+        session_id: str,
+    ) -> SetSessionConfigOptionResponse | None:
+        """Compatibility helper that maps model selection to ACP 0.11 config options."""
+        return await self.set_config_option("model", session_id, model_id)
+
     async def authenticate(self, method_id: str, **kwargs: Any) -> AuthenticateResponse | None:
         return await (await self._ensure_connection()).authenticate(method_id=method_id, **kwargs)
 
     async def prompt(
         self,
-        prompt: list[AgentPromptBlock],
         session_id: str,
-        message_id: str | None = None,
+        prompt: list[AgentPromptBlock],
         **kwargs: Any,
     ) -> PromptResponse:
         return await (await self._ensure_connection()).prompt(
-            prompt=prompt,
             session_id=session_id,
-            message_id=message_id,
+            prompt=prompt,
             **kwargs,
         )
 
     async def fork_session(
         self,
-        cwd: str,
         session_id: str,
+        cwd: str,
+        additional_directories: list[str] | None = None,
         mcp_servers: list[McpServer] | None = None,
         **kwargs: Any,
     ) -> ForkSessionResponse:
         return await (await self._ensure_connection()).fork_session(
             cwd=cwd,
             session_id=session_id,
+            additional_directories=additional_directories,
             mcp_servers=mcp_servers,
             **kwargs,
         )
 
     async def resume_session(
         self,
-        cwd: str,
         session_id: str,
+        cwd: str,
+        additional_directories: list[str] | None = None,
         mcp_servers: list[McpServer] | None = None,
         **kwargs: Any,
     ) -> ResumeSessionResponse:
         return await (await self._ensure_connection()).resume_session(
             cwd=cwd,
             session_id=session_id,
+            additional_directories=additional_directories,
             mcp_servers=mcp_servers,
             **kwargs,
         )

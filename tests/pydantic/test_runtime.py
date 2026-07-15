@@ -5,6 +5,7 @@ import asyncio
 import pytest
 from acp import PROTOCOL_VERSION
 from acp.exceptions import RequestError
+from acp.schema import AcpMcpServer
 from pydantic_acp import __version__ as pydantic_acp_version
 
 from .support import (
@@ -104,7 +105,6 @@ def test_prompt_and_load_session_replay_history(tmp_path: Path) -> None:
     )
 
     assert prompt_response.stop_reason == "end_turn"
-    assert prompt_response.user_message_id == "user-message-1"
     assert all(session_id == new_session_response.session_id for session_id, _ in client.updates)
     agent_updates = [
         update for _, update in client.updates if isinstance(update, AgentMessageChunk)
@@ -180,9 +180,57 @@ def test_initialize_negotiates_protocol_and_exposes_mcp_capabilities() -> None:
     assert initialize_response.agent_capabilities.mcp_capabilities is not None
     assert initialize_response.agent_capabilities.mcp_capabilities.http is True
     assert initialize_response.agent_capabilities.mcp_capabilities.sse is True
+    assert initialize_response.agent_capabilities.mcp_capabilities.acp is False
     assert initialize_response.agent_capabilities.session_capabilities is not None
     assert initialize_response.agent_capabilities.session_capabilities.fork is not None
     assert initialize_response.agent_capabilities.session_capabilities.resume is not None
+
+
+def test_acp_mcp_server_input_is_persisted_without_enabling_acp_transport(tmp_path: Path) -> None:
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="unused")),
+        config=AdapterConfig(session_store=MemorySessionStore()),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+    server = AcpMcpServer.model_validate(
+        {
+            "_meta": {"source": "host"},
+            "id": "delegated-agent",
+            "name": "Delegated agent",
+            "type": "acp",
+        },
+    )
+
+    session = asyncio.run(
+        adapter.new_session(cwd=str(tmp_path), mcp_servers=[server]),
+    )
+    loaded = asyncio.run(
+        adapter.load_session(cwd=str(tmp_path), session_id=session.session_id),
+    )
+    stored_session = adapter._config.session_store.get(session.session_id)
+
+    assert loaded is not None
+    assert stored_session is not None
+    assert stored_session.mcp_servers == [
+        {
+            "_meta": {"source": "host"},
+            "id": "delegated-agent",
+            "name": "Delegated agent",
+            "type": "acp",
+        },
+    ]
+
+    asyncio.run(
+        adapter.prompt(
+            prompt=[text_block("/mcp-servers")],
+            session_id=session.session_id,
+        ),
+    )
+
+    assert agent_message_texts(client) == [
+        "MCP servers:\n- Delegated agent (acp, session): <acp>",
+    ]
 
 
 def test_authenticate_cancel_and_extension_methods_follow_public_contract() -> None:

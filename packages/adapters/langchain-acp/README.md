@@ -61,6 +61,21 @@ graph = create_agent(model="openai:gpt-5", tools=[])
 run_acp(graph=graph)
 ```
 
+## ACP 0.11 Controls
+
+The adapter targets `agent-client-protocol==0.11.0`. Model and mode changes
+use session config options instead of the removed `session/set_model` RPC.
+`AdapterConfig(plan_update_mode="content")` sends incremental plan changes to
+clients that advertise the `plan` capability and automatically falls back to a
+complete plan otherwise.
+
+`additional_directories` persist with the session and typed client input is
+available through `AcpSessionContext.create_elicitation(...)`. The adapter
+also retains ACP 0.11 `AcpMcpServer` session descriptors for a host-owned
+delegated connection, but does not connect them or advertise ACP MCP transport
+support because the SDK has no public router. Use HTTP, SSE, or stdio MCP
+descriptors for actual graph tool integrations.
+
 If you are using Codex-backed LangChain models through `codex-auth-helper`, you must pass the
 LangChain system behavior through the helper's `instructions=` argument. The same repo policy now
 applies on the Pydantic path too: Codex-backed model factories take explicit instructions instead of

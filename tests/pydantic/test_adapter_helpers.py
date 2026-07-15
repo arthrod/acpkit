@@ -233,7 +233,7 @@ def test_session_mode_and_config_updates_flow_through_providers(tmp_path: Path) 
     )
     mode_response = asyncio.run(mode_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     mode_session = _stored_session(mode_adapter, mode_response.session_id)
-    mode_state = asyncio.run(mode_adapter.set_session_mode("review", mode_response.session_id))
+    mode_state = asyncio.run(mode_adapter.set_session_mode(mode_response.session_id, "review"))
     assert mode_state is not None
     assert mode_session.config_values["mode"] == "review"
 
@@ -1053,7 +1053,6 @@ def test_cancel_stops_active_prompt_and_persists_terminal_history(
 
         assert cancelled.is_set() is True
         assert prompt_response.stop_reason == "cancelled"
-        assert prompt_response.user_message_id == "cancelled-user-message"
 
         stored_session = _stored_session(adapter, response.session_id)
         assert stored_session.message_history_json is not None
@@ -1751,7 +1750,6 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
             session,
             SessionSurface(
                 config_options=None,
-                model_state=None,
                 mode_state=None,
                 plan_entries=None,
             ),
@@ -1803,17 +1801,16 @@ def test_adapter_prompt_handler_covers_prompt_response_and_no_current_task(
 
     async def fake_run_prompt(**kwargs: Any) -> PromptResponse:
         del kwargs
-        return PromptResponse(stop_reason="end_turn", usage=None, user_message_id="ignored")
+        return PromptResponse(stop_reason="end_turn", usage=None)
 
     handler._run_prompt = fake_run_prompt
     response = asyncio.run(
         handler.prompt(
-            [text_block("hello")],
             session_response.session_id,
-            message_id="prompt-msg",
+            [text_block("hello")],
         ),
     )
-    assert response.user_message_id == "prompt-msg"
+    assert response.stop_reason == "end_turn"
     assert cast("Any", adapter)._active_prompt_tasks == {}
 
     cancelled = asyncio.run(

@@ -114,9 +114,10 @@ Most integrations can keep the default serializer and only customize
 ## Minimal Example
 
 ```python
-from acp.schema import ModelInfo, SessionMode
+from acp.schema import SessionMode
 from langchain_acp import (
     AdapterConfig,
+    AdapterModel,
     DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     FileSessionStore,
@@ -126,8 +127,8 @@ from langchain_acp import (
 config = AdapterConfig(
     agent_name="workspace-graph",
     available_models=[
-        ModelInfo(model_id="fast", name="Fast"),
-        ModelInfo(model_id="deep", name="Deep"),
+        AdapterModel(model_id="fast", name="Fast"),
+        AdapterModel(model_id="deep", name="Deep"),
     ],
     available_modes=[
         SessionMode(id="ask", name="Ask"),

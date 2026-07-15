@@ -43,7 +43,6 @@ _ACP_AGENT_METHODS: Final[tuple[str, ...]] = (
     "resume_session",
     "set_config_option",
     "set_session_mode",
-    "set_session_model",
 )
 
 

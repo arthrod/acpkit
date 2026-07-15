@@ -34,7 +34,7 @@ def create_acp_model(
 
     Exactly one of ``acp_agent`` or ``acp_command`` must be provided. Passing
     ``model_name=None`` leaves ACP model selection to the remote agent's session
-    default and does not send ``session/set_model``.
+    default and does not send a ``session/set_config_option`` request for ``"model"``.
     """
 
     command = _normalize_command(acp_command)

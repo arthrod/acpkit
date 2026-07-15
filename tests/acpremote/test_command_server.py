@@ -195,7 +195,7 @@ async def test_serve_command_relays_stdio_acp_process(tmp_path: Path) -> None:
         assert session.session_id == "command-session"
 
         prompt_response = await remote.connection.prompt(
-            [text_block("hello from ws")],
+            prompt=[text_block("hello from ws")],
             session_id=session.session_id,
         )
         assert prompt_response.stop_reason == "end_turn"
@@ -263,7 +263,7 @@ async def test_serve_stdio_command_supports_discarded_stderr(tmp_path: Path) -> 
         await remote.connection.initialize(protocol_version=1)
         session = await remote.connection.new_session(cwd=str(tmp_path))
         await remote.connection.prompt(
-            [text_block("stderr hidden")],
+            prompt=[text_block("stderr hidden")],
             session_id=session.session_id,
         )
     finally:

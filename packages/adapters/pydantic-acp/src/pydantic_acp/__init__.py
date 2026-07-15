@@ -66,7 +66,7 @@ from .client import (
     AcpProvider,
     AcpUpdateRecord,
 )
-from .config import AdapterConfig
+from .config import AdapterConfig, PlanUpdateMode
 from .factory import create_acp_model
 from .hook_projection import HookEvent, HookProjectionMap
 from .host import (
@@ -242,6 +242,7 @@ __all__ = (
     "PlanEntry",
     "PlanGenerationType",
     "PlanProvider",
+    "PlanUpdateMode",
     "PrefixToolsBridge",
     "PrepareOutputToolsBridge",
     "PrepareOutputToolsMode",

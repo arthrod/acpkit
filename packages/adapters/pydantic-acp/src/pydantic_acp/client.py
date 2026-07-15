@@ -10,14 +10,16 @@ from typing import Any, Literal, TypeAlias, cast
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
-from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
 from acp.schema import (
     AgentMessageChunk,
     ClientCapabilities,
+    ClientSessionCapabilities,
+    CreateElicitationResponse,
     CreateTerminalResponse,
+    ElicitationMode,
     EnvVariable,
     Implementation,
     KillTerminalResponse,
@@ -25,6 +27,8 @@ from acp.schema import (
     ReadTextFileResponse,
     ReleaseTerminalResponse,
     RequestPermissionResponse,
+    SessionConfigOptionsCapabilities,
+    SessionConfigOptionSelect,
     TerminalOutputResponse,
     ToolCallUpdate,
     UsageUpdate,
@@ -206,9 +210,9 @@ class AcpHostBridge:
 
     async def request_permission(
         self,
-        options: list[PermissionOption],
         session_id: str,
         tool_call: ToolCallUpdate,
+        options: list[PermissionOption],
         **kwargs: Any,
     ) -> RequestPermissionResponse:
         return await self._call_delegate(
@@ -221,9 +225,9 @@ class AcpHostBridge:
 
     async def write_text_file(
         self,
-        content: str,
-        path: str,
         session_id: str,
+        path: str,
+        content: str,
         **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         return await self._call_delegate(
@@ -236,10 +240,10 @@ class AcpHostBridge:
 
     async def read_text_file(
         self,
-        path: str,
         session_id: str,
-        limit: int | None = None,
+        path: str,
         line: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> ReadTextFileResponse:
         return await self._call_delegate(
@@ -253,11 +257,11 @@ class AcpHostBridge:
 
     async def create_terminal(
         self,
-        command: str,
         session_id: str,
+        command: str,
         args: list[str] | None = None,
-        cwd: str | None = None,
         env: list[EnvVariable] | None = None,
+        cwd: str | None = None,
         output_byte_limit: int | None = None,
         **kwargs: Any,
     ) -> CreateTerminalResponse:
@@ -324,6 +328,26 @@ class AcpHostBridge:
             **kwargs,
         )
 
+    async def create_elicitation(
+        self,
+        message: str,
+        mode: ElicitationMode,
+        **kwargs: Any,
+    ) -> CreateElicitationResponse:
+        return await self._call_delegate(
+            "create_elicitation",
+            message=message,
+            mode=mode,
+            **kwargs,
+        )
+
+    async def complete_elicitation(self, elicitation_id: str, **kwargs: Any) -> None:
+        await self._call_delegate(
+            "complete_elicitation",
+            elicitation_id=elicitation_id,
+            **kwargs,
+        )
+
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         return await self._call_delegate("ext_method", method=method, params=params)
 
@@ -375,6 +399,14 @@ class _AcpPromptResult:
         self.structured_output = structured_output
 
 
+def _default_client_capabilities() -> ClientCapabilities:
+    return ClientCapabilities(
+        session=ClientSessionCapabilities(
+            config_options=SessionConfigOptionsCapabilities(),
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------
 # AcpProvider
 # ---------------------------------------------------------------------------
@@ -389,8 +421,8 @@ class AcpProvider(Provider[AcpAgent]):
     provider/model pair, so application code can write ordinary Pydantic AI
     agents while delegating the underlying model turn to ACP.
 
-    The provider owns ACP protocol/session setup, model selection handoff via
-    ``set_session_model`` when the remote agent supports it, host/client update
+    The provider owns ACP protocol/session setup, model selection through the
+    remote agent's ``model`` config option, host/client update
     capture, and prompt rendering. It deliberately remains a provider rather
     than an alternate agent framework: Pydantic AI still owns the outer agent
     run, result validation, usage accumulation, and history shape.
@@ -470,6 +502,7 @@ class AcpProvider(Provider[AcpAgent]):
         self._initialized = False
         self._session_id: str | None = None
         self._current_model_name: str | None = None
+        self._model_config_option_available: bool | None = None
         self._session_lock: asyncio.Lock | None = None
         self._session_lock_loop: asyncio.AbstractEventLoop | None = None
 
@@ -547,8 +580,9 @@ class AcpProvider(Provider[AcpAgent]):
         """Build an :class:`AcpModel` bound to this provider.
 
         When ``model_name`` is ``None``, the bridge does not call ACP
-        ``session/set_model`` and leaves model selection to the wrapped agent's
-        session default. The visible Pydantic AI model name remains ``"agent"``.
+        ``session/set_config_option`` for ``"model"`` and leaves model selection
+        to the wrapped agent's session default. The visible Pydantic AI model
+        name remains ``"agent"``.
         """
         return AcpModel(
             model_name=model_name,
@@ -648,7 +682,7 @@ class AcpProvider(Provider[AcpAgent]):
             if not self._initialized:
                 await self._client.initialize(
                     protocol_version=self._protocol_version,
-                    client_capabilities=self._client_capabilities or ClientCapabilities(),
+                    client_capabilities=self._client_capabilities or _default_client_capabilities(),
                     client_info=self._client_info,
                 )
                 self._initialized = True
@@ -659,6 +693,10 @@ class AcpProvider(Provider[AcpAgent]):
                     mcp_servers=list(self._mcp_servers),
                 )
                 self._session_id = session.session_id
+                self._model_config_option_available = any(
+                    isinstance(option, SessionConfigOptionSelect) and option.id == "model"
+                    for option in session.config_options or []
+                )
 
             if model_name is None:
                 return self._session_id
@@ -666,29 +704,18 @@ class AcpProvider(Provider[AcpAgent]):
             if self._current_model_name == model_name:
                 return self._session_id
 
-            set_session_model = getattr(self._client, "set_session_model", None)
-            if set_session_model is not None:
-                try:
-                    result = set_session_model(
-                        model_id=model_name,
-                        session_id=self._session_id,
-                    )
-                    if inspect.isawaitable(result):
-                        await result
-                    self._current_model_name = model_name
-                except RequestError as exc:
-                    if exc.code != -32601:
-                        raise
-                    if not (
-                        (exc.data or {}).get("method") == "session/set_model"
-                        or "session/set_model" in str(exc)
-                    ):
-                        raise
-                    # Method not found - assume model was set during session creation
-                    self._current_model_name = model_name
-            else:
-                # Method doesn't exist - assume model was set during session creation
-                self._current_model_name = model_name
+            if not self._model_config_option_available:
+                raise UserError(
+                    "The ACP agent does not expose a selectable 'model' session config option. "
+                    "Use provider.model() to keep the agent default, or configure model selection "
+                    "on the ACP agent."
+                )
+            await self._client.set_config_option(
+                config_id="model",
+                session_id=self._session_id,
+                value=model_name,
+            )
+            self._current_model_name = model_name
 
         return self._session_id
 
