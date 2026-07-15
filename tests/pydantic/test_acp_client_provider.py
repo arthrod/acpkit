@@ -150,7 +150,7 @@ class EchoACPAgent:  # type: ignore[misc]
         **kwargs: Any,
     ) -> SetSessionConfigOptionResponse:
         del kwargs
-        if config_id == "model" and isinstance(value, str):
+        if config_id == "model" and isinstance(value, str):  # pragma: no branch
             self.session_models.append((session_id, value))
         return SetSessionConfigOptionResponse(config_options=[])
 
