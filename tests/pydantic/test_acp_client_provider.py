@@ -22,6 +22,7 @@ from acp.schema import (
     AgentCapabilities,
     AgentMessageChunk,
     AllowedOutcome,
+    AuthMethodAgent,
     ClientCapabilities,
     ElicitationFormSessionMode,
     ElicitationMode,
@@ -51,7 +52,7 @@ from pydantic_acp._meta_protocol import (
     has_structured_output_request,
 )
 from pydantic_ai import Agent
-from pydantic_ai.exceptions import UserError
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UserError
 from pydantic_ai.messages import (
     BinaryContent,
     ImageUrl,
@@ -2162,3 +2163,167 @@ def test_acp_model_profile_disables_tool_and_structured_output_support() -> None
     assert profile["supports_json_object_output"] is False
     assert profile["supports_image_output"] is False
     assert profile["supported_native_tools"] == frozenset()
+
+
+# ---------------------------------------------------------------------------
+# Authentication recovery, explicit session bootstrap, and empty-turn handling
+# ---------------------------------------------------------------------------
+
+
+class AuthRequiredACPAgent(EchoACPAgent):
+    """An ACP agent that rejects ``session/new`` until ``authenticate`` runs."""
+
+    def __init__(self, *, auth_methods: list[Any], fail_times: int = 1) -> None:
+        super().__init__()
+        self._auth_methods = auth_methods
+        self._fail_times = fail_times
+        self.authenticated_with: list[str] = []
+        self.new_session_calls = 0
+
+    async def initialize(
+        self,
+        protocol_version: int,
+        client_capabilities: ClientCapabilities | None = None,
+        client_info: Implementation | None = None,
+        **kwargs: Any,
+    ) -> InitializeResponse:
+        del client_capabilities, client_info, kwargs
+        self.initialized_protocols.append(protocol_version)
+        return InitializeResponse(
+            protocol_version=protocol_version,
+            agent_info=Implementation(name="auth-acp-agent", version="test"),
+            agent_capabilities=AgentCapabilities(),
+            auth_methods=self._auth_methods,
+        )
+
+    async def new_session(
+        self,
+        cwd: str,
+        mcp_servers: list[Any] | None = None,
+        **kwargs: Any,
+    ) -> NewSessionResponse:
+        self.new_session_calls += 1
+        if self.new_session_calls <= self._fail_times:
+            raise RequestError.auth_required()
+        return await super().new_session(cwd, mcp_servers, **kwargs)
+
+    async def authenticate(self, method_id: str, **kwargs: Any) -> None:
+        del kwargs
+        self.authenticated_with.append(method_id)
+
+
+async def test_acp_provider_authenticates_and_retries_session_new_on_auth_required() -> None:
+    agent = AuthRequiredACPAgent(
+        auth_methods=[AuthMethodAgent(id="login", name="Login", description="Log in")],
+    )
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    session_id = await provider.ensure_session()
+
+    assert session_id == "session-1"
+    assert agent.new_session_calls == 2
+    assert agent.authenticated_with == ["login"]
+
+
+async def test_acp_provider_uses_explicit_auth_method_id_when_configured() -> None:
+    agent = AuthRequiredACPAgent(
+        auth_methods=[AuthMethodAgent(id="login", name="Login", description="Log in")],
+    )
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace", auth_method_id="custom")
+
+    await provider.ensure_session()
+
+    assert agent.authenticated_with == ["custom"]
+
+
+async def test_acp_provider_auth_required_without_any_method_raises_userror() -> None:
+    agent = AuthRequiredACPAgent(auth_methods=[])
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    with pytest.raises(UserError, match="authentication"):
+        await provider.ensure_session()
+
+
+async def test_acp_provider_auth_required_without_authenticate_support_raises_userror() -> None:
+    class NoAuthenticateACPAgent(EchoACPAgent):
+        async def new_session(
+            self,
+            cwd: str,
+            mcp_servers: list[Any] | None = None,
+            **kwargs: Any,
+        ) -> NewSessionResponse:
+            del cwd, mcp_servers, kwargs
+            raise RequestError.auth_required()
+
+    provider = AcpProvider(acp_agent=NoAuthenticateACPAgent(), cwd="/workspace")
+
+    with pytest.raises(UserError, match="does not expose an 'authenticate' method"):
+        await provider.ensure_session()
+
+
+async def test_acp_provider_ensure_session_bootstraps_without_a_prompt() -> None:
+    agent = EchoACPAgent()
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    session_id = await provider.ensure_session()
+
+    assert session_id == "session-1"
+    assert provider.session_id == "session-1"
+    assert agent.initialized_protocols == [PROTOCOL_VERSION]
+    assert agent.prompts == []
+
+
+async def test_acp_provider_set_session_mode_delegates_to_agent() -> None:
+    mode_calls: list[tuple[str, str]] = []
+
+    class ModeACPAgent(EchoACPAgent):
+        async def set_session_mode(
+            self,
+            session_id: str,
+            mode_id: str,
+            **kwargs: Any,
+        ) -> None:
+            del kwargs
+            mode_calls.append((session_id, mode_id))
+
+    provider = AcpProvider(acp_agent=ModeACPAgent(), cwd="/workspace")
+
+    await provider.set_session_mode("default")
+
+    assert mode_calls == [("session-1", "default")]
+
+
+async def test_acp_provider_set_session_mode_without_support_raises_userror() -> None:
+    provider = AcpProvider(acp_agent=EchoACPAgent(), cwd="/workspace")
+
+    with pytest.raises(UserError, match="set_session_mode"):
+        await provider.set_session_mode("default")
+
+
+async def test_empty_turn_returns_empty_parts_by_default() -> None:
+    provider = AcpProvider(acp_agent=NoHandshakeACPAgent(), cwd="/workspace")  # type: ignore[arg-type]
+    model = provider.model()
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("hello")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert response.parts == []
+
+
+async def test_empty_turn_raises_acp_specific_error_when_opted_in() -> None:
+    provider = AcpProvider(
+        acp_agent=NoHandshakeACPAgent(),  # type: ignore[arg-type]
+        cwd="/workspace",
+        raise_on_empty_turn=True,
+    )
+    model = provider.model()
+
+    with pytest.raises(UnexpectedModelBehavior, match="ACP agent ended its turn"):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("hello")])],
+            None,
+            ModelRequestParameters(),
+        )

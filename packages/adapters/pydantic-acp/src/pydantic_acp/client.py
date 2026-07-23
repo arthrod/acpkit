@@ -10,6 +10,7 @@ from typing import Any, Literal, TypeAlias, cast
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
+from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
@@ -35,7 +36,7 @@ from acp.schema import (
     WaitForTerminalExitResponse,
     WriteTextFileResponse,
 )
-from pydantic_ai.exceptions import UserError
+from pydantic_ai.exceptions import UnexpectedModelBehavior, UserError
 from pydantic_ai.messages import (
     AudioUrl,
     BinaryContent,
@@ -445,6 +446,8 @@ class AcpProvider(Provider[AcpAgent]):
         prompt_renderer: AcpPromptRenderer | None = None,
         history_mode: HistoryMode = "latest_user",
         enable_pydantic_acp_meta: bool | None = None,
+        auth_method_id: str | None = None,
+        raise_on_empty_turn: bool = False,
     ) -> None:
         """Create a new ACP provider.
 
@@ -477,6 +480,17 @@ class AcpProvider(Provider[AcpAgent]):
                 output. ``None`` auto-enables it only for ACP agents produced
                 by this package; arbitrary ACP agents must not be trusted to
                 implement this private contract.
+            auth_method_id: ACP ``authenticate`` method id to use when the
+                agent rejects ``session/new`` with an ``auth_required``
+                (``-32000``) error. When ``None`` the provider falls back to
+                the first authentication method advertised by the agent's
+                ``initialize`` response.
+            raise_on_empty_turn: When ``True``, a prompt turn that produces no
+                visible text for a text-output request raises
+                :class:`~pydantic_ai.exceptions.UnexpectedModelBehavior` with an
+                ACP-specific diagnostic instead of returning an empty response.
+                Defaults to ``False`` to preserve the standard contract where an
+                empty ACP turn yields a response with no parts.
 
         """
         self._client = acp_agent
@@ -499,10 +513,14 @@ class AcpProvider(Provider[AcpAgent]):
             if enable_pydantic_acp_meta is None
             else enable_pydantic_acp_meta
         )
+        self._auth_method_id = auth_method_id
+        self._raise_on_empty_turn = raise_on_empty_turn
         self._initialized = False
         self._session_id: str | None = None
         self._current_model_name: str | None = None
         self._model_config_option_available: bool | None = None
+        self._auth_methods: list[Any] = []
+        self._authenticated = False
         self._session_lock: asyncio.Lock | None = None
         self._session_lock_loop: asyncio.AbstractEventLoop | None = None
 
@@ -548,6 +566,11 @@ class AcpProvider(Provider[AcpAgent]):
     def enable_pydantic_acp_meta(self) -> bool:
         """Whether this provider opts into private ``pydantic_acp`` ACP metadata."""
         return self._enable_pydantic_acp_meta
+
+    @property
+    def raise_on_empty_turn(self) -> bool:
+        """Whether an empty ACP turn raises instead of returning empty parts."""
+        return self._raise_on_empty_turn
 
     async def __aexit__(
         self,
@@ -680,18 +703,16 @@ class AcpProvider(Provider[AcpAgent]):
     async def _ensure_session(self, *, model_name: str | None) -> str:
         async with self._get_session_lock():
             if not self._initialized:
-                await self._client.initialize(
+                init_response = await self._client.initialize(
                     protocol_version=self._protocol_version,
                     client_capabilities=self._client_capabilities or _default_client_capabilities(),
                     client_info=self._client_info,
                 )
+                self._auth_methods = list(getattr(init_response, "auth_methods", None) or [])
                 self._initialized = True
 
             if self._session_id is None:
-                session = await self._client.new_session(
-                    cwd=self._cwd,
-                    mcp_servers=list(self._mcp_servers),
-                )
+                session = await self._new_session_with_auth()
                 self._session_id = session.session_id
                 self._model_config_option_available = any(
                     isinstance(option, SessionConfigOptionSelect) and option.id == "model"
@@ -718,6 +739,89 @@ class AcpProvider(Provider[AcpAgent]):
             self._current_model_name = model_name
 
         return self._session_id
+
+    async def _new_session_with_auth(self) -> Any:
+        """Create an ACP session, authenticating once if the agent demands it.
+
+        ACP agents may reject ``session/new`` with an ``auth_required``
+        (``-32000``) error until the client has authenticated. The base
+        ``initialize``/``session/new`` handshake never calls ``authenticate``,
+        so such agents are otherwise unrecoverable. This retries session
+        creation exactly once after a successful ``authenticate`` call.
+        """
+        try:
+            return await self._client.new_session(
+                cwd=self._cwd,
+                mcp_servers=list(self._mcp_servers),
+            )
+        except RequestError as exc:
+            if exc.code != RequestError.auth_required().code or self._authenticated:
+                raise
+            await self._authenticate()
+            return await self._client.new_session(
+                cwd=self._cwd,
+                mcp_servers=list(self._mcp_servers),
+            )
+
+    async def _authenticate(self) -> None:
+        """Run the ACP ``authenticate`` flow using an advertised auth method."""
+        authenticate = getattr(self._client, "authenticate", None)
+        if authenticate is None:
+            raise UserError(
+                "The ACP agent requires authentication (session/new returned "
+                "auth_required / -32000) but the wrapped agent does not expose an "
+                "'authenticate' method, so the session cannot be established."
+            )
+        method_id = self._auth_method_id or next(
+            (getattr(method, "id", None) for method in self._auth_methods),
+            None,
+        )
+        if method_id is None:
+            advertised = ", ".join(
+                str(getattr(method, "id", method)) for method in self._auth_methods
+            )
+            raise UserError(
+                "The ACP agent requires authentication (session/new returned "
+                "auth_required / -32000) but advertised no usable authentication "
+                f"method to satisfy it{f' (advertised: {advertised})' if advertised else ''}. "
+                "Pass auth_method_id=... to AcpProvider, or authenticate the agent "
+                "out of band."
+            )
+        result = authenticate(method_id=method_id)
+        if inspect.isawaitable(result):
+            await result
+        self._authenticated = True
+
+    async def ensure_session(self, *, model_name: str | None = None) -> str:
+        """Initialize the ACP connection and return an active session id.
+
+        This is the public entry point for bootstrapping a session without
+        sending a prompt turn: it performs ``initialize`` (authenticating if the
+        agent demands it), creates the session, and optionally selects a model.
+        Callers that need to configure a session up front (for example to set a
+        session mode) should use this instead of reaching into the private
+        ``_ensure_session``.
+        """
+        return await self._ensure_session(model_name=model_name)
+
+    async def set_session_mode(self, mode_id: str) -> None:
+        """Set the ACP session mode, bootstrapping the session if needed.
+
+        ACP session modes (for example the permission mode) are distinct from
+        the ``model`` session config option and are set via ``session/set_mode``.
+        This ensures a session exists, then delegates to the wrapped agent's
+        ``set_session_mode`` when available.
+        """
+        session_id = await self._ensure_session(model_name=None)
+        set_mode = getattr(self._client, "set_session_mode", None)
+        if set_mode is None:
+            raise UserError(
+                "The ACP agent does not expose 'set_session_mode', so the session "
+                f"mode {mode_id!r} cannot be selected."
+            )
+        result = set_mode(session_id=session_id, mode_id=mode_id)
+        if inspect.isawaitable(result):
+            await result
 
     def _get_session_lock(self) -> asyncio.Lock:
         loop = asyncio.get_running_loop()
@@ -877,7 +981,18 @@ class AcpModel(Model[AcpAgent]):
                 "ACP agent did not return pydantic_acp structured output metadata for "
                 "this structured-output request.",
             )
-        return [TextPart(acp_result.text, provider_name=self.system)] if acp_result.text else []
+        if acp_result.text:
+            return [TextPart(acp_result.text, provider_name=self.system)]
+        if cast(AcpProvider, self._provider).raise_on_empty_turn:
+            stop_reason = acp_result.stop_reason
+            raise UnexpectedModelBehavior(
+                "The ACP agent ended its turn without producing any text output"
+                f"{f' (stop reason: {stop_reason})' if stop_reason else ''}. "
+                "This usually means the ACP agent is unauthenticated, its ACP mode is "
+                "not functioning, or it silently declined the request. Check that the "
+                "underlying agent is logged in and that its ACP integration is working."
+            )
+        return []
 
 
 # ---------------------------------------------------------------------------
