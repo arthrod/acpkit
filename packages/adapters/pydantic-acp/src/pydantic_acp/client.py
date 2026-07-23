@@ -412,6 +412,33 @@ def _default_client_capabilities() -> ClientCapabilities:
     )
 
 
+def _unwrap_acp_error(exc: BaseException) -> BaseException:
+    """Return the ACP agent's real error, free of anyio TaskGroup wrapping.
+
+    ACP calls run over a stdio connection whose background reader lives in an
+    anyio task group. An agent/protocol error (rate limit, auth rejection,
+    upstream API failure) can therefore reach the caller wrapped as a
+    single-child :class:`BaseExceptionGroup` ("unhandled errors in a
+    TaskGroup"), or as the real error carrying that group as its
+    ``__context__``. Both bury the actual cause. This peels single-child groups
+    down to the leaf and drops a TaskGroup ``__context__`` so the meaningful
+    error propagates on its own instead of as an opaque group.
+    """
+    leaf = exc
+    seen: set[int] = set()
+    while (
+        isinstance(leaf, BaseExceptionGroup)
+        and len(leaf.exceptions) == 1
+        and id(leaf) not in seen
+    ):
+        seen.add(id(leaf))
+        leaf = leaf.exceptions[0]
+    if isinstance(leaf.__context__, BaseExceptionGroup):
+        leaf.__context__ = None
+        leaf.__suppress_context__ = True
+    return leaf
+
+
 # ---------------------------------------------------------------------------
 # AcpProvider
 # ---------------------------------------------------------------------------
@@ -645,42 +672,56 @@ class AcpProvider(Provider[AcpAgent]):
         prompt: Sequence[AgentPromptBlock],
         model_request_parameters: ModelRequestParameters,
     ) -> _AcpPromptResult:
-        """Send one prompt turn to the ACP agent and collect its visible text."""
-        session_id = await self._ensure_session(model_name=model_name)
-        start_index = self._host.snapshot_index()
-        request_meta = None
-        if self._enable_pydantic_acp_meta:
-            request_meta = build_structured_output_request_meta(model_request_parameters)
-        prompt_kwargs: dict[str, Any] = {
-            "prompt": list(prompt),
-            "session_id": session_id,
-            "message_id": uuid4().hex,
-        }
-        if request_meta is not None:
-            prompt_kwargs["_meta"] = request_meta
-        prompt_response = await self._client.prompt(**prompt_kwargs)
-        text = await self._agent_message_text_after_prompt(
-            start_index,
-            session_id=session_id,
-            prompt_response=prompt_response,
-        )
+        """Send one prompt turn to the ACP agent and collect its visible text.
 
-        response_meta = extract_field_meta(prompt_response)
-        usage = _usage_from_acp(getattr(prompt_response, "usage", None))
-        if not usage.has_values():
-            usage = self._host.usage_update_since(start_index, session_id=session_id)
-        stop_reason = getattr(prompt_response, "stop_reason", None) or getattr(
-            prompt_response,
-            "stopReason",
-            None,
-        )
-        return _AcpPromptResult(
-            text=text,
-            usage=usage,
-            stop_reason=stop_reason,
-            session_id=session_id,
-            structured_output=extract_structured_output(response_meta),
-        )
+        Errors raised by the ACP agent (rate limits, auth rejection, upstream
+        API failures) are propagated with anyio TaskGroup wrapping stripped so
+        the caller sees the agent's real error rather than an opaque
+        ``ExceptionGroup: unhandled errors in a TaskGroup``.
+        """
+        try:
+            session_id = await self._ensure_session(model_name=model_name)
+            start_index = self._host.snapshot_index()
+            request_meta = None
+            if self._enable_pydantic_acp_meta:
+                request_meta = build_structured_output_request_meta(model_request_parameters)
+            prompt_kwargs: dict[str, Any] = {
+                "prompt": list(prompt),
+                "session_id": session_id,
+                "message_id": uuid4().hex,
+            }
+            if request_meta is not None:
+                prompt_kwargs["_meta"] = request_meta
+            prompt_response = await self._client.prompt(**prompt_kwargs)
+            text = await self._agent_message_text_after_prompt(
+                start_index,
+                session_id=session_id,
+                prompt_response=prompt_response,
+            )
+
+            response_meta = extract_field_meta(prompt_response)
+            usage = _usage_from_acp(getattr(prompt_response, "usage", None))
+            if not usage.has_values():
+                usage = self._host.usage_update_since(start_index, session_id=session_id)
+            stop_reason = getattr(prompt_response, "stop_reason", None) or getattr(
+                prompt_response,
+                "stopReason",
+                None,
+            )
+            return _AcpPromptResult(
+                text=text,
+                usage=usage,
+                stop_reason=stop_reason,
+                session_id=session_id,
+                structured_output=extract_structured_output(response_meta),
+            )
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:
+            cleaned = _unwrap_acp_error(exc)
+            if cleaned is exc:
+                raise
+            raise cleaned from None
 
     async def _agent_message_text_after_prompt(
         self,

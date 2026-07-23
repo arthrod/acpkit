@@ -2536,3 +2536,64 @@ async def test_empty_turn_raises_with_stop_reason_in_message_when_available() ->
             None,
             ModelRequestParameters(),
         )
+
+
+# ---------------------------------------------------------------------------
+# Agent error propagation (anyio TaskGroup unwrapping)
+# ---------------------------------------------------------------------------
+
+
+def test_unwrap_acp_error_peels_single_child_group() -> None:
+    inner = RequestError(-32000, "Rate limited")
+    group = BaseExceptionGroup("unhandled errors in a TaskGroup", [inner])
+    assert client_module._unwrap_acp_error(group) is inner
+
+
+def test_unwrap_acp_error_peels_nested_single_child_groups() -> None:
+    inner = RequestError(-32000, "Rate limited")
+    nested = BaseExceptionGroup("outer", [BaseExceptionGroup("inner", [inner])])
+    assert client_module._unwrap_acp_error(nested) is inner
+
+
+def test_unwrap_acp_error_drops_taskgroup_context_noise() -> None:
+    err = RuntimeError("boom")
+    err.__context__ = BaseExceptionGroup("unhandled errors in a TaskGroup", [ValueError("x")])
+    cleaned = client_module._unwrap_acp_error(err)
+    assert cleaned is err
+    assert cleaned.__context__ is None
+    assert cleaned.__suppress_context__ is True
+
+
+def test_unwrap_acp_error_leaves_plain_exception_untouched() -> None:
+    plain = ValueError("z")
+    assert client_module._unwrap_acp_error(plain) is plain
+
+
+def test_unwrap_acp_error_keeps_multi_child_group() -> None:
+    group = BaseExceptionGroup("many", [ValueError("a"), RequestError(-32000, "b")])
+    assert client_module._unwrap_acp_error(group) is group
+
+
+async def test_request_prompt_unwraps_taskgroup_error_from_the_agent() -> None:
+    class GroupErrorACPAgent(EchoACPAgent):
+        async def prompt(
+            self,
+            prompt: list[Any],
+            session_id: str,
+            message_id: str | None = None,
+            **kwargs: Any,
+        ) -> PromptResponse:
+            del prompt, session_id, message_id, kwargs
+            raise BaseExceptionGroup(
+                "unhandled errors in a TaskGroup",
+                [RequestError(-32000, "Rate limited")],
+            )
+
+    provider = AcpProvider(acp_agent=GroupErrorACPAgent(), cwd="/workspace")
+
+    with pytest.raises(RequestError, match="Rate limited"):
+        await provider.request_prompt(
+            model_name=None,
+            prompt=[text_block("hi")],
+            model_request_parameters=ModelRequestParameters(),
+        )
