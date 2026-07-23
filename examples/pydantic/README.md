@@ -1,44 +1,98 @@
 # pydantic-acp Examples
 
-All maintained examples live under `examples/pydantic/`.
+These maintained examples are executable ACP agents, not isolated snippets.
+They use bounded workspaces, explicit projections, and persistent local session
+state.
 
-The repo now keeps two opinionated examples instead of a ladder of tiny one-off demos.
+## Setup
 
-- `finance_agent.py`
-  session-aware finance workspace with `ask/plan/trade` modes, structured ACP plans, approval-gated note writes, and file diff projection
-- `travel_agent.py`
-  travel-planning runtime with `Hooks` projection, approval-gated trip file writes, and prompt-model override behavior for image and audio prompts
+From the repository root:
 
-## Runnable Demos
+```bash
+uv sync --extra dev --extra pydantic
+```
 
-Finance agent:
+For the harness example:
+
+```bash
+uv sync --extra dev --extra pydantic --extra codex
+```
+
+## Finance Agent
+
+The finance example demonstrates mode-aware tool preparation, native structured
+plans, approval-gated writes, persisted plan snapshots, and file projections.
+
+Run offline with the deterministic Pydantic AI `TestModel`:
 
 ```bash
 uv run python -m examples.pydantic.finance_agent
 ```
 
-The default model is `TestModel`, so the example runs without credentials. Set
-`ACP_FINANCE_MODEL` when you want a live model.
-
-Travel agent:
+Use a real Pydantic AI model:
 
 ```bash
+ACP_FINANCE_MODEL="openai:gpt-5.4-mini" \
+uv run python -m examples.pydantic.finance_agent
+```
+
+The agent reads and writes only under `agent_demos/finance-agent/` in the server
+working directory. The `trade` mode exposes the write tool, and every write still
+requires ACP approval.
+
+## Travel Agent
+
+The travel example projects Pydantic AI hooks, handles image/audio-aware model
+selection, and requires approval for trip-file writes:
+
+```bash
+ACP_TRAVEL_MODEL="openai:gpt-5.4-mini" \
+ACP_TRAVEL_MEDIA_MODEL="openai:gpt-5.4" \
 uv run python -m examples.pydantic.travel_agent
 ```
 
-The travel example defaults to a deterministic local router. Set `MODEL_NAME` when you want a live
-base model and `ACP_TRAVEL_MEDIA_MODEL` when you want a dedicated media fallback.
+Without `ACP_TRAVEL_MODEL`, the example uses `TestModel` for an offline startup
+check. Files stay inside `agent_demos/travel-agent/`.
 
-## Projection Highlights
+## Harness Agent
 
-`finance_agent.py` demonstrates:
+The harness example uses real `pydantic-ai-harness` filesystem and shell
+capabilities. Code mode is opt-in:
 
-- `FileSystemProjectionMap` read previews and write diffs
-- structured native plan generation in ACP plan mode
-- remembered approvals for mutating finance note writes
+```bash
+ACP_HARNESS_MODEL="openrouter:google/gemini-3-flash-preview" \
+uv run python -m examples.pydantic.mock_harness_agent
+```
 
-`travel_agent.py` demonstrates:
+```bash
+ACP_HARNESS_CODEX_MODEL="gpt-5.4" \
+uv run python -m examples.pydantic.mock_harness_agent --codemode
+```
 
-- `HookProjectionMap` with custom labels and hidden events
-- file read/write diffs inside a generated trip workspace
-- prompt-model override behavior for image and audio prompts
+The shell bridge blocks destructive and network-oriented commands, disables
+interactive processes, bounds runtime and output, and confines work to
+`agent_demos/harness-agent/`. `--codemode` is the only path that enables
+the code-mode bridge.
+
+## Session Storage
+
+All examples use `FileSessionStore` under `agent_demos/acp-sessions/`. Override
+the parent directory when needed:
+
+```bash
+ACP_EXAMPLE_SESSION_DIR="/var/lib/acpkit/sessions" \
+uv run python -m examples.pydantic.finance_agent
+```
+
+This file store is suitable for one process. Replace it with an
+application-owned store before running multiple replicas.
+
+## Production Boundaries
+
+- Keep model credentials in environment variables or a secret manager.
+- Treat approval callbacks as authorization boundaries, not UI decoration.
+- Place remote ACP hosting behind TLS and authentication.
+- Narrow filesystem and shell policies further for the deployed workload.
+
+Detailed walkthroughs are available in the
+[examples documentation](https://vcoderun.github.io/acpkit/examples/).

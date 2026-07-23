@@ -41,7 +41,7 @@ def test_client_filesystem_backend_reads_with_session_context() -> None:
             "notes/todo.txt",
             line=4,
             limit=120,
-        )
+        ),
     )
 
     assert response.content == "file:notes/todo.txt:4:120"
@@ -62,12 +62,12 @@ def test_client_filesystem_backend_writes_with_session_context() -> None:
         backend.write_text_file(
             "notes/todo.txt",
             "ship milestone 7 phase 1",
-        )
+        ),
     )
 
     assert response is not None
     assert client.write_calls == [
-        ("session-filesystem-write", "notes/todo.txt", "ship milestone 7 phase 1")
+        ("session-filesystem-write", "notes/todo.txt", "ship milestone 7 phase 1"),
     ]
 
 
@@ -104,7 +104,7 @@ def test_client_terminal_backend_creates_outputs_and_waits_with_session_context(
             cwd="/workspace",
             env=[EnvVariable(name="MODE", value="demo")],
             output_byte_limit=4096,
-        )
+        ),
     )
     output_response = asyncio.run(backend.terminal_output(create_response.terminal_id))
     wait_response = asyncio.run(backend.wait_for_terminal_exit(create_response.terminal_id))
@@ -121,7 +121,7 @@ def test_client_terminal_backend_creates_outputs_and_waits_with_session_context(
             "/workspace",
             [EnvVariable(name="MODE", value="demo")],
             4096,
-        )
+        ),
     ]
     assert client.output_calls == [("session-terminal-ops", "terminal-1")]
     assert client.wait_calls == [("session-terminal-ops", "terminal-1")]
@@ -220,7 +220,7 @@ def test_client_host_context_delegates_filesystem_and_terminal_calls() -> None:
     read_response = asyncio.run(host_context.filesystem.read_text_file("notes.txt"))
     create_response = asyncio.run(host_context.terminal.create_terminal("python", args=["-V"]))
     output_response = asyncio.run(
-        host_context.terminal.terminal_output(create_response.terminal_id)
+        host_context.terminal.terminal_output(create_response.terminal_id),
     )
 
     assert read_response.content == "file:notes.txt:None:None"
@@ -236,7 +236,10 @@ def test_agent_factory_can_build_client_host_context(tmp_path: Path) -> None:
 
     def factory(session: AcpSessionContext) -> Agent[None, str]:
         host_context = ClientHostContext.from_session(client=client, session=session)
-        agent = Agent(TestModel(call_tools=["read_workspace_note"]))
+        agent = Agent(
+            TestModel(call_tools=["read_workspace_note"]),
+            deps_type=type(None),
+        )
 
         @agent.tool
         async def read_workspace_note(ctx: RunContext[None]) -> str:
@@ -257,11 +260,11 @@ def test_agent_factory_can_build_client_host_context(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Read the workspace note through the host context.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert prompt_response.stop_reason == "end_turn"
     assert client.read_calls == [(session.session_id, "notes/factory.txt", None, None)]
     assert agent_message_texts(client) == [
-        '{"read_workspace_note":"file:notes/factory.txt:None:None"}'
+        '{"read_workspace_note":"file:notes/factory.txt:None:None"}',
     ]

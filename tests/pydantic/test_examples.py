@@ -1,7 +1,10 @@
 from __future__ import annotations as _annotations
 
 import asyncio
+import builtins
+import sys
 from pathlib import Path
+from types import ModuleType
 from typing import Any, cast
 
 import pytest
@@ -15,10 +18,11 @@ from pydantic_acp.types import (
     TextResourceContents,
 )
 from pydantic_ai import ModelRequest, ModelResponse, TextPart
+from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from examples.pydantic import finance_agent, travel_agent
+from examples.pydantic import finance_agent, mock_harness_agent, travel_agent
 
 from .support import (
     UTC,
@@ -43,23 +47,69 @@ def _finance_text_model(
     return ModelResponse(parts=[TextPart("Finance agent ready.")])
 
 
+def _harness_test_model(*, instructions: str = "") -> TestModel:
+    del instructions
+    return TestModel(call_tools=[], custom_output_text="Harness agent ready.")
+
+
+class _FakeHarnessCapability(AbstractCapability[None]):
+    def __init__(self, **kwargs: Any) -> None:
+        self.id = None
+        self.description = None
+        self.defer_loading = False
+        self.kwargs = kwargs
+
+
+def _install_fake_harness_modules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[_FakeHarnessCapability]:
+    created: list[_FakeHarnessCapability] = []
+
+    class FakeHarnessCapability(_FakeHarnessCapability):
+        def __init__(self, **kwargs: Any) -> None:
+            super().__init__(**kwargs)
+            created.append(self)
+
+    filesystem_module = ModuleType("pydantic_ai_harness.filesystem")
+    shell_module = ModuleType("pydantic_ai_harness.shell")
+    code_mode_module = ModuleType("pydantic_ai_harness.code_mode")
+    cast("Any", filesystem_module).FileSystem = FakeHarnessCapability
+    cast("Any", shell_module).Shell = FakeHarnessCapability
+    cast("Any", code_mode_module).CodeMode = FakeHarnessCapability
+
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness", ModuleType("pydantic_ai_harness"))
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness.filesystem", filesystem_module)
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness.shell", shell_module)
+    monkeypatch.setitem(sys.modules, "pydantic_ai_harness.code_mode", code_mode_module)
+    return created
+
+
 def test_example_main_functions_dispatch_run_acp(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: list[tuple[Any, Any]] = []
+    captured: list[tuple[Any, Any, Any]] = []
 
-    def fake_run_acp(*, agent: Any, config: Any) -> None:
-        captured.append((agent, config))
+    def fake_run_acp(
+        agent: Any = None,
+        *,
+        agent_factory: Any = None,
+        config: Any,
+    ) -> None:
+        captured.append((agent, agent_factory, config))
 
     monkeypatch.setattr(finance_agent, "run_acp", fake_run_acp)
+    monkeypatch.setattr(mock_harness_agent, "_ensure_workspace", lambda: None)
+    monkeypatch.setattr(mock_harness_agent, "run_acp", fake_run_acp)
     monkeypatch.setattr(travel_agent, "run_acp", fake_run_acp)
 
     finance_agent.main()
+    mock_harness_agent.main()
     travel_agent.main()
 
     assert captured == [
-        (finance_agent.agent, finance_agent.config),
-        (travel_agent.agent, travel_agent.config),
+        (finance_agent.agent, None, finance_agent.config),
+        (None, mock_harness_agent.agent_factory, mock_harness_agent.config),
+        (travel_agent.agent, None, travel_agent.config),
     ]
 
 
@@ -69,7 +119,7 @@ def test_finance_example_helpers_cover_workspace_and_plan_paths(tmp_path: Path) 
 
     assert "watchlist.md" in finance_agent._list_market_files(finance_root)
     assert finance_agent._read_market_note(finance_root, "watchlist.md", max_chars=64).startswith(
-        "# Finance Watchlist"
+        "# Finance Watchlist",
     )
     assert (
         finance_agent._save_market_note(finance_root, "notes/rebalance.md", "trim risk")
@@ -77,7 +127,7 @@ def test_finance_example_helpers_cover_workspace_and_plan_paths(tmp_path: Path) 
     )
     assert (
         finance_agent._resolve_market_path(finance_root, "notes/rebalance.md").read_text(
-            encoding="utf-8"
+            encoding="utf-8",
         )
         == "trim risk"
     )
@@ -105,6 +155,245 @@ def test_finance_example_helpers_cover_workspace_and_plan_paths(tmp_path: Path) 
     )
 
 
+def test_harness_example_builds_agent_from_harness_capability_bridges(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_capabilities = _install_fake_harness_modules(monkeypatch)
+    expected_root = tmp_path / "agent_demos" / "harness-agent"
+    monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", expected_root)
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_harness_model",
+        _harness_test_model,
+    )
+    session = AcpSessionContext(
+        session_id="harness-session",
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    agent = mock_harness_agent.agent_factory(session)
+
+    assert agent.name == "harness-agent"
+    assert (expected_root / "README.md").exists()
+    assert [capability.kwargs for capability in created_capabilities] == [
+        {
+            "root_dir": expected_root,
+            "allowed_patterns": ["**/*"],
+            "denied_patterns": [],
+            "max_read_lines": 400,
+            "max_search_results": 50,
+            "max_find_results": 50,
+            "protected_patterns": [".git/*", ".env", ".env.*", "*.pem", "*.key"],
+        },
+        {
+            "cwd": expected_root,
+            "allowed_commands": [],
+            "denied_operators": [],
+            "default_timeout": 5.0,
+            "max_output_chars": 8000,
+            "persist_cwd": False,
+            "allow_interactive": False,
+            "env": None,
+            "denied_env_patterns": [],
+            "denied_commands": ["rm", "mv", "cp", "curl", "wget", "git"],
+        },
+    ]
+    instructions = cast("list[str]", cast("Any", agent)._instructions)
+    assert all("code-mode tools are enabled" not in instruction for instruction in instructions)
+
+
+def test_harness_example_codemode_factory_includes_code_mode_bridge(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created_capabilities = _install_fake_harness_modules(monkeypatch)
+    expected_root = tmp_path / "agent_demos" / "harness-agent"
+    monkeypatch.setattr(mock_harness_agent, "_WORKSPACE_ROOT", expected_root)
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_harness_model",
+        _harness_test_model,
+    )
+    session = AcpSessionContext(
+        session_id="harness-codemode-session",
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    agent = _resolve_result(
+        mock_harness_agent._build_agent_factory(include_code_mode=True)(session),
+    )
+
+    assert agent.name == "harness-agent"
+    instructions = cast("list[str]", agent._instructions)
+    assert any("Code-mode tools are enabled" in instruction for instruction in instructions)
+    assert [capability.kwargs for capability in created_capabilities] == [
+        {
+            "root_dir": expected_root,
+            "allowed_patterns": ["**/*"],
+            "denied_patterns": [],
+            "max_read_lines": 400,
+            "max_search_results": 50,
+            "max_find_results": 50,
+            "protected_patterns": [".git/*", ".env", ".env.*", "*.pem", "*.key"],
+        },
+        {
+            "cwd": expected_root,
+            "allowed_commands": [],
+            "denied_operators": [],
+            "default_timeout": 5.0,
+            "max_output_chars": 8000,
+            "persist_cwd": False,
+            "allow_interactive": False,
+            "env": None,
+            "denied_env_patterns": [],
+            "denied_commands": ["rm", "mv", "cp", "curl", "wget", "git"],
+        },
+        {
+            "tools": "all",
+            "max_retries": 2,
+            "os_access": None,
+            "mount": None,
+            "dynamic_catalog": False,
+        },
+    ]
+
+
+def test_harness_example_acp_agent_runs_with_test_model_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _install_fake_harness_modules(monkeypatch)
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_WORKSPACE_ROOT",
+        tmp_path / "agent_demos" / "harness-agent",
+    )
+    monkeypatch.setattr(
+        mock_harness_agent,
+        "_harness_model",
+        _harness_test_model,
+    )
+    adapter = mock_harness_agent.acp_agent
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    asyncio.run(
+        adapter.prompt(
+            prompt=[text_block("Use the harness surface.")],
+            session_id=session.session_id,
+        ),
+    )
+
+    assert agent_message_texts(client) == ["Harness agent ready."]
+    config = cast("Any", adapter)._config
+    classifier = cast("Any", adapter)._tool_classifier
+    projection_map_names = {
+        type(projection_map).__name__ for projection_map in config.projection_maps
+    }
+    assert projection_map_names >= {
+        "HarnessFileSystemProjectionMap",
+        "HarnessShellProjectionMap",
+    }
+    assert "HarnessCodeModeProjectionMap" not in projection_map_names
+    assert classifier.classify("read_file") == "read"
+    assert classifier.classify("run_command") == "execute"
+
+
+def test_harness_example_main_codemode_dispatches_runtime_config(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: list[tuple[Any, Any, Any]] = []
+
+    def fake_run_acp(
+        agent: Any = None,
+        *,
+        agent_factory: Any = None,
+        config: Any,
+    ) -> None:
+        captured.append((agent, agent_factory, config))
+
+    monkeypatch.setattr(mock_harness_agent, "_ensure_workspace", lambda: None)
+    monkeypatch.setattr(mock_harness_agent, "run_acp", fake_run_acp)
+
+    mock_harness_agent.main(["--codemode"])
+
+    assert len(captured) == 1
+    agent, runtime_agent_factory, runtime_config = captured[0]
+    assert agent is None
+    assert runtime_agent_factory is not mock_harness_agent.agent_factory
+    assert [bridge.__class__.__name__ for bridge in runtime_config.capability_bridges] == [
+        "HarnessFileSystemBridge",
+        "HarnessShellBridge",
+        "HarnessCodeModeBridge",
+    ]
+
+
+def test_harness_example_model_uses_env_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ACP_HARNESS_MODEL", "openai:gpt-5.4-mini")
+
+    assert mock_harness_agent._harness_model() == "openai:gpt-5.4-mini"
+
+
+def test_harness_example_model_uses_openrouter_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ACP_HARNESS_MODEL", raising=False)
+    monkeypatch.delenv("ACP_HARNESS_CODEX_MODEL", raising=False)
+
+    assert mock_harness_agent._harness_model() == "openrouter:google/gemini-3-flash-preview"
+
+
+def test_harness_example_model_uses_codex_default(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, str] = {}
+    fake_module = ModuleType("codex_auth_helper")
+
+    def create_codex_responses_model(model_name: str, *, instructions: str) -> str:
+        captured["model_name"] = model_name
+        captured["instructions"] = instructions
+        return "codex-model"
+
+    fake_module.__dict__["create_codex_responses_model"] = create_codex_responses_model
+    monkeypatch.delenv("ACP_HARNESS_MODEL", raising=False)
+    monkeypatch.setenv("ACP_HARNESS_CODEX_MODEL", "gpt-5-codex-test")
+    monkeypatch.setitem(sys.modules, "codex_auth_helper", fake_module)
+
+    assert mock_harness_agent._harness_model() == "codex-model"
+    assert captured == {
+        "model_name": "gpt-5-codex-test",
+        "instructions": mock_harness_agent._INSTRUCTIONS,
+    }
+
+
+def test_harness_example_model_reports_missing_codex_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original_import = builtins.__import__
+
+    def fake_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "codex_auth_helper":
+            raise ModuleNotFoundError(name)
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.delenv("ACP_HARNESS_MODEL", raising=False)
+    monkeypatch.delenv("ACP_HARNESS_CODEX_MODEL", raising=False)
+    monkeypatch.setenv("ACP_HARNESS_CODEX_MODEL", "gpt-5-codex-test")
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+
+    assert fake_import("math").sqrt(4) == 2.0
+    with pytest.raises(ModuleNotFoundError, match="ACP_HARNESS_MODEL"):
+        mock_harness_agent._harness_model()
+
+
 def test_finance_example_uses_env_override_and_raw_module_surfaces(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -125,7 +414,7 @@ def test_finance_example_tools_and_adapter_cover_runtime_paths(
     monkeypatch.chdir(tmp_path)
 
     available_tools = cast(
-        list[Any],
+        "list[Any]",
         [
             type("ToolDef", (), {"name": finance_agent._READ_NOTE_TOOL})(),
             type("ToolDef", (), {"name": finance_agent._WRITE_NOTE_TOOL})(),
@@ -134,18 +423,18 @@ def test_finance_example_tools_and_adapter_cover_runtime_paths(
     assert [
         tool.name
         for tool in finance_agent._read_only_tools(
-            cast(Any, object()),
+            cast("Any", object()),
             available_tools,
         )
     ] == [finance_agent._READ_NOTE_TOOL]
-    assert finance_agent._trade_tools(cast(Any, object()), available_tools) == available_tools
+    assert finance_agent._trade_tools(cast("Any", object()), available_tools) == available_tools
 
     tools = finance_agent.agent._function_toolset.tools
-    describe_tool = cast(Any, tools["describe_finance_surface"])
-    watchlist_tool = cast(Any, tools[finance_agent._WATCHLIST_TOOL])
-    read_tool = cast(Any, tools[finance_agent._READ_NOTE_TOOL])
-    write_tool = cast(Any, tools[finance_agent._WRITE_NOTE_TOOL])
-    quote_tool = cast(Any, tools[finance_agent._QUOTE_TOOL])
+    describe_tool = cast("Any", tools["describe_finance_surface"])
+    watchlist_tool = cast("Any", tools[finance_agent._WATCHLIST_TOOL])
+    read_tool = cast("Any", tools[finance_agent._READ_NOTE_TOOL])
+    write_tool = cast("Any", tools[finance_agent._WRITE_NOTE_TOOL])
+    quote_tool = cast("Any", tools[finance_agent._QUOTE_TOOL])
 
     assert "structured native plan generation" in describe_tool.function()
     assert "Seeded symbols:" in watchlist_tool.function()
@@ -162,14 +451,16 @@ def test_finance_example_tools_and_adapter_cover_runtime_paths(
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
     )
-    provider = cast(Any, finance_agent.config.native_plan_persistence_provider)
+    provider = cast("Any", finance_agent.config.native_plan_persistence_provider)
     provider.persist_plan_state(
         session,
         finance_agent.agent,
         [PlanEntry(content="Trim leverage", priority="high", status="pending")],
         "# Trade Plan",
     )
-    persisted = (tmp_path / ".acpkit" / "plans" / "finance-session.md").read_text(encoding="utf-8")
+    persisted = (
+        tmp_path / "agent_demos" / "finance-agent" / "plans" / "finance-session.md"
+    ).read_text(encoding="utf-8")
     assert "# Trade Plan" in persisted
     assert "Trim leverage" in persisted
 
@@ -189,7 +480,7 @@ def test_finance_example_tools_and_adapter_cover_runtime_paths(
             adapter.prompt(
                 prompt=[text_block("Describe the finance surface.")],
                 session_id=response.session_id,
-            )
+            ),
         )
     finally:
         monkeypatch.setattr(finance_agent.agent, "model", original_model)
@@ -200,7 +491,7 @@ def test_travel_example_helpers_cover_workspace_and_hooks(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / ".travel-agent")
+    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / "agent_demos" / "travel-agent")
     travel_agent._ensure_travel_workspace()
 
     assert travel_agent._truncate_text("hello", limit=10) == "hello"
@@ -209,7 +500,9 @@ def test_travel_example_helpers_cover_workspace_and_hooks(
     assert "Hooks capability introspection" in travel_agent.describe_travel_surface()
     assert "Travel Brief" in travel_agent.read_trip_file("itinerary.md", max_chars=64)
     assert travel_agent.write_trip_file("scratch.txt", "hello") == "Wrote `scratch.txt`."
-    assert (tmp_path / ".travel-agent" / "scratch.txt").read_text(encoding="utf-8") == "hello"
+    assert (tmp_path / "agent_demos" / "travel-agent" / "scratch.txt").read_text(
+        encoding="utf-8"
+    ) == "hello"
 
     with pytest.raises(ValueError, match="travel demo workspace"):
         travel_agent._resolve_trip_path("../escape.txt")
@@ -221,47 +514,47 @@ def test_travel_example_helpers_cover_workspace_and_hooks(
     assert (
         _resolve_result(
             travel_agent.observe_before_model_request(
-                cast(Any, object()),
-                request_context=cast(Any, "ctx"),
-            )
+                cast("Any", object()),
+                request_context=cast("Any", "ctx"),
+            ),
         )
         == "ctx"
     )
     assert (
         _resolve_result(
             travel_agent.observe_after_model_request(
-                cast(Any, object()),
-                request_context=cast(Any, "ctx"),
-                response=cast(Any, "response"),
-            )
+                cast("Any", object()),
+                request_context=cast("Any", "ctx"),
+                response=cast("Any", "response"),
+            ),
         )
         == "response"
     )
     assert _resolve_result(
         travel_agent.observe_read_tool(
-            cast(Any, object()),
-            call=cast(Any, object()),
-            tool_def=cast(Any, object()),
+            cast("Any", object()),
+            call=cast("Any", object()),
+            tool_def=cast("Any", object()),
             args={"path": "itinerary.md"},
-        )
+        ),
     ) == {"path": "itinerary.md"}
     assert _resolve_result(
         travel_agent.observe_write_tool(
-            cast(Any, object()),
-            call=cast(Any, object()),
-            tool_def=cast(Any, object()),
+            cast("Any", object()),
+            call=cast("Any", object()),
+            tool_def=cast("Any", object()),
             args={"path": "scratch.txt"},
-        )
+        ),
     ) == {"path": "scratch.txt"}
     assert (
         _resolve_result(
             travel_agent.observe_write_result(
-                cast(Any, object()),
-                call=cast(Any, object()),
-                tool_def=cast(Any, object()),
+                cast("Any", object()),
+                call=cast("Any", object()),
+                tool_def=cast("Any", object()),
                 args={"path": "scratch.txt"},
                 result="ok",
-            )
+            ),
         )
         == "ok"
     )
@@ -310,8 +603,8 @@ def test_travel_prompt_model_provider_covers_media_override_paths(
                     name="notes",
                     uri="file:///notes.txt",
                     mime_type="text/plain",
-                )
-            ]
+                ),
+            ],
         )
         is False
     )
@@ -325,8 +618,8 @@ def test_travel_prompt_model_provider_covers_media_override_paths(
                         blob="aGVsbG8=",
                         mime_type="image/jpeg",
                     ),
-                )
-            ]
+                ),
+            ],
         )
         is True
     )
@@ -338,15 +631,15 @@ def test_travel_prompt_model_provider_covers_media_override_paths(
                     name="cover",
                     uri="file:///cover.png",
                     mime_type="image/png",
-                )
-            ]
+                ),
+            ],
         )
         is True
     )
 
     image_override = provider.get_prompt_model_override(
-        cast(Any, object()),
-        cast(Any, object()),
+        cast("Any", object()),
+        cast("Any", object()),
         prompt=[
             text_block("describe this hotel"),
             ImageContentBlock(type="image", data="aGVsbG8=", mime_type="image/png"),
@@ -354,8 +647,8 @@ def test_travel_prompt_model_provider_covers_media_override_paths(
         model_override="openrouter:google/gemini-3-flash-preview",
     )
     audio_override = provider.get_prompt_model_override(
-        cast(Any, object()),
-        cast(Any, object()),
+        cast("Any", object()),
+        cast("Any", object()),
         prompt=[
             text_block("transcribe this"),
             AudioContentBlock(type="audio", data="aGVsbG8=", mime_type="audio/wav"),
@@ -368,14 +661,14 @@ def test_travel_prompt_model_provider_covers_media_override_paths(
 
     monkeypatch.delenv("ACP_TRAVEL_MEDIA_MODEL", raising=False)
     same_override = provider.get_prompt_model_override(
-        cast(Any, object()),
-        cast(Any, object()),
+        cast("Any", object()),
+        cast("Any", object()),
         prompt=[text_block("plain text only")],
         model_override="existing-model",
     )
     missing_media_override = provider.get_prompt_model_override(
-        cast(Any, object()),
-        cast(Any, object()),
+        cast("Any", object()),
+        cast("Any", object()),
         prompt=[
             AudioContentBlock(type="audio", data="aGVsbG8=", mime_type="audio/wav"),
         ],
@@ -389,7 +682,7 @@ def test_travel_prompt_model_provider_covers_media_override_paths(
 def test_travel_model_helpers_cover_env_and_config_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MODEL_NAME", "openai:gpt-4.1-mini")
+    monkeypatch.setenv("ACP_TRAVEL_MODEL", "openai:gpt-4.1-mini")
     monkeypatch.delenv("ACP_TRAVEL_MEDIA_MODEL", raising=False)
     monkeypatch.delenv("TRAVEL_MEDIA_MODEL", raising=False)
     assert travel_agent._default_model_name() == "openai:gpt-4.1-mini"
@@ -403,7 +696,7 @@ def test_travel_model_helpers_cover_default_model_and_absolute_paths(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / ".travel-agent")
+    monkeypatch.setattr(travel_agent, "_TRAVEL_ROOT", tmp_path / "agent_demos" / "travel-agent")
     monkeypatch.delenv("MODEL_NAME", raising=False)
     monkeypatch.delenv("ACP_TRAVEL_MEDIA_MODEL", raising=False)
     monkeypatch.setenv("TRAVEL_MEDIA_MODEL", "openai:gpt-4.1-nano")
@@ -413,8 +706,8 @@ def test_travel_model_helpers_cover_default_model_and_absolute_paths(
     assert travel_agent._configured_media_model_name() == "openai:gpt-4.1-nano"
 
     travel_agent._ensure_travel_workspace()
-    itinerary_path = (tmp_path / ".travel-agent" / "itinerary.md").resolve()
-    scratch_path = (tmp_path / ".travel-agent" / "absolute.txt").resolve()
+    itinerary_path = (tmp_path / "agent_demos" / "travel-agent" / "itinerary.md").resolve()
+    scratch_path = (tmp_path / "agent_demos" / "travel-agent" / "absolute.txt").resolve()
 
     assert "Travel Brief" in travel_agent.read_trip_file(str(itinerary_path))
     assert (
@@ -433,7 +726,7 @@ def test_travel_model_helpers_cover_default_model_and_absolute_paths(
                         mime_type="audio/wav",
                     ),
                 ),
-            ]
+            ],
         )
         is False
     )
@@ -444,15 +737,15 @@ def test_travel_model_provider_preserves_existing_override_without_media_env() -
 
     assert (
         travel_agent._prompt_has_image_media(
-            [ImageContentBlock(type="image", data="aGVsbG8=", mime_type="image/png")]
+            [ImageContentBlock(type="image", data="aGVsbG8=", mime_type="image/png")],
         )
         is True
     )
 
     assert (
         provider.get_prompt_model_override(
-            cast(Any, object()),
-            cast(Any, object()),
+            cast("Any", object()),
+            cast("Any", object()),
             prompt=[
                 EmbeddedResourceContentBlock(
                     type="resource",
@@ -461,7 +754,7 @@ def test_travel_model_provider_preserves_existing_override_without_media_env() -
                         text="hello",
                         mime_type="text/plain",
                     ),
-                )
+                ),
             ],
             model_override="existing-model",
         )
@@ -475,8 +768,8 @@ def test_travel_model_provider_preserves_existing_override_without_media_env() -
                     name="unknown",
                     uri="file:///unknown.bin",
                     mime_type=None,
-                )
-            ]
+                ),
+            ],
         )
         is False
     )
@@ -490,8 +783,8 @@ def test_travel_model_provider_preserves_existing_override_without_media_env() -
                         text="hello",
                         mime_type="text/plain",
                     ),
-                )
-            ]
+                ),
+            ],
         )
         is False
     )

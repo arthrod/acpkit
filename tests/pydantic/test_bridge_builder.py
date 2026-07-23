@@ -75,14 +75,14 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
                 name="Repo MCP",
                 transport="http",
                 tool_prefix="mcp.",
-            )
+            ),
         ],
         tools=[
             McpToolDefinition(
                 tool_name="mcp.search_repo",
                 server_id="repo",
                 kind="search",
-            )
+            ),
         ],
     )
     bridges = [hook_bridge, history_bridge, prepare_bridge, mcp_bridge]
@@ -96,7 +96,6 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
         agent = Agent(
             TestModel(call_tools=["mcp.search_repo"], custom_output_text="review:done"),
             capabilities=contributions.capabilities,
-            history_processors=contributions.history_processors,
         )
 
         @agent.tool_plain(name="mcp.search_repo")
@@ -126,7 +125,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
     assert session.modes.current_mode_id == "chat"
 
     set_mode_response = asyncio.run(
-        adapter.set_session_mode(mode_id="review", session_id=session.session_id)
+        adapter.set_session_mode(mode_id="review", session_id=session.session_id),
     )
 
     assert set_mode_response is not None
@@ -136,7 +135,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Search the repo.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -183,6 +182,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
             "wrap_model_request",
             "after_model_request",
             "prepare_tools",
+            "prepare_output_tools",
             "before_tool_validate",
             "wrap_tool_validate",
             "after_tool_validate",
@@ -190,7 +190,16 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
             "wrap_tool_execute",
             "after_tool_execute",
             "on_tool_execute_error",
-        ]
+            "before_output_validate",
+            "wrap_output_validate",
+            "after_output_validate",
+            "on_output_validate_error",
+            "before_output_process",
+            "wrap_output_process",
+            "after_output_process",
+            "on_output_process_error",
+            "handle_deferred_tool_calls",
+        ],
     }
     assert metadata["history_processors"] == {"processors": ["trim_history"]}
     assert metadata["mcp"] == {
@@ -203,7 +212,7 @@ def test_factory_builder_bridges_enrich_prompt_runtime(tmp_path: Path) -> None:
                 "tool_prefix": "mcp.",
                 "transport": "http",
                 "url": None,
-            }
+            },
         ],
     }
     assert metadata["prepare_tools"] == {
@@ -270,7 +279,7 @@ def test_agent_bridge_builder_auto_wraps_contextual_history_processors(
         contributions = builder.build(contextual_history_processors=[contextual_history])
         return Agent(
             TestModel(custom_output_text="contextual-history"),
-            history_processors=contributions.history_processors,
+            capabilities=contributions.capabilities,
         )
 
     adapter = create_acp_agent(
@@ -288,7 +297,7 @@ def test_agent_bridge_builder_auto_wraps_contextual_history_processors(
         adapter.prompt(
             prompt=[text_block("Use contextual history.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert prompt_response.stop_reason == "end_turn"

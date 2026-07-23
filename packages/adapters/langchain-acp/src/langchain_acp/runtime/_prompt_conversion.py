@@ -28,7 +28,7 @@ def prompt_to_langchain_content(prompt: list[AgentPromptBlock]) -> list[dict[str
                 {
                     "type": "image_url",
                     "image_url": {"url": f"data:{block.mime_type};base64,{block.data}"},
-                }
+                },
             )
             continue
         if isinstance(block, AudioContentBlock):
@@ -37,7 +37,7 @@ def prompt_to_langchain_content(prompt: list[AgentPromptBlock]) -> list[dict[str
                     "type": "audio",
                     "base64": block.data,
                     "mime_type": block.mime_type,
-                }
+                },
             )
             continue
         if isinstance(block, ResourceContentBlock):
@@ -80,7 +80,7 @@ def _embedded_resource_content(
                 {
                     "type": "image_url",
                     "image_url": {"url": f"data:{mime_type};base64,{resource.blob}"},
-                }
+                },
             ]
         if mime_type.startswith("audio/"):
             return [
@@ -88,7 +88,7 @@ def _embedded_resource_content(
                     "type": "audio",
                     "base64": resource.blob,
                     "mime_type": mime_type,
-                }
+                },
             ]
         return [{"type": "text", "text": _format_blob_resource(resource)}]
     return [{"type": "text", "text": f"Embedded resource: {resource.uri}"}]

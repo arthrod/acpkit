@@ -187,8 +187,8 @@ class DeepAgentsCompatibilityBridge(CapabilityBridge):
             entries.append(
                 PlanEntry(
                     content=content,
-                    status=cast(PlanEntryStatus, status),
-                    priority=cast(PlanEntryPriority, priority),
-                )
+                    status=cast("PlanEntryStatus", status),
+                    priority=cast("PlanEntryPriority", priority),
+                ),
             )
         return entries

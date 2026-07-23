@@ -4,7 +4,7 @@ import asyncio
 import builtins
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
@@ -41,7 +41,11 @@ def test_create_codex_responses_model_returns_openai_responses_model(
     auth_path = tmp_path / "auth.json"
     write_auth_file(auth_path, account_id="acct_demo")
 
-    model = create_codex_responses_model("gpt-5", config=_config(auth_path))
+    model = create_codex_responses_model(
+        "gpt-5",
+        config=_config(auth_path),
+        instructions="Answer tersely.",
+    )
 
     assert isinstance(model, OpenAIResponsesModel)
     assert isinstance(model, CodexResponsesModel)
@@ -58,7 +62,11 @@ def test_create_codex_responses_model_merges_settings(tmp_path: Path) -> None:
     model = create_codex_responses_model(
         "gpt-5",
         config=_config(auth_path),
-        settings={"openai_reasoning_summary": "concise"},
+        instructions="Answer tersely.",
+        settings={
+            "openai_reasoning_summary": "concise",
+            "openai_store": True,
+        },
     )
 
     assert model.settings == {
@@ -67,13 +75,32 @@ def test_create_codex_responses_model_merges_settings(tmp_path: Path) -> None:
     }
 
 
-@pytest.mark.asyncio
-async def test_codex_responses_model_forces_streaming_on_request(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_create_codex_responses_model_rejects_missing_instructions_runtime(
+    tmp_path: Path,
 ) -> None:
     auth_path = tmp_path / "auth.json"
     write_auth_file(auth_path, account_id="acct_demo")
-    model = create_codex_responses_model("gpt-5", config=_config(auth_path))
+
+    with pytest.raises(ValueError, match="`instructions` is required"):
+        create_codex_responses_model(
+            "gpt-5",
+            config=_config(auth_path),
+            instructions=cast("Any", None),
+        )
+
+
+@pytest.mark.asyncio
+async def test_codex_responses_model_forces_streaming_on_request(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(auth_path, account_id="acct_demo")
+    model = create_codex_responses_model(
+        "gpt-5",
+        config=_config(auth_path),
+        instructions="Answer tersely.",
+    )
     expected_response = ModelResponse(parts=[TextPart("ok")], model_name="gpt-5")
     seen_stream_values: list[bool] = []
 
@@ -267,6 +294,7 @@ def test_create_codex_chat_openai_returns_langchain_chat_model(
     model = create_codex_chat_openai(
         "gpt-5",
         config=_config(auth_path),
+        instructions="Answer tersely.",
         reasoning={"effort": "medium"},
         use_previous_response_id=True,
     )
@@ -278,10 +306,42 @@ def test_create_codex_chat_openai_returns_langchain_chat_model(
     assert model.output_version == "responses/v1"
     assert model.use_previous_response_id is True
     assert model.reasoning == {"effort": "medium"}
+    assert model.model_kwargs["instructions"] == "Answer tersely."
+    assert model.store is False
     assert model.root_async_client.token_manager.current_account_id == "acct_langchain"
 
     model.root_client.close()
     asyncio.run(model.root_async_client.close())
+
+
+def test_create_codex_chat_openai_rejects_duplicate_instructions(
+    tmp_path: Path,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(auth_path, account_id="acct_langchain")
+
+    with pytest.raises(ValueError, match="dedicated parameter"):
+        create_codex_chat_openai(
+            "gpt-5",
+            config=_config(auth_path),
+            instructions="Answer tersely.",
+            model_kwargs={"instructions": "Be concise."},
+        )
+
+
+def test_create_codex_chat_openai_rejects_store_override(
+    tmp_path: Path,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(auth_path, account_id="acct_langchain")
+
+    with pytest.raises(ValueError, match="always forces `store=False`"):
+        create_codex_chat_openai(
+            "gpt-5",
+            config=_config(auth_path),
+            instructions="Answer tersely.",
+            model_kwargs={"store": True},
+        )
 
 
 def test_create_codex_chat_openai_reports_missing_optional_dependency(
@@ -304,7 +364,21 @@ def test_create_codex_chat_openai_reports_missing_optional_dependency(
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
     with pytest.raises(ModuleNotFoundError, match="codex-auth-helper\\[langchain\\]"):
-        create_codex_chat_openai("gpt-5")
+        create_codex_chat_openai("gpt-5", instructions="Answer tersely.")
+
+
+def test_create_codex_chat_openai_rejects_missing_instructions_runtime(
+    tmp_path: Path,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(auth_path, account_id="acct_langchain")
+
+    with pytest.raises(ValueError, match="`instructions` is required"):
+        create_codex_chat_openai(
+            "gpt-5",
+            config=_config(auth_path),
+            instructions=cast("Any", None),
+        )
 
 
 @pytest.mark.asyncio

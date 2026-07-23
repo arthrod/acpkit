@@ -4,7 +4,8 @@ The maintained finance showcase is [`examples/pydantic/finance_agent.py`](https:
 
 It is the main example for:
 
-- a direct module-level `Agent(...)` plus `AdapterConfig(...)` surface
+- a direct module-level `Agent(...)`, `AdapterConfig(...)`, and configured
+  `acp_agent` surface
 - `PrepareToolsBridge` mode shaping
 - structured native plan generation
 - approval-gated writes with `FileSystemProjectionMap`
@@ -32,14 +33,16 @@ By default the example uses `TestModel`. Set `ACP_FINANCE_MODEL` when you want a
 Remote ACP hosting path:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+acpkit serve examples.pydantic.finance_agent:acp_agent --host 0.0.0.0 --port 8080
 acpkit run --addr ws://127.0.0.1:8080/acp/ws
 ```
 
 ## Key Patterns
 
-- the module exports plain `agent`, `config`, and `main` symbols without factory wrappers
-- `FinancePlanPersistenceProvider` writes ACP plans into `.acpkit/plans/`
+- the module exports `agent`, `config`, `acp_agent`, and `main`; use
+  `acp_agent` when CLI or remote hosting must preserve the custom configuration
+- `FinancePlanPersistenceProvider` writes ACP plans into
+  `agent_demos/finance-agent/plans/`
 - `PrepareToolsBridge` keeps `ask`, `plan`, and `trade` behaviors explicit instead of scattering them across separate examples
 - `FileSystemProjectionMap` turns note reads and writes into rich ACP diffs
 - `NativeApprovalBridge` keeps mutating writes truthfully approval-gated

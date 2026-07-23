@@ -9,7 +9,9 @@ from uuid import uuid4
 from acp.schema import AgentMessageChunk, PromptResponse, TextContentBlock
 from pydantic_ai import Agent as PydanticAgent
 
+from ..awaitables import resolve_value
 from ..session.state import AcpSessionContext, StoredSessionUpdate, utc_now
+from ..slash import SlashCommandRequest, SlashCommandResult
 from ._prompt_runtime import TaskPlan
 from .prompts import (
     PromptBlock,
@@ -71,6 +73,20 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                 return await self._emit_slash_command_response(
                     session_id=session_id,
                     slash_response=slash_response,
+                    acknowledged_message_id=acknowledged_message_id,
+                )
+            custom_slash_response = await self._handle_custom_slash_command(
+                slash_command.name,
+                argument=slash_command.argument,
+                raw_prompt=prompt_text,
+                session=session,
+                agent=agent,
+            )
+            if custom_slash_response is not None:
+                return await self._emit_custom_slash_command_response(
+                    session=session,
+                    agent=agent,
+                    result=custom_slash_response,
                     acknowledged_message_id=acknowledged_message_id,
                 )
         try:
@@ -138,6 +154,71 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
             user_message_id=acknowledged_message_id,
         )
 
+    async def _handle_custom_slash_command(
+        self,
+        command_name: str,
+        *,
+        argument: str | None,
+        raw_prompt: str,
+        session: AcpSessionContext,
+        agent: PydanticAgent[AgentDepsT, OutputDataT],
+    ) -> SlashCommandResult | None:
+        provider = self._owner._config.slash_command_provider
+        if provider is None:
+            return None
+        result = await resolve_value(
+            provider.handle_command(
+                SlashCommandRequest(
+                    name=command_name,
+                    argument=argument,
+                    raw_prompt=raw_prompt,
+                    session=session,
+                    agent=agent,
+                ),
+            ),
+        )
+        if result is None or not result.handled:
+            return None
+        return result
+
+    async def _emit_custom_slash_command_response(
+        self,
+        *,
+        session: AcpSessionContext,
+        agent: PydanticAgent[AgentDepsT, OutputDataT],
+        result: SlashCommandResult,
+        acknowledged_message_id: str,
+    ) -> PromptResponse:
+        for update in result.updates:
+            await self._owner._record_update(session, update)
+        if result.text is not None:
+            await self._owner._record_update(
+                session,
+                AgentMessageChunk(
+                    session_update="agent_message_chunk",
+                    content=TextContentBlock(type="text", text=result.text),
+                    message_id=uuid4().hex,
+                ),
+            )
+        session.updated_at = utc_now()
+        self._owner._config.session_store.save(session)
+        if result.refresh_session_surface:
+            surface = await self._owner._build_session_surface(session, agent)
+            await self._owner._emit_session_state_updates(
+                session,
+                surface,
+                emit_available_commands=True,
+                emit_config_options=True,
+                emit_current_mode=True,
+                emit_plan=True,
+                emit_session_info=True,
+            )
+        return PromptResponse(
+            stop_reason=result.stop_reason,
+            usage=None,
+            user_message_id=acknowledged_message_id,
+        )
+
     async def _run_prompt(
         self,
         *,
@@ -173,7 +254,7 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                 "",
                 "Run details:",
                 cancellation_details,
-            )
+            ),
         )
         await self._owner._record_update(
             session,
@@ -207,7 +288,7 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
             session.message_history_json,
             prompt_text=prompt_text,
             traceback_text="".join(
-                traceback.format_exception(type(error), error, error.__traceback__)
+                traceback.format_exception(type(error), error, error.__traceback__),
             ),
         )
         session.updated_at = utc_now()
@@ -256,7 +337,7 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                     if prompt_outcome.stop_reason == "cancelled"
                     else None
                 ),
-            )
+            ),
         )
         session.updated_at = utc_now()
         self._owner._config.session_store.save(session)
@@ -272,6 +353,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         )
         return PromptResponse(
             stop_reason=prompt_outcome.stop_reason,
-            usage=usage_from_run(result.usage()),
+            usage=usage_from_run(result.usage),
             user_message_id=acknowledged_message_id,
         )

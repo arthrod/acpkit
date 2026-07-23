@@ -22,6 +22,10 @@ from .state import AcpSessionContext, StoredSessionUpdate, utc_now
 
 __all__ = ("FileSessionStore", "MemorySessionStore", "SessionStore")
 
+_MAX_SESSION_ID_LENGTH = 128
+_SESSION_ID_SAFE_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-",
+)
 _STORE_LOCKS: dict[str, threading.RLock] = {}
 _STORE_LOCKS_GUARD = threading.Lock()
 
@@ -30,7 +34,11 @@ class SessionStore(Protocol):
     def delete(self, session_id: str) -> None: ...
 
     def fork(
-        self, session_id: str, *, new_session_id: str, cwd: Path
+        self,
+        session_id: str,
+        *,
+        new_session_id: str,
+        cwd: Path,
     ) -> AcpSessionContext | None: ...
 
     def get(self, session_id: str) -> AcpSessionContext | None: ...
@@ -79,6 +87,7 @@ class FileSessionStore:
     _lock_path: Path = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
+        self.root = self.root.expanduser().resolve()
         self.root.mkdir(parents=True, exist_ok=True)
         self._process_lock = _store_lock(self.root)
         self._lock_path = self.root / ".acpkit-session-store.lock"
@@ -111,6 +120,10 @@ class FileSessionStore:
         with self._locked():
             sessions: list[AcpSessionContext] = []
             for path in sorted(self.root.glob("*.json")):
+                try:
+                    _validate_session_id(path.stem)
+                except ValueError:
+                    continue
                 session = self._load_session_unlocked(path.stem)
                 if session is not None:
                     sessions.append(session)
@@ -182,10 +195,12 @@ class FileSessionStore:
         return datetime.fromisoformat(value)
 
     def _session_path(self, session_id: str) -> Path:
-        return self.root / f"{session_id}.json"
+        safe_session_id = _validate_session_id(session_id)
+        return _store_child_path(self.root, f"{safe_session_id}.json")
 
     def _temp_session_path(self, session_id: str) -> Path:
-        return self.root / f".acpkit-session-{session_id}-{uuid4().hex}.tmp"
+        safe_session_id = _validate_session_id(session_id)
+        return _store_child_path(self.root, f".acpkit-session-{safe_session_id}-{uuid4().hex}.tmp")
 
     def _cleanup_stale_temp_files(self) -> None:
         for path in self.root.glob(".acpkit-session-*.tmp"):
@@ -246,3 +261,21 @@ def _store_lock(root: Path) -> threading.RLock:
             lock = threading.RLock()
             _STORE_LOCKS[key] = lock
         return lock
+
+
+def _validate_session_id(session_id: str) -> str:
+    if not session_id:
+        raise ValueError("session_id must not be empty")
+    if len(session_id) > _MAX_SESSION_ID_LENGTH:
+        raise ValueError(f"session_id must be at most {_MAX_SESSION_ID_LENGTH} characters")
+    if any(char not in _SESSION_ID_SAFE_CHARS for char in session_id):
+        raise ValueError("session_id may only contain ASCII letters, digits, '_' and '-'")
+    return session_id
+
+
+def _store_child_path(root: Path, filename: str) -> Path:
+    resolved_root = root.resolve()
+    path = (resolved_root / filename).resolve()
+    if path.parent != resolved_root:
+        raise ValueError("session path must stay inside FileSessionStore root")
+    return path

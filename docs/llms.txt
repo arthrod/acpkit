@@ -41,28 +41,28 @@ Today the repo ships production-grade adapters for both Pydantic AI and the Lang
   Summary: Graph-centric adapter overview, production config examples, DeepAgents compatibility, migration notes, and maintained LangChain examples.
 - [AdapterConfig](https://vcoderun.github.io/acpkit/pydantic-acp/adapter-config/)
   Source: `docs/pydantic-acp/adapter-config.md`
-  Summary: Field-by-field guide to runtime configuration, ownership, and adapter behavior.
+  Summary: Field-by-field guide to runtime configuration, prompt capabilities, ownership, and adapter behavior.
 - [Session State and Lifecycle](https://vcoderun.github.io/acpkit/pydantic-acp/session-state/)
   Source: `docs/pydantic-acp/session-state.md`
   Summary: Session stores, replay semantics, persistence, and state transitions.
 - [Models, Modes, and Slash Commands](https://vcoderun.github.io/acpkit/pydantic-acp/runtime-controls/)
   Source: `docs/pydantic-acp/runtime-controls.md`
-  Summary: Model selection, dynamic mode switching, thinking effort, and slash command semantics.
+  Summary: Model selection, dynamic mode switching, custom slash commands, thinking effort, and slash command semantics.
 - [Plans, Thinking, and Approvals](https://vcoderun.github.io/acpkit/pydantic-acp/plans-thinking-approvals/)
   Source: `docs/pydantic-acp/plans-thinking-approvals.md`
-  Summary: Native plan state, approval flows, cancellation, and thinking capability behavior.
+  Summary: Native plan state, approval flows, permission presentation, approval policy storage, cancellation, and thinking capability behavior.
 - [Prompt Resources and Context](https://vcoderun.github.io/acpkit/pydantic-acp/prompt-resources/)
   Source: `docs/pydantic-acp/prompt-resources.md`
   Summary: Resource links, embedded context, Zed selections, branch diffs, and multimodal prompt input behavior.
 - [Providers](https://vcoderun.github.io/acpkit/providers/)
   Source: `docs/providers.md`
-  Summary: Host-owned models, modes, config, plan persistence, and approval metadata patterns.
+  Summary: Host-owned models, modes, config, plan persistence, approval metadata, and approval policy ownership patterns.
 - [Bridges](https://vcoderun.github.io/acpkit/bridges/)
   Source: `docs/bridges.md`
-  Summary: Capability bridges for prepare-tools, thinking, hooks, MCP metadata, and history processors.
+  Summary: Capability bridges for prepare-tools, thinking, hooks, external hook events, MCP metadata, and history processors.
 - [Host Backends and Projections](https://vcoderun.github.io/acpkit/host-backends/)
   Source: `docs/host-backends.md`
-  Summary: Client-backed filesystem, terminal execution, and projection map rendering.
+  Summary: Client-backed filesystem, terminal execution, projection map rendering, search/list projection, and tool classification.
 - [LangChain AdapterConfig](https://vcoderun.github.io/acpkit/langchain-acp/adapter-config/)
   Source: `docs/langchain-acp/adapter-config.md`
   Summary: Field-by-field guide to graph-centric adapter configuration, projection maps, and runtime ownership.
@@ -128,7 +128,7 @@ Today the repo ships production-grade adapters for both Pydantic AI and the Lang
   Summary: API reference for the graph adapter package, providers, bridges, plans, and projection helpers.
 - [pydantic_acp API](https://vcoderun.github.io/acpkit/api/pydantic_acp/)
   Source: `docs/api/pydantic_acp.md`
-  Summary: API reference for the adapter package, session stores, providers, bridges, and helpers.
+  Summary: API reference for the adapter package, session stores, providers, bridges, approval policy/presentation seams, slash commands, projections, and helpers.
 - [codex_auth_helper API](https://vcoderun.github.io/acpkit/api/codex_auth_helper/)
   Source: `docs/api/codex_auth_helper.md`
   Summary: API reference for Codex auth state, client construction, and Responses model helpers.
@@ -141,3 +141,12 @@ Today the repo ships production-grade adapters for both Pydantic AI and the Lang
 - [About ACP Kit](https://vcoderun.github.io/acpkit/about/)
   Source: `docs/about/index.md`
   Summary: Design goals, intended audience, package scope, and project status.
+
+### Release Notes
+
+- [ACP Kit 1.1.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.1.0/)
+  Source: `docs/releases/acpkit-1.1.0.md`
+  Summary: ACP-backed Pydantic AI provider bridge, example output paths, and v1.1 compatibility notes.
+- [ACP Kit 1.0.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.0.0/)
+  Source: `docs/releases/acpkit-1.0.0.md`
+  Summary: First stable synchronized workspace release and v1 compatibility contract.

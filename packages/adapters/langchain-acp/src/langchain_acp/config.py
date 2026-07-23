@@ -11,6 +11,7 @@ from .bridges import CapabilityBridge
 from .event_projection import EventProjectionMap
 from .plan import PlanGenerationType
 from .projection import DefaultToolClassifier, ProjectionMap, ToolClassifier
+from .prompt_capabilities import AdapterPromptCapabilities
 from .providers import (
     ConfigOptionsProvider,
     NativePlanPersistenceProvider,
@@ -20,6 +21,7 @@ from .providers import (
 )
 from .serialization import DefaultOutputSerializer, OutputSerializer
 from .session.store import MemorySessionStore, SessionStore
+from .slash import SlashCommandProvider
 
 DEFAULT_AGENT_NAME = "langchain-acp"
 DEFAULT_AGENT_TITLE = "LangChain ACP"
@@ -56,6 +58,10 @@ class AdapterConfig:
     plan_mode_id: str | None = None
     plan_provider: PlanProvider | None = None
     projection_maps: Sequence[ProjectionMap] = field(default_factory=tuple)
+    prompt_capabilities: AdapterPromptCapabilities = field(
+        default_factory=AdapterPromptCapabilities,
+    )
     replay_history_on_load: bool = True
+    slash_command_provider: SlashCommandProvider | None = None
     session_store: SessionStore = field(default_factory=MemorySessionStore)
     tool_classifier: ToolClassifier = field(default_factory=DefaultToolClassifier)

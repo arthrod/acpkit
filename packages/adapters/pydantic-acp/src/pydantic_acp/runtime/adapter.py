@@ -2,6 +2,7 @@ from __future__ import annotations as _annotations
 
 import asyncio
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any, Generic, TypeVar
 from uuid import uuid4
 
@@ -33,7 +34,10 @@ from ..bridges import PrepareToolsBridge
 from ..config import AdapterConfig
 from ..models import ModelOverride
 from ..session.state import AcpSessionContext, JsonValue
-from ._adapter_mixins import _PromptRuntimeDelegationMixin, _SessionRuntimeDelegationMixin
+from ._adapter_mixins import (
+    _PromptRuntimeDelegationMixin,
+    _SessionRuntimeDelegationMixin,
+)
 from ._adapter_prompt import _AdapterPromptHandler
 from ._prompt_runtime import NativePlanGeneration, TaskPlan, _PromptRuntime
 from ._session_runtime import _SessionRuntime
@@ -43,7 +47,7 @@ from .hook_introspection import list_agent_hooks
 AgentDepsT = TypeVar("AgentDepsT", contravariant=True)
 OutputDataT = TypeVar("OutputDataT", covariant=True)
 
-__all__ = ("TaskPlan", "NativePlanGeneration", "PydanticAcpAgent")
+__all__ = ("NativePlanGeneration", "PydanticAcpAgent", "TaskPlan")
 
 
 class PydanticAcpAgent(
@@ -60,11 +64,23 @@ class PydanticAcpAgent(
         config: AdapterConfig,
     ) -> None:
         self._agent_source = agent_source
-        self._config = config
+        bridge_projection_maps = tuple(
+            projection_map
+            for bridge in config.capability_bridges
+            for projection_map in bridge.get_projection_maps()
+        )
+        self._config = (
+            replace(
+                config,
+                projection_maps=(*config.projection_maps, *bridge_projection_maps),
+            )
+            if bridge_projection_maps
+            else config
+        )
         self._client: AcpClient | None = None
         self._bridge_manager = BridgeManager(
-            base_classifier=config.tool_classifier,
-            bridges=tuple(config.capability_bridges),
+            base_classifier=self._config.tool_classifier,
+            bridges=tuple(self._config.capability_bridges),
         )
         self._tool_classifier = self._bridge_manager.tool_classifier
         self._prompt_runtime = _PromptRuntime(self)
@@ -97,9 +113,9 @@ class PydanticAcpAgent(
                 load_session=True,
                 mcp_capabilities=self._bridge_manager.get_mcp_capabilities(),
                 prompt_capabilities=PromptCapabilities(
-                    audio=True,
-                    embedded_context=True,
-                    image=True,
+                    audio=self._config.prompt_capabilities.audio,
+                    embedded_context=self._config.prompt_capabilities.embedded_context,
+                    image=self._config.prompt_capabilities.image,
                 ),
                 session_capabilities=SessionCapabilities(
                     close=SessionCloseCapabilities(),
@@ -118,7 +134,6 @@ class PydanticAcpAgent(
     async def authenticate(self, method_id: str, **kwargs: Any) -> None:
         """Accept ACP auth handshakes when the host does not require extra auth."""
         del method_id, kwargs
-        return None
 
     async def fork_session(
         self,

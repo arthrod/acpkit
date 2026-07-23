@@ -1,6 +1,5 @@
 from __future__ import annotations as _annotations
 
-import asyncio
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -56,14 +55,14 @@ def test_mcp_bridge_handles_empty_and_prefix_scoped_behaviour() -> None:
                 transport="http",
                 url="https://repo.example/mcp",
                 tool_prefix="mcp.repo.",
-            )
+            ),
         ],
         tools=[
             McpToolDefinition(
                 tool_name="mcp.explicit.search",
                 server_id="repo",
                 kind="search",
-            )
+            ),
         ],
         config_options=[
             SessionConfigOptionBoolean(
@@ -125,7 +124,7 @@ def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:
                 server_id="docs",
                 name="Docs",
                 transport="sse",
-            )
+            ),
         ],
         config_options=[
             SessionConfigOptionBoolean(
@@ -133,7 +132,7 @@ def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:
                 name="Enabled",
                 current_value=True,
                 type="boolean",
-            )
+            ),
         ],
     )
 
@@ -154,8 +153,8 @@ def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:
                 name="Config Only",
                 current_value=False,
                 type="boolean",
-            )
-        ]
+            ),
+        ],
     )
     config_only_metadata = config_only_bridge.get_session_metadata(session, agent)
     assert config_only_metadata == {
@@ -173,7 +172,7 @@ def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:
                 name="Docs",
                 transport="http",
                 tool_prefix="docs.",
-            )
+            ),
         ],
     )
     assert server_scope_bridge.get_approval_policy_key("docs.search") == "mcp:server:docs"
@@ -186,9 +185,9 @@ def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:
     assert prefix_fallback_bridge._find_config_option("missing") is None
     assert prefix_fallback_bridge._find_server("missing") is None
     assert prefix_fallback_bridge._sync_config_option(
-        cast(Any, SimpleNamespace(id="other")),
+        cast("Any", SimpleNamespace(id="other")),
         session,
-    ) == cast(Any, SimpleNamespace(id="other"))
+    ) == cast("Any", SimpleNamespace(id="other"))
 
     select_bridge = McpBridge(
         config_options=[
@@ -201,7 +200,7 @@ def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:
                     SessionConfigSelectOption(name="Docs", value="docs"),
                 ],
                 type="select",
-            )
+            ),
         ],
         servers=[
             McpServerDefinition(
@@ -228,7 +227,7 @@ def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:
         session,
     )
     assert synced.current_value == "docs"
-    custom_bridge = McpBridge(config_options=[cast(Any, SimpleNamespace(id="custom"))])
+    custom_bridge = McpBridge(config_options=[cast("Any", SimpleNamespace(id="custom"))])
     custom_options = custom_bridge.set_config_option(session, agent, "custom", "value")
     assert custom_options is not None
     assert session.config_values["custom"] == "value"
@@ -264,8 +263,8 @@ def test_mcp_bridge_accepts_grouped_select_options() -> None:
                     ),
                 ],
                 type="select",
-            )
-        ]
+            ),
+        ],
     )
 
     assert bridge.set_config_option(session, agent, "scope", "docs") is not None
@@ -273,7 +272,7 @@ def test_mcp_bridge_accepts_grouped_select_options() -> None:
     assert bridge.set_config_option(session, agent, "scope", "missing") is None
 
 
-def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
+async def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
     tmp_path: Path,
 ) -> None:
     mcp_bridge = McpBridge(
@@ -286,7 +285,7 @@ def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
                 description="Connect MCP tools automatically.",
                 type="boolean",
                 current_value=False,
-            )
+            ),
         ],
         servers=[
             McpServerDefinition(
@@ -294,7 +293,7 @@ def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
                 name="Repo MCP",
                 transport="http",
                 tool_prefix="mcp.repo.",
-            )
+            ),
         ],
         tools=[
             McpToolDefinition(tool_name="mcp.repo.alpha", server_id="repo", kind="read"),
@@ -337,19 +336,17 @@ def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
     client.queue_permission_selected("allow_always")
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
     assert session.config_options is not None
     auto_connect_option = next(
         option for option in session.config_options if option.id == "mcp_auto_connect"
     )
     assert auto_connect_option.current_value is False
 
-    config_response = asyncio.run(
-        adapter.set_config_option(
-            config_id="mcp_auto_connect",
-            session_id=session.session_id,
-            value=True,
-        )
+    config_response = await adapter.set_config_option(
+        config_id="mcp_auto_connect",
+        session_id=session.session_id,
+        value=True,
     )
 
     assert config_response is not None
@@ -358,17 +355,13 @@ def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
     )
     assert updated_auto_connect_option.current_value is True
 
-    first_prompt = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the first MCP tool.")],
-            session_id=session.session_id,
-        )
+    first_prompt = await adapter.prompt(
+        prompt=[text_block("Use the first MCP tool.")],
+        session_id=session.session_id,
     )
-    second_prompt = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the second MCP tool.")],
-            session_id=session.session_id,
-        )
+    second_prompt = await adapter.prompt(
+        prompt=[text_block("Use the second MCP tool.")],
+        session_id=session.session_id,
     )
 
     assert first_prompt.stop_reason == "end_turn"
@@ -400,6 +393,6 @@ def test_mcp_bridge_exposes_config_and_routes_server_scoped_approval(
                 "tool_prefix": "mcp.repo.",
                 "transport": "http",
                 "url": None,
-            }
+            },
         ],
     }

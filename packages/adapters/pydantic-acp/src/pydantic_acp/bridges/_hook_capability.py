@@ -17,7 +17,12 @@ from pydantic_ai.capabilities import (
     WrapToolValidateHandler,
 )
 from pydantic_ai.messages import AgentStreamEvent, ModelResponse, ToolCallPart
-from pydantic_ai.tools import RunContext, ToolDefinition
+from pydantic_ai.tools import (
+    DeferredToolRequests,
+    DeferredToolResults,
+    RunContext,
+    ToolDefinition,
+)
 
 from ..session.state import AcpSessionContext
 
@@ -32,8 +37,12 @@ def build_hook_capability(bridge: HookBridge, session: AcpSessionContext) -> Hoo
     hook_kwargs.update(_event_stream_hook_kwargs(bridge, session))
     hook_kwargs.update(_model_request_hook_kwargs(bridge, session))
     hook_kwargs.update(_prepare_tools_hook_kwargs(bridge, session))
+    hook_kwargs.update(_prepare_output_tools_hook_kwargs(bridge, session))
     hook_kwargs.update(_tool_validation_hook_kwargs(bridge, session))
     hook_kwargs.update(_tool_execution_hook_kwargs(bridge, session))
+    hook_kwargs.update(_output_validation_hook_kwargs(bridge, session))
+    hook_kwargs.update(_output_processing_hook_kwargs(bridge, session))
+    hook_kwargs.update(_deferred_tool_calls_hook_kwargs(bridge, session))
     return Hooks(**hook_kwargs)
 
 
@@ -49,6 +58,8 @@ def enabled_hook_events(bridge: HookBridge) -> list[str]:
         enabled.extend(["before_model_request", "wrap_model_request", "after_model_request"])
     if bridge._prepare_tools_enabled:
         enabled.append("prepare_tools")
+    if bridge._prepare_output_tools_enabled:
+        enabled.append("prepare_output_tools")
     if bridge._tool_validation_enabled:
         enabled.extend(["before_tool_validate", "wrap_tool_validate", "after_tool_validate"])
     if bridge._tool_execution_enabled:
@@ -58,8 +69,28 @@ def enabled_hook_events(bridge: HookBridge) -> list[str]:
                 "wrap_tool_execute",
                 "after_tool_execute",
                 "on_tool_execute_error",
-            ]
+            ],
         )
+    if bridge._output_validation_enabled:
+        enabled.extend(
+            [
+                "before_output_validate",
+                "wrap_output_validate",
+                "after_output_validate",
+                "on_output_validate_error",
+            ],
+        )
+    if bridge._output_processing_enabled:
+        enabled.extend(
+            [
+                "before_output_process",
+                "wrap_output_process",
+                "after_output_process",
+                "on_output_process_error",
+            ],
+        )
+    if bridge._deferred_tool_calls_enabled:
+        enabled.append("handle_deferred_tool_calls")
     return enabled
 
 
@@ -329,6 +360,29 @@ def _prepare_tools_hook_kwargs(bridge: HookBridge, session: AcpSessionContext) -
     return {"prepare_tools": prepare_tools}
 
 
+def _prepare_output_tools_hook_kwargs(
+    bridge: HookBridge,
+    session: AcpSessionContext,
+) -> dict[str, Any]:
+    if not bridge._prepare_output_tools_enabled:
+        return {}
+
+    async def prepare_output_tools(
+        ctx: RunContext[Any],
+        tool_defs: list[ToolDefinition],
+    ) -> list[ToolDefinition]:
+        del ctx
+        if bridge._prepare_output_tools_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.prepare_output_tools",
+                raw_output=f"tools={len(tool_defs)}",
+            )
+        return tool_defs
+
+    return {"prepare_output_tools": prepare_output_tools}
+
+
 def _tool_validation_hook_kwargs(bridge: HookBridge, session: AcpSessionContext) -> dict[str, Any]:
     if not bridge._tool_validation_enabled:
         return {}
@@ -495,3 +549,201 @@ def _tool_execution_hook_kwargs(bridge: HookBridge, session: AcpSessionContext) 
         "tool_execute": wrap_tool_execute,
         "tool_execute_error": on_tool_execute_error,
     }
+
+
+def _output_validation_hook_kwargs(
+    bridge: HookBridge,
+    session: AcpSessionContext,
+) -> dict[str, Any]:
+    if not bridge._output_validation_enabled:
+        return {}
+
+    async def before_output_validate(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+    ) -> Any:
+        del ctx, output_context
+        if bridge._output_validation_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.before_output_validate",
+                raw_output=str(output),
+            )
+        return output
+
+    async def wrap_output_validate(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+        handler: Any,
+    ) -> Any:
+        del ctx, output_context
+        try:
+            result = await handler(output)
+        except Exception as error:
+            if bridge._output_validation_enabled:
+                bridge._record_failed_event(
+                    session,
+                    title="hook.wrap_output_validate",
+                    raw_output=str(error),
+                )
+            raise
+        if bridge._output_validation_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.wrap_output_validate",
+                raw_output=str(result),
+            )
+        return result
+
+    async def after_output_validate(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+    ) -> Any:
+        del ctx, output_context
+        if bridge._output_validation_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.after_output_validate",
+                raw_output=str(output),
+            )
+        return output
+
+    async def on_output_validate_error(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+        error: Exception,
+    ) -> Any:
+        del ctx, output_context
+        if bridge._output_validation_enabled:
+            bridge._record_failed_event(
+                session,
+                title="hook.on_output_validate_error",
+                raw_output=str(error),
+            )
+        raise error
+
+    return {
+        "after_output_validate": after_output_validate,
+        "before_output_validate": before_output_validate,
+        "output_validate": wrap_output_validate,
+        "output_validate_error": on_output_validate_error,
+    }
+
+
+def _output_processing_hook_kwargs(
+    bridge: HookBridge,
+    session: AcpSessionContext,
+) -> dict[str, Any]:
+    if not bridge._output_processing_enabled:
+        return {}
+
+    async def before_output_process(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+    ) -> Any:
+        del ctx, output_context
+        if bridge._output_processing_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.before_output_process",
+                raw_output=str(output),
+            )
+        return output
+
+    async def wrap_output_process(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+        handler: Any,
+    ) -> Any:
+        del ctx, output_context
+        try:
+            result = await handler(output)
+        except Exception as error:
+            if bridge._output_processing_enabled:
+                bridge._record_failed_event(
+                    session,
+                    title="hook.wrap_output_process",
+                    raw_output=str(error),
+                )
+            raise
+        if bridge._output_processing_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.wrap_output_process",
+                raw_output=str(result),
+            )
+        return result
+
+    async def after_output_process(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+    ) -> Any:
+        del ctx, output_context
+        if bridge._output_processing_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.after_output_process",
+                raw_output=str(output),
+            )
+        return output
+
+    async def on_output_process_error(
+        ctx: RunContext[Any],
+        *,
+        output_context: Any,
+        output: Any,
+        error: Exception,
+    ) -> Any:
+        del ctx, output_context
+        if bridge._output_processing_enabled:
+            bridge._record_failed_event(
+                session,
+                title="hook.on_output_process_error",
+                raw_output=str(error),
+            )
+        raise error
+
+    return {
+        "after_output_process": after_output_process,
+        "before_output_process": before_output_process,
+        "output_process": wrap_output_process,
+        "output_process_error": on_output_process_error,
+    }
+
+
+def _deferred_tool_calls_hook_kwargs(
+    bridge: HookBridge,
+    session: AcpSessionContext,
+) -> dict[str, Any]:
+    if not bridge._deferred_tool_calls_enabled:
+        return {}
+
+    async def deferred_tool_calls(
+        ctx: RunContext[Any],
+        *,
+        requests: DeferredToolRequests,
+    ) -> DeferredToolResults | None:
+        del ctx, requests
+        if bridge._deferred_tool_calls_enabled:
+            bridge._record_completed_event(
+                session,
+                title="hook.handle_deferred_tool_calls",
+                raw_output="deferred tool requests observed",
+            )
+        return None
+
+    return {"deferred_tool_calls": deferred_tool_calls}

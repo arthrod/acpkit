@@ -76,7 +76,7 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="Core Docs",
         title="AdapterConfig",
-        summary="Field-by-field guide to runtime configuration, ownership, and adapter behavior.",
+        summary="Field-by-field guide to runtime configuration, prompt capabilities, ownership, and adapter behavior.",
         path="docs/pydantic-acp/adapter-config.md",
     ),
     DocPage(
@@ -88,13 +88,13 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="Core Docs",
         title="Models, Modes, and Slash Commands",
-        summary="Model selection, dynamic mode switching, thinking effort, and slash command semantics.",
+        summary="Model selection, dynamic mode switching, custom slash commands, thinking effort, and slash command semantics.",
         path="docs/pydantic-acp/runtime-controls.md",
     ),
     DocPage(
         section="Core Docs",
         title="Plans, Thinking, and Approvals",
-        summary="Native plan state, approval flows, cancellation, and thinking capability behavior.",
+        summary="Native plan state, approval flows, permission presentation, approval policy storage, cancellation, and thinking capability behavior.",
         path="docs/pydantic-acp/plans-thinking-approvals.md",
     ),
     DocPage(
@@ -106,19 +106,19 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="Core Docs",
         title="Providers",
-        summary="Host-owned models, modes, config, plan persistence, and approval metadata patterns.",
+        summary="Host-owned models, modes, config, plan persistence, approval metadata, and approval policy ownership patterns.",
         path="docs/providers.md",
     ),
     DocPage(
         section="Core Docs",
         title="Bridges",
-        summary="Capability bridges for prepare-tools, thinking, hooks, MCP metadata, and history processors.",
+        summary="Capability bridges for prepare-tools, thinking, hooks, external hook events, MCP metadata, and history processors.",
         path="docs/bridges.md",
     ),
     DocPage(
         section="Core Docs",
         title="Host Backends and Projections",
-        summary="Client-backed filesystem, terminal execution, and projection map rendering.",
+        summary="Client-backed filesystem, terminal execution, projection map rendering, search/list projection, and tool classification.",
         path="docs/host-backends.md",
     ),
     DocPage(
@@ -238,7 +238,7 @@ DOC_PAGES: tuple[DocPage, ...] = (
     DocPage(
         section="API Reference",
         title="pydantic_acp API",
-        summary="API reference for the adapter package, session stores, providers, bridges, and helpers.",
+        summary="API reference for the adapter package, session stores, providers, bridges, approval policy/presentation seams, slash commands, projections, and helpers.",
         path="docs/api/pydantic_acp.md",
     ),
     DocPage(
@@ -252,6 +252,18 @@ DOC_PAGES: tuple[DocPage, ...] = (
         title="Testing",
         summary="Canonical validation commands, coverage entry points, and test style guidance.",
         path="docs/testing.md",
+    ),
+    DocPage(
+        section="Release Notes",
+        title="ACP Kit 1.1.0",
+        summary="ACP-backed Pydantic AI provider bridge, example output paths, and v1.1 compatibility notes.",
+        path="docs/releases/acpkit-1.1.0.md",
+    ),
+    DocPage(
+        section="Release Notes",
+        title="ACP Kit 1.0.0",
+        summary="First stable synchronized workspace release and v1 compatibility contract.",
+        path="docs/releases/acpkit-1.0.0.md",
     ),
     DocPage(
         section="Operations",
@@ -332,7 +344,7 @@ def _build_llms_index() -> str:
                     f"- [{page.title}]({page.url})",
                     f"  Source: `{page.path}`",
                     f"  Summary: {page.summary}",
-                )
+                ),
             )
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
@@ -365,7 +377,7 @@ def _build_llms_full() -> str:
                 f"Source: `{page.path}`",
                 "",
                 _load_doc_source(page),
-            )
+            ),
         )
     return "\n".join(lines).rstrip() + "\n"
 

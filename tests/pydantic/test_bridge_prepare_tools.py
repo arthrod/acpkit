@@ -1,15 +1,19 @@
 from __future__ import annotations as _annotations
 
 import asyncio
+from collections.abc import Awaitable
 from typing import Any, cast
 
 import pytest
+from pydantic_ai.capabilities import PrepareOutputTools
 
 from .support import (
     UTC,
     AcpSessionContext,
     Agent,
     Path,
+    PrepareOutputToolsBridge,
+    PrepareOutputToolsMode,
     PrepareToolsBridge,
     PrepareToolsMode,
     RunContext,
@@ -30,9 +34,152 @@ def _passthrough_tools(
 
 def test_passthrough_tools_helper_returns_a_copy() -> None:
     tool_defs: list[ToolDefinition] = []
-    copied = _passthrough_tools(cast(Any, None), tool_defs)
+    copied = _passthrough_tools(cast("Any", None), tool_defs)
     assert copied == []
     assert copied is not tool_defs
+
+
+def test_prepare_output_tools_bridge_builds_capability_and_metadata(
+    tmp_path: Path,
+) -> None:
+    def keep_public(
+        ctx: RunContext[None],
+        tool_defs: list[ToolDefinition],
+    ) -> list[ToolDefinition]:
+        del ctx
+        return [tool_def for tool_def in tool_defs if tool_def.name == "public"]
+
+    bridge = PrepareOutputToolsBridge(
+        default_mode_id="default",
+        modes=[
+            PrepareOutputToolsMode(
+                id="default",
+                name="Default",
+                description="Default output tools.",
+                prepare_func=keep_public,
+            ),
+            PrepareOutputToolsMode(
+                id="strict",
+                name="Strict",
+                description=None,
+                prepare_func=_passthrough_tools,
+            ),
+        ],
+    )
+    session = AcpSessionContext(
+        session_id="prepare-output-tools",
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    tool_defs = [ToolDefinition(name="public"), ToolDefinition(name="private")]
+
+    async def run_prepare() -> list[ToolDefinition]:
+        prepared = bridge.build_prepare_output_tools(session)
+        result = cast("Awaitable[list[ToolDefinition]]", prepared(cast("Any", None), tool_defs))
+        return await result
+
+    capability = bridge.build_capability(session)
+    contributions = bridge.build_agent_capabilities(session)
+    prepared_tools = asyncio.run(run_prepare())
+    metadata = bridge.get_session_metadata(session, Agent(TestModel()))
+
+    assert isinstance(capability, PrepareOutputTools)
+    assert len(contributions) == 1
+    assert isinstance(contributions[0], PrepareOutputTools)
+    assert [tool_def.name for tool_def in prepared_tools] == ["public"]
+    assert metadata == {
+        "current_mode_id": "default",
+        "modes": [
+            {
+                "description": "Default output tools.",
+                "id": "default",
+                "name": "Default",
+            },
+            {
+                "description": None,
+                "id": "strict",
+                "name": "Strict",
+            },
+        ],
+    }
+
+    mode_state = bridge.set_mode(session, Agent(TestModel()), "strict")
+    assert mode_state is not None
+    assert mode_state.current_mode_id == "strict"
+    assert bridge.get_mode_state(session, Agent(TestModel())).current_mode_id == "strict"
+    session.config_values["prepare_output_tools_mode"] = "missing"
+    assert bridge.get_mode_state(session, Agent(TestModel())).current_mode_id == "default"
+    assert bridge.set_mode(session, Agent(TestModel()), "missing") is None
+
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+    assert updates is not None
+
+
+def test_prepare_output_tools_bridge_validation_and_failure_paths(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(ValueError, match="requires at least one mode"):
+        PrepareOutputToolsBridge(default_mode_id="x", modes=[])
+    with pytest.raises(ValueError, match="default mode"):
+        PrepareOutputToolsBridge(
+            default_mode_id="missing",
+            modes=[
+                PrepareOutputToolsMode(
+                    id="default",
+                    name="Default",
+                    prepare_func=_passthrough_tools,
+                ),
+            ],
+        )
+    with pytest.raises(ValueError, match="reserved slash command names"):
+        PrepareOutputToolsBridge(
+            default_mode_id="model",
+            modes=[
+                PrepareOutputToolsMode(
+                    id="model",
+                    name="Model",
+                    prepare_func=_passthrough_tools,
+                ),
+            ],
+        )
+
+    def boom(
+        ctx: RunContext[None],
+        tool_defs: list[ToolDefinition],
+    ) -> list[ToolDefinition]:
+        del ctx, tool_defs
+        raise RuntimeError("output boom")
+
+    bridge = PrepareOutputToolsBridge(
+        default_mode_id="default",
+        modes=[
+            PrepareOutputToolsMode(
+                id="default",
+                name="Default",
+                prepare_func=boom,
+            ),
+        ],
+    )
+    session = AcpSessionContext(
+        session_id="prepare-output-tools-failure",
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+
+    async def run_prepare() -> None:
+        prepared = bridge.build_prepare_output_tools(session)
+        result = cast("Awaitable[list[ToolDefinition]]", prepared(cast("Any", None), []))
+        await result
+
+    with pytest.raises(RuntimeError, match="output boom"):
+        asyncio.run(run_prepare())
+    with pytest.raises(ValueError, match="Unknown prepare output tools mode"):
+        bridge._require_mode("missing")
+
+    updates = bridge.drain_updates(session, Agent(TestModel()))
+    assert updates is not None
 
 
 def test_prepare_tools_bridge_allows_at_most_one_plan_mode() -> None:
@@ -66,9 +213,9 @@ def test_prepare_tools_bridge_rejects_invalid_default_plan_generation_type() -> 
                     name="Plan",
                     prepare_func=_passthrough_tools,
                     plan_mode=True,
-                )
+                ),
             ],
-            default_plan_generation_type=cast(Any, "invalid"),
+            default_plan_generation_type=cast("Any", "invalid"),
         )
 
 
@@ -189,7 +336,7 @@ def test_prepare_tools_bridge_records_failure_events(tmp_path: Path) -> None:
                 name="Plan",
                 prepare_func=boom,
                 plan_mode=True,
-            )
+            ),
         ],
     )
     session = AcpSessionContext(
@@ -201,7 +348,7 @@ def test_prepare_tools_bridge_records_failure_events(tmp_path: Path) -> None:
 
     async def run_prepare() -> None:
         prepared = bridge.build_prepare_tools(session)
-        result = prepared(cast(Any, None), [])
+        result = prepared(cast("Any", None), [])
         if asyncio.iscoroutine(result):
             await result
             return  # pragma: no cover
@@ -223,6 +370,6 @@ def test_prepare_tools_bridge_rejects_reserved_mode_ids() -> None:
                     id="model",
                     name="Model",
                     prepare_func=_passthrough_tools,
-                )
+                ),
             ],
         )

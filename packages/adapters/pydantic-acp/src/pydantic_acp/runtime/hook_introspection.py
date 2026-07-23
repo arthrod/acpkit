@@ -10,7 +10,12 @@ from uuid import uuid4
 
 import anyio
 from pydantic_ai import Agent as PydanticAgent
-from pydantic_ai.capabilities import AbstractCapability, CombinedCapability, Hooks, HookTimeoutError
+from pydantic_ai.capabilities import (
+    AbstractCapability,
+    CombinedCapability,
+    Hooks,
+    HookTimeoutError,
+)
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models import ModelRequestContext
 
@@ -32,13 +37,18 @@ __all__ = ("RegisteredHookInfo", "list_agent_hooks", "observe_agent_hooks")
 
 _INTERNAL_EVENT_NAMES = {
     "_on_event": "event",
+    "handle_deferred_tool_calls": "deferred_tool_calls",
     "on_model_request_error": "model_request_error",
     "on_node_run_error": "node_run_error",
+    "on_output_process_error": "output_process_error",
+    "on_output_validate_error": "output_validate_error",
     "on_run_error": "run_error",
     "on_tool_execute_error": "tool_execute_error",
     "on_tool_validate_error": "tool_validate_error",
     "wrap_model_request": "model_request",
     "wrap_node_run": "node_run",
+    "wrap_output_process": "output_process",
+    "wrap_output_validate": "output_validate",
     "wrap_run": "run",
     "wrap_run_event_stream": "run_event_stream",
     "wrap_tool_execute": "tool_execute",
@@ -162,7 +172,7 @@ def list_agent_hooks(agent: PydanticAgent[Any, Any]) -> list[RegisteredHookInfo]
                         event_id=event_id,
                         hook_name=getattr(func, "__name__", "") or event_id,
                         tool_filters=_tool_filters(entry),
-                    )
+                    ),
                 )
     return sorted(
         hook_infos,

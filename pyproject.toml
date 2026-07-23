@@ -6,8 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "Apache 2.0"}
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -16,29 +17,29 @@ classifiers = [
 keywords = ["acp", "agents", "protocol", "pydantic-ai"]
 dependencies = [
     "click>=8.1.8",
-    "fast-agent-mcp>=0.2.25",
-    "mcp>=1.27.0",
+    "pydantic-ai>=2.4.0",
     "typing-extensions>=4.12.0",
 ]
 
 [project.optional-dependencies]
-codex = ["codex-auth-helper"]
-deepagents = ["langchain-acp[deepagents]"]
-langchain = ["langchain-acp"]
+codex = ["codex-auth-helper>=1.1.0,<2.0.0"]
+deepagents = ["langchain-acp[deepagents]>=1.1.0,<2.0.0"]
+langchain = ["langchain-acp>=1.1.0,<2.0.0"]
 launch = ["uv>=0.8.3"]
-pydantic = ["pydantic-acp"]
-remote = ["acpremote"]
+pydantic = ["pydantic-acp>=1.1.0,<2.0.0"]
+remote = ["acpremote>=1.1.0,<2.0.0"]
 
 dev = [
     "acpremote",
-    "agent-client-protocol>=0.9.0",
+    "agent-client-protocol==0.9.0",
     "basedpyright",
     "codex-auth-helper",
     "langchain-openai>=0.3.26",
-    "langchain-acp",
+    "langchain-acp[deepagents]",
     "python-dotenv",
     "pydantic-acp",
-    "pydantic-ai-slim",
+    "pydantic-ai-harness[code-mode]==0.5.0",
+    "pydantic-ai-slim>=2.0.0,<=2.4.0",
     "pydantic-graph",
     "pydantic>=2.7",
     "pytest-asyncio",
@@ -55,7 +56,8 @@ docs = [
     "mkdocstrings[python]"
 ]
 
-all = ["acpkit[codex,deepagents,dev,docs,langchain,launch,pydantic,remote]"]
+all = ["acpkit[codex,deepagents,langchain,launch,pydantic,remote]"]
+dev-all = ["acpkit[all,dev,docs]"]
 
 [project.scripts]
 acpkit = "acpkit.__main__:main"
@@ -77,14 +79,13 @@ members = [
     "packages/adapters/*",
     "packages/helpers/*",
     "packages/transports/*",
-    "tmp/acprouter",
 ]
 
 [tool.uv.sources]
-acpremote = { workspace = true }
 codex-auth-helper = { workspace = true }
 langchain-acp = { workspace = true }
 pydantic-acp = { workspace = true }
+acpremote = { workspace = true }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/acpkit"]
@@ -135,6 +136,3 @@ addopts = [
     "--color=yes",
 ]
 markers = []
-
-[tool.coverage.run]
-omit = ["connect_codex.py"]

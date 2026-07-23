@@ -6,6 +6,7 @@ from typing import TypeAlias
 
 from acp.exceptions import RequestError
 from acp.schema import (
+    AvailableCommand,
     PlanEntry,
     SessionConfigOptionBoolean,
     SessionConfigOptionSelect,
@@ -36,6 +37,7 @@ class SessionSurface:
     model_state: SessionModelState | None
     mode_state: SessionModeState | None
     plan_entries: list[PlanEntry] | None
+    available_commands: list[AvailableCommand] | None = None
 
 
 def build_model_config_option(

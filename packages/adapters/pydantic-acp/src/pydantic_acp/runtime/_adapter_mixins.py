@@ -111,6 +111,7 @@ class _PromptRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
     def _build_run_kwargs(
         self,
         *,
+        session: AcpSessionContext,
         message_history: list[ModelMessage] | None,
         deferred_tool_results: DeferredToolResults | None,
         deps: AgentDepsT | None,
@@ -119,6 +120,7 @@ class _PromptRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
         output_type: RunOutputType | None,
     ) -> dict[str, Any]:
         return self._prompt_runtime._build_run_kwargs(
+            session=session,
             message_history=message_history,
             deferred_tool_results=deferred_tool_results,
             deps=deps,
@@ -233,7 +235,7 @@ class _PromptRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
                 agent,
                 prompt,
                 model_override,
-            )
+            ),
         )
         if override is None:
             return model_override
@@ -479,14 +481,20 @@ class _SessionRuntimeDelegationMixin(Generic[AgentDepsT, OutputDataT]):
         return await self._session_runtime.resume_session(cwd, session_id, mcp_servers)
 
     async def set_session_mode(
-        self, mode_id: str, session_id: str, **kwargs: Any
+        self,
+        mode_id: str,
+        session_id: str,
+        **kwargs: Any,
     ) -> SetSessionModeResponse | None:
         """Set the current ACP session mode through the active mode provider."""
         del kwargs
         return await self._session_runtime.set_session_mode(mode_id, session_id)
 
     async def set_session_model(
-        self, model_id: str, session_id: str, **kwargs: Any
+        self,
+        model_id: str,
+        session_id: str,
+        **kwargs: Any,
     ) -> SetSessionModelResponse | None:
         """Set the current ACP session model selection."""
         del kwargs

@@ -1,6 +1,7 @@
 from __future__ import annotations as _annotations
 
 import asyncio
+import contextlib
 import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from websockets.asyncio.client import ClientConnection, connect
 
 from .auth import bearer_headers
 from .config import TransportOptions
+from .limits import DEFAULT_OPEN_TIMEOUT
 from .metadata import ServerMetadata
 from .stream import WebSocketStreamBridge, open_websocket_stream_bridge
 
@@ -31,8 +33,10 @@ class RemoteClientConnection:
     metadata: ServerMetadata | None = None
 
     async def close(self) -> None:
-        await self.connection.close()
-        await self.streams.close()
+        try:
+            await self.connection.close()
+        finally:
+            await self.streams.close()
 
 
 async def connect_remote_agent(
@@ -56,12 +60,32 @@ async def connect_remote_agent(
         max_size=resolved_options.max_size,
         max_queue=resolved_options.max_queue,
     )
-    streams = await open_websocket_stream_bridge(
-        websocket,
-        reader_limit=resolved_options.reader_limit,
-    )
-    connection = connect_to_agent(client, streams.writer, streams.reader)
-    metadata = await fetch_server_metadata(url, headers=resolved_headers)
+    streams: WebSocketStreamBridge | None = None
+    connection: ClientSideConnection | None = None
+    try:
+        streams = await open_websocket_stream_bridge(
+            websocket,
+            reader_limit=resolved_options.reader_limit,
+        )
+        connection = connect_to_agent(client, streams.writer, streams.reader)
+        metadata = await fetch_server_metadata(
+            url,
+            headers=resolved_headers,
+            timeout=resolved_options.open_timeout,
+        )
+    except BaseException:
+        if connection is not None:
+            with contextlib.suppress(BaseException):
+                await connection.close()
+        if streams is not None:
+            with contextlib.suppress(BaseException):
+                await streams.close()
+        else:
+            with contextlib.suppress(BaseException):
+                await websocket.close()
+            with contextlib.suppress(BaseException):
+                await websocket.wait_closed()
+        raise
     return RemoteClientConnection(
         connection=connection,
         websocket=websocket,
@@ -74,11 +98,12 @@ async def fetch_server_metadata(
     url: str,
     *,
     headers: _HeaderPairs | None = None,
+    timeout: float = DEFAULT_OPEN_TIMEOUT,
 ) -> ServerMetadata | None:
     metadata_url = _metadata_url(url)
     if metadata_url is None:
         return None
-    return await asyncio.to_thread(_fetch_server_metadata_sync, metadata_url, headers)
+    return await asyncio.to_thread(_fetch_server_metadata_sync, metadata_url, headers, timeout)
 
 
 def _merge_headers(
@@ -90,10 +115,10 @@ def _merge_headers(
     if base is None:
         return extra
     if isinstance(base, Mapping):
-        base_mapping = cast(Mapping[str, str], base)
+        base_mapping = cast("Mapping[str, str]", base)
         merged_items: list[tuple[str, str]] = [*base_mapping.items(), *extra.items()]
         return merged_items
-    base_pairs = cast(Sequence[tuple[str, str]], base)
+    base_pairs = cast("Sequence[tuple[str, str]]", base)
     merged_pairs: list[tuple[str, str]] = [*base_pairs, *extra.items()]
     return merged_pairs
 
@@ -113,12 +138,13 @@ def _metadata_url(url: str) -> str | None:
 def _fetch_server_metadata_sync(
     url: str,
     headers: _HeaderPairs | None,
+    timeout: float = DEFAULT_OPEN_TIMEOUT,
 ) -> ServerMetadata | None:
     parsed = urlsplit(url)
     if parsed.hostname is None:
         return None
     connection_class = HTTPSConnection if parsed.scheme == "https" else HTTPConnection
-    connection = connection_class(parsed.hostname, parsed.port)
+    connection = connection_class(parsed.hostname, parsed.port, timeout=timeout)
     try:
         connection.request("GET", parsed.path or "/", headers=_headers_dict(headers))
         response = connection.getresponse()

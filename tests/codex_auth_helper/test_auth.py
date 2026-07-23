@@ -2,14 +2,20 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import json
+import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Event
 from typing import Any, cast
 
 import httpx
 import pytest
 from codex_auth_helper.auth.config import CodexAuthConfig, default_auth_path
-from codex_auth_helper.auth.manager import CodexTokenManager, _response_mapping, _string_value
+from codex_auth_helper.auth.manager import (
+    CodexTokenManager,
+    _response_mapping,
+    _string_value,
+)
 from codex_auth_helper.auth.state import (
     CodexAuthState,
     _as_string_mapping,
@@ -22,7 +28,7 @@ from codex_auth_helper.auth.state import (
     _parse_timestamp,
     _require_str,
 )
-from codex_auth_helper.auth.store import CodexAuthStore
+from codex_auth_helper.auth.store import CodexAuthStore, _fsync_directory
 
 from .support import write_auth_file
 
@@ -35,7 +41,7 @@ def test_auth_state_helpers_cover_required_optional_and_mapping_paths() -> None:
     assert _optional_str({"token": "value"}, "token") == "value"
     assert _optional_str({"token": ""}, "token") is None
     assert _as_string_mapping(None) is None
-    assert _as_string_mapping(cast(Any, {"ok": 1, 2: "ignored"})) == {"ok": 1}
+    assert _as_string_mapping(cast("Any", {"ok": 1, 2: "ignored"})) == {"ok": 1}
 
 
 def test_auth_state_parses_timestamps_claims_and_account_fallbacks() -> None:
@@ -50,13 +56,13 @@ def test_auth_state_parses_timestamps_claims_and_account_fallbacks() -> None:
         {
             "exp": int((now + timedelta(hours=1)).timestamp()),
             "organizations": [{"id": "org_123"}],
-        }
+        },
     )
     id_token = write_auth_file.__globals__["_jwt"](
         {
             "exp": int((now + timedelta(hours=2)).timestamp()),
             "https://api.openai.com/auth": {"chatgpt_account_id": "acct_nested"},
-        }
+        },
     )
 
     assert _parse_jwt_claims("not-a-jwt") is None
@@ -113,7 +119,8 @@ def test_auth_state_helper_edge_paths_cover_missing_nested_claims() -> None:
     invalid_exp_token = write_auth_file.__globals__["_jwt"]({"exp": "not-an-int"})
     fallback_exp_token = write_auth_file.__globals__["_jwt"]({"exp": 1})
     assert _extract_expiry(
-        access_token=fallback_exp_token, id_token=invalid_exp_token
+        access_token=fallback_exp_token,
+        id_token=invalid_exp_token,
     ) == datetime.fromtimestamp(
         1,
         tz=UTC,
@@ -126,7 +133,7 @@ def test_auth_state_json_round_trip_and_invalid_payloads() -> None:
         {
             "exp": int((now + timedelta(hours=1)).timestamp()),
             "chatgpt_account_id": "acct_direct",
-        }
+        },
     )
     state = CodexAuthState.from_json_dict(
         {
@@ -137,13 +144,13 @@ def test_auth_state_json_round_trip_and_invalid_payloads() -> None:
                 "access_token": access_token,
                 "refresh_token": "refresh-token",
             },
-        }
+        },
     )
 
     assert state.account_id == "acct_direct"
     assert state.openai_api_key == "sk-demo"
-    payload = cast(dict[str, Any], state.to_json_dict())
-    tokens = cast(dict[str, Any], payload["tokens"])
+    payload = cast("dict[str, Any]", state.to_json_dict())
+    tokens = cast("dict[str, Any]", payload["tokens"])
     assert tokens["account_id"] == "acct_direct"
 
     with pytest.raises(ValueError, match="Expected `tokens`"):
@@ -177,6 +184,33 @@ def test_auth_store_covers_invalid_json_non_object_and_write_round_trip(
     store.write_state(updated_state)
     persisted = json.loads(auth_path.read_text(encoding="utf-8"))
     assert persisted["tokens"]["account_id"] == "acct_written"
+    assert stat.S_IMODE(auth_path.stat().st_mode) == 0o600
+
+    failed_state = CodexAuthState(
+        access_token=state.access_token,
+        refresh_token=state.refresh_token,
+        account_id="acct_failed",
+        auth_mode="oauth",
+        last_refresh=datetime.now(tz=UTC),
+    )
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "codex_auth_helper.auth.store.os.replace",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("replace failed")),
+        )
+        with pytest.raises(OSError, match="replace failed"):
+            store.write_state(failed_state)
+
+    persisted_after_failure = json.loads(auth_path.read_text(encoding="utf-8"))
+    assert persisted_after_failure["tokens"]["account_id"] == "acct_written"
+    assert not list(auth_path.parent.glob(f".{auth_path.name}.*.tmp"))
+
+    with pytest.MonkeyPatch.context() as monkeypatch:
+        monkeypatch.setattr(
+            "codex_auth_helper.auth.store.os.open",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("open failed")),
+        )
+        _fsync_directory(auth_path.parent)
 
 
 @pytest.mark.asyncio
@@ -217,6 +251,110 @@ async def test_token_manager_helpers_cover_non_refresh_and_close_paths(
 
     await manager.close()
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_token_manager_serializes_async_and_sync_refreshes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(
+        auth_path,
+        access_expiry=datetime.now(tz=UTC) - timedelta(minutes=5),
+        refresh_token="refresh-before",
+    )
+    manager = CodexTokenManager(
+        config=CodexAuthConfig(auth_path=auth_path),
+        store=CodexAuthStore(auth_path),
+        http_client=httpx.AsyncClient(),
+    )
+    refresh_started = asyncio.Event()
+    allow_refresh = asyncio.Event()
+    calls: list[str] = []
+    refreshed_state = CodexAuthState(
+        access_token="refreshed-access",
+        refresh_token="refresh-after",
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+    )
+
+    async def async_refresh(self: CodexTokenManager) -> CodexAuthState:
+        del self
+        calls.append("async")
+        refresh_started.set()
+        await allow_refresh.wait()
+        return refreshed_state
+
+    monkeypatch.setattr(CodexTokenManager, "_refresh_locked", async_refresh)
+    monkeypatch.setattr(
+        CodexTokenManager,
+        "_refresh_locked_sync",
+        lambda self: pytest.fail("sync refresh must reuse the async result"),
+    )
+
+    async_token = asyncio.create_task(manager.get_access_token())
+    await refresh_started.wait()
+    sync_token = asyncio.create_task(asyncio.to_thread(manager.get_access_token_sync))
+    await asyncio.sleep(0.01)
+    assert calls == ["async"]
+
+    allow_refresh.set()
+    assert await async_token == "refreshed-access"
+    assert await sync_token == "refreshed-access"
+    assert calls == ["async"]
+    await manager.close()
+
+
+@pytest.mark.asyncio
+async def test_token_manager_async_refresh_waits_for_sync_refresh(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    auth_path = tmp_path / "auth.json"
+    write_auth_file(
+        auth_path,
+        access_expiry=datetime.now(tz=UTC) - timedelta(minutes=5),
+        refresh_token="refresh-before",
+    )
+    manager = CodexTokenManager(
+        config=CodexAuthConfig(auth_path=auth_path),
+        store=CodexAuthStore(auth_path),
+        http_client=httpx.AsyncClient(),
+    )
+    refresh_started = Event()
+    allow_refresh = Event()
+    calls: list[str] = []
+    refreshed_state = CodexAuthState(
+        access_token="refreshed-access",
+        refresh_token="refresh-after",
+        expires_at=datetime.now(tz=UTC) + timedelta(hours=1),
+    )
+
+    def sync_refresh(self: CodexTokenManager) -> CodexAuthState:
+        del self
+        calls.append("sync")
+        refresh_started.set()
+        assert allow_refresh.wait(timeout=1)
+        return refreshed_state
+
+    monkeypatch.setattr(CodexTokenManager, "_refresh_locked_sync", sync_refresh)
+    monkeypatch.setattr(
+        CodexTokenManager,
+        "_refresh_locked",
+        lambda self: pytest.fail("async refresh must reuse the sync result"),
+    )
+
+    sync_token = asyncio.create_task(asyncio.to_thread(manager.get_access_token_sync))
+    assert await asyncio.to_thread(refresh_started.wait, 1)
+    async_token = asyncio.create_task(manager.get_access_token())
+    await asyncio.sleep(0.02)
+    assert calls == ["sync"]
+
+    allow_refresh.set()
+    assert await sync_token == "refreshed-access"
+    assert await async_token == "refreshed-access"
+    assert calls == ["sync"]
+    await manager.close()
 
 
 def test_token_manager_sync_refresh_path(
@@ -325,7 +463,7 @@ def test_token_manager_sync_refresh_real_path(
             "client_id=app_EMoamEEZ73f0CkXaXp7hrann&"
             "grant_type=refresh_token&refresh_token=refresh_before",
             {"Content-Type": "application/x-www-form-urlencoded"},
-        )
+        ),
     ]
     persisted_state = CodexAuthStore(auth_path).read_state()
     assert persisted_state.access_token == "sync_refreshed_access"

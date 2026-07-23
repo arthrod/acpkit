@@ -1,7 +1,7 @@
 from __future__ import annotations as _annotations
 
 import asyncio
-from typing import Any, cast
+from typing import Any, Protocol, cast
 
 import pytest
 from acp.exceptions import RequestError
@@ -42,6 +42,10 @@ from .support import (
 )
 
 
+class _AdapterWithConfig(Protocol):
+    _config: Any
+
+
 def _passthrough_tools(
     ctx: RunContext[None],
     tool_defs: list[ToolDefinition],
@@ -52,7 +56,7 @@ def _passthrough_tools(
 
 def test_passthrough_tools_model_helper_returns_a_copy() -> None:
     tool_defs: list[ToolDefinition] = []
-    copied = _passthrough_tools(cast(Any, None), tool_defs)
+    copied = _passthrough_tools(cast("Any", None), tool_defs)
     assert copied == []
     assert copied is not tool_defs
 
@@ -124,13 +128,13 @@ def test_session_model_override_is_session_local(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Use the default model.")],
             session_id=first_session.session_id,
-        )
+        ),
     )
     asyncio.run(
         adapter.prompt(
             prompt=[text_block("Use the overridden model.")],
             session_id=second_session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == ["default", "switched"]
@@ -163,7 +167,7 @@ def test_set_config_option_model_updates_current_model(tmp_path: Path) -> None:
             config_id="model",
             session_id=new_session_response.session_id,
             value="model-b",
-        )
+        ),
     )
 
     assert config_response is not None
@@ -214,7 +218,7 @@ def test_provider_backed_surface_exposes_modes_config_and_plan(tmp_path: Path) -
     assert session_info_updates
     assert session_info_updates[-1].field_meta is not None
     assert session_info_updates[-1].field_meta["pydantic_acp"]["plan_storage"] == {
-        "directory": str(tmp_path / ".acpkit" / "plans")
+        "directory": str(tmp_path / ".acpkit" / "plans"),
     }
 
     client.updates.clear()
@@ -223,7 +227,7 @@ def test_provider_backed_surface_exposes_modes_config_and_plan(tmp_path: Path) -
             cwd=str(tmp_path),
             session_id=new_session_response.session_id,
             mcp_servers=[],
-        )
+        ),
     )
 
     assert resume_response.modes is not None
@@ -275,9 +279,9 @@ def test_plan_mode_sets_native_plan_from_structured_task_plan_output(
                             description="Native plan mode.",
                             prepare_func=_passthrough_tools,
                             plan_mode=True,
-                        )
+                        ),
                     ],
-                )
+                ),
             ],
             session_store=MemorySessionStore(),
         ),
@@ -292,7 +296,7 @@ def test_plan_mode_sets_native_plan_from_structured_task_plan_output(
         adapter.prompt(
             prompt=[text_block("Create a plan for this task.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     plan_updates = [update for _, update in client.updates if isinstance(update, AgentPlanUpdate)]
@@ -345,8 +349,8 @@ def test_plan_mode_can_record_native_plan_entries_via_internal_tool(
                                     ],
                                     "plan_md": "# Native Plan\n\n- Inspect the repo\n- Save the plan\n",
                                 },
-                            )
-                        ]
+                            ),
+                        ],
                     )
         raise AssertionError("expected a user prompt or tool return")  # pragma: no cover
 
@@ -366,9 +370,9 @@ def test_plan_mode_can_record_native_plan_entries_via_internal_tool(
                             description="Native plan mode.",
                             prepare_func=_passthrough_tools,
                             plan_mode=True,
-                        )
+                        ),
                     ],
-                )
+                ),
             ],
             session_store=MemorySessionStore(),
         ),
@@ -378,7 +382,7 @@ def test_plan_mode_can_record_native_plan_entries_via_internal_tool(
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     config_response = asyncio.run(
-        adapter.set_config_option("plan_generation_type", session.session_id, "tools")
+        adapter.set_config_option("plan_generation_type", session.session_id, "tools"),
     )
     assert config_response is not None
     assert any(
@@ -391,7 +395,7 @@ def test_plan_mode_can_record_native_plan_entries_via_internal_tool(
         adapter.prompt(
             prompt=[text_block("Plan the implementation.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     plan_updates = [update for _, update in client.updates if isinstance(update, AgentPlanUpdate)]
@@ -428,8 +432,8 @@ def test_agent_mode_with_plan_tools_can_update_and_complete_entries_incrementall
                             ToolCallPart(
                                 "acp_update_plan_entry",
                                 {"index": 1, "status": "in_progress"},
-                            )
-                        ]
+                            ),
+                        ],
                     )
         raise AssertionError("expected a user prompt or tool return")  # pragma: no cover
 
@@ -449,9 +453,9 @@ def test_agent_mode_with_plan_tools_can_update_and_complete_entries_incrementall
                             description="Execution mode with plan progress tools.",
                             prepare_func=_passthrough_tools,
                             plan_tools=True,
-                        )
+                        ),
                     ],
-                )
+                ),
             ],
             session_store=MemorySessionStore(),
         ),
@@ -460,7 +464,8 @@ def test_agent_mode_with_plan_tools_can_update_and_complete_entries_incrementall
     adapter.on_connect(client)
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    stored_session = cast(Any, adapter)._config.session_store.get(session.session_id)
+    adapter_config = cast("_AdapterWithConfig", adapter)._config
+    stored_session = adapter_config.session_store.get(session.session_id)
     assert stored_session is not None
     stored_session.plan_markdown = "# Plan\n\n1. Implement the first item\n2. Verify it\n"
     stored_session.plan_entries = [
@@ -475,14 +480,14 @@ def test_agent_mode_with_plan_tools_can_update_and_complete_entries_incrementall
             status="pending",
         ).model_dump(mode="json"),
     ]
-    cast(Any, adapter)._config.session_store.save(stored_session)
+    adapter_config.session_store.save(stored_session)
     client.updates.clear()
 
     asyncio.run(
         adapter.prompt(
             prompt=[text_block("Implement the first plan item.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     plan_updates = [update for _, update in client.updates if isinstance(update, AgentPlanUpdate)]
@@ -517,20 +522,20 @@ def test_provider_backed_updates_drive_prompt_state(tmp_path: Path) -> None:
     client.updates.clear()
 
     set_mode_response = asyncio.run(
-        adapter.set_session_mode(mode_id="review", session_id=second_session.session_id)
+        adapter.set_session_mode(mode_id="review", session_id=second_session.session_id),
     )
     set_stream_response = asyncio.run(
         adapter.set_config_option(
             config_id="stream_enabled",
             session_id=second_session.session_id,
             value=True,
-        )
+        ),
     )
     asyncio.run(
         adapter.set_session_model(
             model_id="provider-model-b",
             session_id=second_session.session_id,
-        )
+        ),
     )
 
     assert set_mode_response is not None
@@ -559,13 +564,13 @@ def test_provider_backed_updates_drive_prompt_state(tmp_path: Path) -> None:
         adapter.prompt(
             prompt=[text_block("Use the provider default model.")],
             session_id=first_session.session_id,
-        )
+        ),
     )
     asyncio.run(
         adapter.prompt(
             prompt=[text_block("Use the provider override.")],
             session_id=second_session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == ["provider:model-a", "provider:model-b"]
@@ -598,7 +603,7 @@ def test_reserved_model_config_option_falls_back_to_provider(tmp_path: Path) -> 
             config_id="model",
             session_id=session.session_id,
             value="provider-model-b",
-        )
+        ),
     )
 
     assert response is not None
@@ -623,7 +628,7 @@ def test_freeform_model_provider_omits_select_option_and_accepts_custom_ids(
         adapter.set_session_model(
             model_id="custom-model-z",
             session_id=session.session_id,
-        )
+        ),
     )
     stored_session = session_store.get(session.session_id)
 
@@ -651,14 +656,14 @@ def test_async_mode_config_and_plan_providers_are_supported(tmp_path: Path) -> N
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     set_mode_response = asyncio.run(
-        adapter.set_session_mode(mode_id="review", session_id=session.session_id)
+        adapter.set_session_mode(mode_id="review", session_id=session.session_id),
     )
     set_stream_response = asyncio.run(
         adapter.set_config_option(
             config_id="stream_enabled",
             session_id=session.session_id,
             value=True,
-        )
+        ),
     )
 
     assert set_mode_response is not None
@@ -695,7 +700,7 @@ def test_set_session_model_returns_none_without_model_support(tmp_path: Path) ->
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.set_session_model(model_id="openai:gpt-5", session_id=session.session_id)
+        adapter.set_session_model(model_id="openai:gpt-5", session_id=session.session_id),
     )
     stored_session = session_store.get(session.session_id)
 
@@ -714,7 +719,7 @@ def test_set_session_model_rejects_unknown_model_id(tmp_path: Path) -> None:
                     model_id="model-a",
                     name="Model A",
                     override=TestModel(custom_output_text="default", model_name="model-a"),
-                )
+                ),
             ],
             session_store=MemorySessionStore(),
         ),
@@ -723,7 +728,7 @@ def test_set_session_model_rejects_unknown_model_id(tmp_path: Path) -> None:
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     with pytest.raises(RequestError):
         asyncio.run(
-            adapter.set_session_model(model_id="missing-model", session_id=session.session_id)
+            adapter.set_session_model(model_id="missing-model", session_id=session.session_id),
         )
 
 
@@ -747,7 +752,7 @@ def test_set_config_option_rejects_invalid_model_and_mode_value_types(
                 config_id="model",
                 session_id=session.session_id,
                 value=False,
-            )
+            ),
         )
     with pytest.raises(RequestError):
         asyncio.run(
@@ -755,7 +760,7 @@ def test_set_config_option_rejects_invalid_model_and_mode_value_types(
                 config_id="mode",
                 session_id=session.session_id,
                 value=False,
-            )
+            ),
         )
 
 
@@ -771,7 +776,7 @@ def test_set_config_option_returns_none_for_unknown_option(tmp_path: Path) -> No
             config_id="missing_option",
             session_id=session.session_id,
             value=True,
-        )
+        ),
     )
 
     assert response is None

@@ -1,13 +1,14 @@
 from __future__ import annotations as _annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import Executor
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Final, Generic, Literal, TypeVar
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Final, Generic, Literal, TypeVar, cast
 from urllib.parse import urlparse
 
+from acp.schema import ToolKind
 from pydantic_ai import ModelRequestContext
-from pydantic_ai.builtin_tools import ImageAspectRatio, WebSearchUserLocation
 from pydantic_ai.capabilities import (
     MCP,
     AbstractCapability,
@@ -21,21 +22,31 @@ from pydantic_ai.capabilities import (
     WebSearch,
 )
 from pydantic_ai.messages import CompactionPart, ModelMessage, ModelResponse
+from pydantic_ai.native_tools import ImageAspectRatio, WebSearchUserLocation
 from pydantic_ai.tools import RunContext, ToolSelector
 from pydantic_ai.toolsets import AgentToolset
 
 from ..agent_types import RuntimeAgent
+from ..projection import (
+    HarnessCodeModeProjectionMap,
+    HarnessFileSystemProjectionMap,
+    HarnessShellProjectionMap,
+    ProjectionMap,
+)
 from ..session.state import AcpSessionContext, JsonValue
 from .base import BufferedCapabilityBridge, CapabilityBridge
 
 if TYPE_CHECKING:
-    from pydantic_ai.builtin_tools import ImageGenerationTool, MCPServerTool
     from pydantic_ai.models import KnownModelName, Model
+    from pydantic_ai.native_tools import ImageGenerationTool, MCPServerTool
 
 AgentDepsT = TypeVar("AgentDepsT", contravariant=True)
 
 __all__ = (
     "AnthropicCompactionBridge",
+    "HarnessCodeModeBridge",
+    "HarnessFileSystemBridge",
+    "HarnessShellBridge",
     "ImageGenerationBridge",
     "IncludeToolReturnSchemasBridge",
     "McpCapabilityBridge",
@@ -54,13 +65,35 @@ _DEFAULT_WEB_SEARCH_TOOL_NAMES: Final[frozenset[str]] = frozenset(
         "exa_search",
         "tavily_search",
         "web_search",
-    }
+    },
 )
 _DEFAULT_WEB_FETCH_TOOL_NAMES: Final[frozenset[str]] = frozenset({"web_fetch"})
 _DEFAULT_IMAGE_GENERATION_TOOL_NAMES: Final[frozenset[str]] = frozenset(
-    {"generate_image", "image_generation"}
+    {"generate_image", "image_generation"},
 )
 _DEFAULT_MCP_TOOL_NAME_PREFIXES: Final[frozenset[str]] = frozenset({"mcp_server:"})
+_DEFAULT_HARNESS_FILESYSTEM_TOOL_NAMES: Final[frozenset[str]] = frozenset(
+    {
+        "create_directory",
+        "edit_file",
+        "list_directory",
+        "read_file",
+        "search_files",
+        "write_file",
+    },
+)
+_DEFAULT_HARNESS_SHELL_TOOL_NAMES: Final[frozenset[str]] = frozenset(
+    {"check_command", "run_command", "start_command", "stop_command"},
+)
+_DEFAULT_HARNESS_CODE_MODE_TOOL_NAMES: Final[frozenset[str]] = frozenset({"run_code"})
+
+
+def _missing_harness_dependency(extra: str | None = None) -> ImportError:
+    suffix = f"[{extra}]" if extra else ""
+    return ImportError(
+        "pydantic-ai-harness is required for this bridge. "
+        f"Install `pydantic-ai-harness{suffix}` alongside `pydantic-acp`.",
+    )
 
 
 def _json_string_list(
@@ -188,6 +221,208 @@ class IncludeToolReturnSchemasBridge(CapabilityBridge, Generic[AgentDepsT]):
 
 
 @dataclass(slots=True, kw_only=True)
+class HarnessFileSystemBridge(CapabilityBridge, Generic[AgentDepsT]):
+    root_dir: str | Path = "."
+    allowed_patterns: Sequence[str] = ()
+    denied_patterns: Sequence[str] = ()
+    protected_patterns: Sequence[str] | None = None
+    max_read_lines: int = 2000
+    max_search_results: int = 200
+    max_find_results: int = 200
+    tool_names: frozenset[str] = _DEFAULT_HARNESS_FILESYSTEM_TOOL_NAMES
+    metadata_key: str | None = "harness_filesystem"
+
+    def build_capability(self, session: AcpSessionContext) -> AbstractCapability[AgentDepsT]:
+        del session
+        try:
+            from pydantic_ai_harness.filesystem import FileSystem
+        except ImportError as exc:
+            raise _missing_harness_dependency() from exc
+        kwargs: dict[str, Any] = {
+            "root_dir": self.root_dir,
+            "allowed_patterns": list(self.allowed_patterns),
+            "denied_patterns": list(self.denied_patterns),
+            "max_read_lines": self.max_read_lines,
+            "max_search_results": self.max_search_results,
+            "max_find_results": self.max_find_results,
+        }
+        if self.protected_patterns is not None:
+            kwargs["protected_patterns"] = list(self.protected_patterns)
+        return cast("AbstractCapability[AgentDepsT]", FileSystem(**kwargs))
+
+    def build_agent_capabilities(
+        self,
+        session: AcpSessionContext,
+    ) -> tuple[AbstractCapability[Any], ...]:
+        return (self.build_capability(session),)
+
+    def get_projection_maps(self) -> tuple[ProjectionMap, ...]:
+        return (HarnessFileSystemProjectionMap(),)
+
+    def get_session_metadata(
+        self,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
+    ) -> dict[str, JsonValue]:
+        del session, agent
+        return {
+            "allowed_patterns": _json_string_list(list(self.allowed_patterns)),
+            "denied_patterns": _json_string_list(list(self.denied_patterns)),
+            "max_find_results": self.max_find_results,
+            "max_read_lines": self.max_read_lines,
+            "max_search_results": self.max_search_results,
+            "protected_patterns": (
+                _json_string_list(list(self.protected_patterns))
+                if self.protected_patterns is not None
+                else None
+            ),
+            "root_dir": str(self.root_dir),
+            "tool_names": _json_string_list(self.tool_names),
+        }
+
+    def get_tool_kind(self, tool_name: str, raw_input: JsonValue | None = None) -> ToolKind | None:
+        del raw_input
+        if tool_name == "read_file":
+            return "read"
+        if tool_name in {"write_file", "create_directory"}:
+            return "edit"
+        if tool_name == "edit_file":
+            return "edit"
+        if tool_name in {"list_directory", "search_files"}:
+            return "search"
+        return None
+
+
+@dataclass(slots=True, kw_only=True)
+class HarnessShellBridge(CapabilityBridge, Generic[AgentDepsT]):
+    cwd: str | Path = "."
+    allowed_commands: Sequence[str] = ()
+    denied_commands: Sequence[str] | None = None
+    denied_operators: Sequence[str] = ()
+    default_timeout: float = 30.0
+    max_output_chars: int = 50_000
+    persist_cwd: bool = False
+    allow_interactive: bool = False
+    env: Mapping[str, str] | None = None
+    denied_env_patterns: Sequence[str] = ()
+    tool_names: frozenset[str] = _DEFAULT_HARNESS_SHELL_TOOL_NAMES
+    metadata_key: str | None = "harness_shell"
+
+    def build_capability(self, session: AcpSessionContext) -> AbstractCapability[AgentDepsT]:
+        del session
+        try:
+            from pydantic_ai_harness.shell import Shell
+        except ImportError as exc:
+            raise _missing_harness_dependency() from exc
+        kwargs: dict[str, Any] = {
+            "cwd": self.cwd,
+            "allowed_commands": list(self.allowed_commands),
+            "denied_operators": list(self.denied_operators),
+            "default_timeout": self.default_timeout,
+            "max_output_chars": self.max_output_chars,
+            "persist_cwd": self.persist_cwd,
+            "allow_interactive": self.allow_interactive,
+            "env": dict(self.env) if self.env is not None else None,
+            "denied_env_patterns": list(self.denied_env_patterns),
+        }
+        if self.denied_commands is not None:
+            kwargs["denied_commands"] = list(self.denied_commands)
+        return cast("AbstractCapability[AgentDepsT]", Shell(**kwargs))
+
+    def build_agent_capabilities(
+        self,
+        session: AcpSessionContext,
+    ) -> tuple[AbstractCapability[Any], ...]:
+        return (self.build_capability(session),)
+
+    def get_projection_maps(self) -> tuple[ProjectionMap, ...]:
+        return (HarnessShellProjectionMap(),)
+
+    def get_session_metadata(
+        self,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
+    ) -> dict[str, JsonValue]:
+        del session, agent
+        return {
+            "allow_interactive": self.allow_interactive,
+            "allowed_commands": _json_string_list(list(self.allowed_commands)),
+            "cwd": str(self.cwd),
+            "default_timeout": self.default_timeout,
+            "denied_commands": (
+                _json_string_list(list(self.denied_commands))
+                if self.denied_commands is not None
+                else None
+            ),
+            "denied_env_patterns": _json_string_list(list(self.denied_env_patterns)),
+            "denied_operators": _json_string_list(list(self.denied_operators)),
+            "env_keys": _json_string_list(sorted((self.env or {}).keys())),
+            "max_output_chars": self.max_output_chars,
+            "persist_cwd": self.persist_cwd,
+            "tool_names": _json_string_list(self.tool_names),
+        }
+
+    def get_tool_kind(self, tool_name: str, raw_input: JsonValue | None = None) -> ToolKind | None:
+        del raw_input
+        return "execute" if tool_name in self.tool_names else None
+
+
+@dataclass(slots=True, kw_only=True)
+class HarnessCodeModeBridge(CapabilityBridge, Generic[AgentDepsT]):
+    tools: ToolSelector[AgentDepsT] = "all"
+    max_retries: int = 3
+    os_access: Any = None
+    mount: Any = None
+    dynamic_catalog: bool = False
+    tool_names: frozenset[str] = _DEFAULT_HARNESS_CODE_MODE_TOOL_NAMES
+    metadata_key: str | None = "harness_code_mode"
+
+    def build_capability(self, session: AcpSessionContext) -> AbstractCapability[AgentDepsT]:
+        del session
+        try:
+            from pydantic_ai_harness.code_mode import CodeMode
+        except ImportError as exc:
+            raise _missing_harness_dependency("code-mode") from exc
+        return cast(
+            "AbstractCapability[AgentDepsT]",
+            CodeMode(
+                tools=cast("Any", self.tools),
+                max_retries=self.max_retries,
+                os_access=self.os_access,
+                mount=self.mount,
+                dynamic_catalog=self.dynamic_catalog,
+            ),
+        )
+
+    def build_agent_capabilities(
+        self,
+        session: AcpSessionContext,
+    ) -> tuple[AbstractCapability[Any], ...]:
+        return (self.build_capability(session),)
+
+    def get_projection_maps(self) -> tuple[ProjectionMap, ...]:
+        return (HarnessCodeModeProjectionMap(),)
+
+    def get_session_metadata(
+        self,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
+    ) -> dict[str, JsonValue]:
+        del session, agent
+        return {
+            "dynamic_catalog": self.dynamic_catalog,
+            "has_mount": self.mount is not None,
+            "has_os_access": self.os_access is not None,
+            "max_retries": self.max_retries,
+            "tool_names": _json_string_list(self.tool_names),
+        }
+
+    def get_tool_kind(self, tool_name: str, raw_input: JsonValue | None = None) -> ToolKind | None:
+        del raw_input
+        return "execute" if tool_name in self.tool_names else None
+
+
+@dataclass(slots=True, kw_only=True)
 class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
     builtin: bool | ImageGenerationTool | Any = True
     local: Any = None
@@ -211,7 +446,7 @@ class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
     ) -> ImageGeneration[AgentDepsT]:
         del session
         return ImageGeneration(
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             fallback_model=self.fallback_model,
             background=self.background,
@@ -240,7 +475,7 @@ class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
             "aspect_ratio": _json_string(self.aspect_ratio),
             "background": _json_string(self.background),
             "fallback_model": _json_string(
-                self.fallback_model if isinstance(self.fallback_model, str) else None
+                self.fallback_model if isinstance(self.fallback_model, str) else None,
             ),
             "input_fidelity": _json_string(self.input_fidelity),
             "moderation": _json_string(self.moderation),
@@ -252,7 +487,9 @@ class ImageGenerationBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return "execute" if tool_name in self.tool_names else None
@@ -278,7 +515,7 @@ class McpCapabilityBridge(CapabilityBridge, Generic[AgentDepsT]):
         del session
         return MCP(
             self.url,
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             id=self.id,
             authorization_token=self.authorization_token,
@@ -310,7 +547,9 @@ class McpCapabilityBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return (
@@ -382,7 +621,9 @@ class PrefixToolsBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["execute"] | None:
         del raw_input
         return "execute" if tool_name.startswith(f"{self.prefix}_") else None
@@ -405,10 +646,10 @@ class OpenAICompactionBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
 
         class _BridgeOpenAICompaction(OpenAICompaction[Any]):
             def __init__(self) -> None:
-                super().__init__(
+                OpenAICompaction.__init__(
+                    self,
                     message_count_threshold=bridge.message_count_threshold,
                     trigger=bridge.trigger,
-                    instructions=bridge.instructions,
                 )
 
             async def before_model_request(
@@ -428,12 +669,16 @@ class OpenAICompactionBridge(BufferedCapabilityBridge, Generic[AgentDepsT]):
                     title="Context Compaction",
                     raw_input={
                         "provider": "openai",
-                        "instructions": _json_string(self.instructions),
+                        "instructions": _json_string(bridge.instructions),
                         "message_count": len(request_context.messages),
                     },
                 )
                 try:
-                    updated_context = await super().before_model_request(ctx, request_context)
+                    updated_context = await OpenAICompaction.before_model_request(
+                        self,
+                        ctx,
+                        request_context,
+                    )
                 except Exception as error:
                     bridge._record_progress_event(
                         session,
@@ -570,7 +815,7 @@ class WebSearchBridge(CapabilityBridge, Generic[AgentDepsT]):
     ) -> WebSearch[AgentDepsT]:
         del session
         return WebSearch(
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             search_context_size=self.search_context_size,
             user_location=self.user_location,
@@ -601,7 +846,9 @@ class WebSearchBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["search"] | None:
         del raw_input
         return "search" if tool_name in self.tool_names else None
@@ -625,7 +872,7 @@ class WebFetchBridge(CapabilityBridge, Generic[AgentDepsT]):
     ) -> WebFetch[AgentDepsT]:
         del session
         return WebFetch(
-            builtin=self.builtin,
+            native=self.builtin,
             local=self.local,
             allowed_domains=self.allowed_domains,
             blocked_domains=self.blocked_domains,
@@ -656,7 +903,9 @@ class WebFetchBridge(CapabilityBridge, Generic[AgentDepsT]):
         }
 
     def get_tool_kind(
-        self, tool_name: str, raw_input: JsonValue | None = None
+        self,
+        tool_name: str,
+        raw_input: JsonValue | None = None,
     ) -> Literal["fetch"] | None:
         del raw_input
         return "fetch" if tool_name in self.tool_names else None

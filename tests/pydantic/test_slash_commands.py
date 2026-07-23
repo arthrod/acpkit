@@ -7,13 +7,21 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
-from acp.schema import SessionConfigOptionBoolean, SessionMode, SessionModeState
+from acp.schema import (
+    AvailableCommand,
+    SessionConfigOptionBoolean,
+    SessionMode,
+    SessionModeState,
+)
 from pydantic_acp.runtime.slash_commands import (
+    McpServerInfo,
     _iter_mcp_server_infos,
     _mcp_server_info_from_bridge_metadata,
     _mcp_server_info_from_http_toolset,
+    _mcp_server_info_from_mcp_toolset,
     _mcp_server_info_from_session_payload,
     _mcp_server_info_from_stdio_toolset,
+    _mcp_target_from_client,
     _toolset_name,
     build_available_commands,
     extract_session_mcp_servers,
@@ -26,6 +34,7 @@ from pydantic_acp.runtime.slash_commands import (
     render_model_message,
     render_thinking_message,
     render_tool_listing,
+    validate_custom_commands,
     validate_mode_command_ids,
 )
 from pydantic_ai import ModelRequest, ModelResponse, TextPart
@@ -52,9 +61,14 @@ from .support import (
     PrepareToolsBridge,
     PrepareToolsMode,
     RecordingClient,
+    SlashCommandRequest,
+    SlashCommandResult,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
     TestModel,
     ThinkingBridge,
     ToolCallProgress,
+    ToolCallStart,
     agent_message_texts,
     create_acp_agent,
     datetime,
@@ -136,6 +150,19 @@ def test_slash_command_render_helpers_cover_empty_states() -> None:
         == "No Hooks capability callbacks are currently registered."
     )
     assert render_mcp_server_listing([]) == "No MCP servers are currently attached."
+    assert (
+        render_mcp_server_listing(
+            [
+                McpServerInfo(
+                    name="repo",
+                    transport="http",
+                    source="session",
+                    target="https://repo.example/mcp",
+                ),
+            ],
+        )
+        == "MCP servers:\n- repo (http, session): https://repo.example/mcp"
+    )
 
 
 def test_build_available_commands_skips_optional_commands_when_state_is_missing() -> None:
@@ -164,7 +191,7 @@ def test_build_available_commands_skips_optional_commands_when_state_is_missing(
                 name="Thinking",
                 current_value=False,
                 type="boolean",
-            )
+            ),
         ],
     )
     assert [command.name for command in thinking_commands] == [
@@ -192,7 +219,7 @@ def test_validate_mode_command_ids_rejects_invalid_duplicate_and_reserved_values
 def test_list_agent_tools_skips_internal_invalid_and_non_tool_entries() -> None:
     agent = Agent(TestModel(custom_output_text="unused"))
     function_toolset = agent._function_toolset
-    cast(Any, function_toolset).tools = {
+    cast("Any", function_toolset).tools = {
         "acp_hidden": Tool(lambda: "x", takes_ctx=False, name="acp_hidden"),
         1: Tool(lambda: "x", takes_ctx=False, name="bad"),  # type: ignore[dict-item]
         "plain": _INVALID_SLASH_VALUE,
@@ -202,7 +229,7 @@ def test_list_agent_tools_skips_internal_invalid_and_non_tool_entries() -> None:
     tool_infos = list_agent_tools(agent)
 
     assert [tool_info.name for tool_info in tool_infos] == ["visible"]
-    assert list_agent_tools(cast(Any, SimpleNamespace())) == []
+    assert list_agent_tools(cast("Any", SimpleNamespace())) == []
 
 
 def test_model_slash_command_reports_current_model_and_sets_new_model(
@@ -221,7 +248,7 @@ def test_model_slash_command_reports_current_model_and_sets_new_model(
         adapter.prompt(
             prompt=[text_block("/model openai:gpt-5")],
             session_id=session.session_id,
-        )
+        ),
     )
     asyncio.run(adapter.prompt(prompt=[text_block("/model")], session_id=session.session_id))
 
@@ -266,7 +293,7 @@ def test_mode_slash_commands_switch_modes_and_emit_ui_updates(tmp_path: Path) ->
                             prepare_func=lambda _ctx, tool_defs: passthrough_tools(tool_defs),
                         ),
                     ],
-                )
+                ),
             ],
             session_store=MemorySessionStore(),
         ),
@@ -396,14 +423,14 @@ def test_thinking_slash_command_updates_ui_state_and_session_config(
 
     asyncio.run(adapter.prompt(prompt=[text_block("/thinking")], session_id=session.session_id))
     asyncio.run(
-        adapter.prompt(prompt=[text_block("/thinking HIGH")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("/thinking HIGH")], session_id=session.session_id),
     )
     asyncio.run(adapter.prompt(prompt=[text_block("/thinking")], session_id=session.session_id))
     asyncio.run(
         adapter.prompt(
             prompt=[text_block("Use the configured thinking effort.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert agent_message_texts(client) == [
@@ -437,8 +464,9 @@ def test_model_slash_command_accepts_codex_models(tmp_path: Path, monkeypatch) -
     fake_module = types.ModuleType("codex_auth_helper")
     fake_model = TestModel(model_name="gpt-5", custom_output_text="codex")
 
-    def create_codex_responses_model(model_id: str) -> TestModel:
+    def create_codex_responses_model(model_id: str, *, instructions: str) -> TestModel:
         assert model_id == "gpt-5"
+        assert instructions
         return fake_model
 
     fake_module.__dict__["create_codex_responses_model"] = create_codex_responses_model
@@ -449,7 +477,7 @@ def test_model_slash_command_accepts_codex_models(tmp_path: Path, monkeypatch) -
         adapter.prompt(
             prompt=[text_block("/model codex:gpt-5")],
             session_id=session.session_id,
-        )
+        ),
     )
     stored_session = session_store.get(session.session_id)
 
@@ -470,7 +498,7 @@ def test_invalid_selected_model_falls_back_to_default_model(tmp_path: Path) -> N
         adapter.prompt(
             prompt=[text_block("/model broken:model")],
             session_id=session.session_id,
-        )
+        ),
     )
     client.updates.clear()
 
@@ -478,7 +506,7 @@ def test_invalid_selected_model_falls_back_to_default_model(tmp_path: Path) -> N
         adapter.prompt(
             prompt=[text_block("Run after invalid model selection.")],
             session_id=session.session_id,
-        )
+        ),
     )
     asyncio.run(adapter.prompt(prompt=[text_block("/model")], session_id=session.session_id))
 
@@ -497,8 +525,8 @@ def test_tools_slash_command_lists_registered_tools(tmp_path: Path) -> None:
 
         Args:
             path: Relative path to read.
-        """
 
+        """
         return path  # pragma: no cover
 
     @agent.tool_plain(requires_approval=True)
@@ -516,7 +544,7 @@ def test_tools_slash_command_lists_registered_tools(tmp_path: Path) -> None:
     asyncio.run(adapter.prompt(prompt=[text_block("/tools")], session_id=session.session_id))
 
     assert agent_message_texts(client) == [
-        "Available tools:\n- delete_repo [approval]\n- read_repo: Read a repository file."
+        "Available tools:\n- delete_repo [approval]\n- read_repo: Read a repository file.",
     ]
 
 
@@ -533,7 +561,11 @@ def test_hooks_slash_command_lists_registered_hooks(tmp_path: Path) -> None:
         del ctx, call, tool_def  # pragma: no cover
         return args  # pragma: no cover
 
-    agent = Agent(TestModel(custom_output_text="unused"), capabilities=[hooks])
+    agent = Agent(
+        TestModel(custom_output_text="unused"),
+        deps_type=type(None),
+        capabilities=[hooks],
+    )
 
     @agent.tool_plain
     def echo(text: str) -> str:
@@ -552,24 +584,36 @@ def test_hooks_slash_command_lists_registered_hooks(tmp_path: Path) -> None:
     assert agent_message_texts(client) == [
         "Registered hooks:\n"
         "- Before Model: annotate_request\n"
-        "- Before Tool: audit_echo [tools: echo]"
+        "- Before Tool: audit_echo [tools: echo]",
     ]
 
 
 def test_mcp_servers_slash_command_extracts_servers_from_agent_toolsets(
     tmp_path: Path,
 ) -> None:
-    pytest.importorskip("mcp", exc_type=ImportError)
-    from pydantic_ai.capabilities import MCP
-    from pydantic_ai.mcp import MCPServerSSE, MCPServerStdio
+    expected_agent_infos = [
+        McpServerInfo(
+            name="remote-sse",
+            transport="sse",
+            target="https://example.com/sse | prefix=docs",
+            source="agent",
+        ),
+        McpServerInfo(
+            name="local-stdio",
+            transport="stdio",
+            target="python server.py | prefix=fs",
+            source="agent",
+        ),
+        McpServerInfo(
+            name="https://example.com/mcp",
+            transport="http",
+            target="https://example.com/mcp",
+            source="agent",
+        ),
+    ]
 
     agent = Agent(
         TestModel(custom_output_text="unused"),
-        capabilities=[MCP("https://example.com/mcp", id="cap-http")],
-        toolsets=[
-            MCPServerSSE("https://example.com/sse", id="remote-sse", tool_prefix="docs"),
-            MCPServerStdio("python", args=["server.py"], id="local-stdio", tool_prefix="fs"),
-        ],
     )
     adapter = create_acp_agent(
         agent=agent,
@@ -577,20 +621,28 @@ def test_mcp_servers_slash_command_extracts_servers_from_agent_toolsets(
     )
     client = RecordingClient()
     adapter.on_connect(client)
-
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("/mcp-servers")],
-            session_id=session.session_id,
-        )
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(
+        "pydantic_acp.runtime.slash_commands.list_agent_mcp_servers",
+        lambda candidate_agent: expected_agent_infos if candidate_agent is agent else [],
     )
+
+    try:
+        session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+        asyncio.run(
+            adapter.prompt(
+                prompt=[text_block("/mcp-servers")],
+                session_id=session.session_id,
+            ),
+        )
+    finally:
+        monkeypatch.undo()
 
     assert agent_message_texts(client) == [
         "MCP servers:\n"
         "- remote-sse (sse, agent): https://example.com/sse | prefix=docs\n"
         "- local-stdio (stdio, agent): python server.py | prefix=fs\n"
-        "- https://example.com/mcp (http, agent): https://example.com/mcp"
+        "- https://example.com/mcp (http, agent): https://example.com/mcp",
     ]
 
 
@@ -615,7 +667,7 @@ def test_extract_session_mcp_servers_skips_invalid_and_dedupes_sources() -> None
             },
         ],
         metadata=cast(
-            dict[str, JsonValue],
+            "dict[str, JsonValue]",
             {
                 "pydantic_acp": {
                     "mcp": {
@@ -632,9 +684,9 @@ def test_extract_session_mcp_servers_skips_invalid_and_dedupes_sources() -> None
                                 "description": "remote docs",
                             },
                             {1: "invalid"},
-                        ]
-                    }
-                }
+                        ],
+                    },
+                },
             },
         ),
     )
@@ -652,10 +704,10 @@ def test_extract_session_mcp_servers_covers_agent_dedupes_and_invalid_metadata_s
     http_cls = type("MCPServerStreamableHTTP", (), {})
     http_cls.__module__ = "pydantic_ai.mcp"
     http_toolset = http_cls()
-    cast(Any, http_toolset).url = "https://repo.example/mcp"
-    cast(Any, http_toolset).id = "repo-http"
+    cast("Any", http_toolset).url = "https://repo.example/mcp"
+    cast("Any", http_toolset).id = "repo-http"
 
-    agent = cast(Any, SimpleNamespace(toolsets=[http_toolset, http_toolset]))
+    agent = cast("Any", SimpleNamespace(toolsets=[http_toolset, http_toolset]))
     expected_agent_infos = list_agent_mcp_servers(agent)
     assert len(expected_agent_infos) == 1
 
@@ -703,10 +755,10 @@ def test_extract_session_mcp_servers_covers_agent_dedupes_and_invalid_metadata_s
                             "name": "repo-http",
                             "transport": "http",
                             "url": "https://repo.example/mcp",
-                        }
-                    ]
-                }
-            }
+                        },
+                    ],
+                },
+            },
         },
     )
     infos = extract_session_mcp_servers(session_with_duplicates, agent=agent)
@@ -717,17 +769,17 @@ def test_mcp_helper_parsers_cover_invalid_and_fallback_paths() -> None:
     assert _mcp_server_info_from_session_payload({"transport": "stdio"}) is None
     assert _mcp_server_info_from_session_payload({"name": "demo"}) is None
     stdio_info = _mcp_server_info_from_session_payload(
-        {"name": "stdio", "transport": "stdio", "args": ["--serve"]}
+        {"name": "stdio", "transport": "stdio", "args": ["--serve"]},
     )
     assert stdio_info is not None
     assert stdio_info.target == "<stdio> --serve"
     stdio_command_info = _mcp_server_info_from_session_payload(
-        {"name": "stdio", "transport": "stdio", "command": "python", "args": []}
+        {"name": "stdio", "transport": "stdio", "command": "python", "args": []},
     )
     assert stdio_command_info is not None
     assert stdio_command_info.target == "python"
     http_info = _mcp_server_info_from_session_payload(
-        {"name": "http", "transport": "http", "url": "https://demo.test/mcp"}
+        {"name": "http", "transport": "http", "url": "https://demo.test/mcp"},
     )
     assert http_info is not None
     assert http_info.target == "https://demo.test/mcp"
@@ -741,11 +793,11 @@ def test_mcp_helper_parsers_cover_invalid_and_fallback_paths() -> None:
     stdio_cls = type("MCPServerStdio", (), {})
     stdio_cls.__module__ = "pydantic_ai.mcp"
     stdio_toolset = stdio_cls()
-    cast(Any, stdio_toolset).command = ""
-    cast(Any, stdio_toolset).args = []
+    cast("Any", stdio_toolset).command = ""
+    cast("Any", stdio_toolset).args = []
     assert _mcp_server_info_from_stdio_toolset(stdio_toolset) is None
-    cast(Any, stdio_toolset).command = "python"
-    cast(Any, stdio_toolset).tool_prefix = None
+    cast("Any", stdio_toolset).command = "python"
+    cast("Any", stdio_toolset).tool_prefix = None
     stdio_result = _mcp_server_info_from_stdio_toolset(stdio_toolset)
     assert stdio_result is not None
     assert stdio_result.target == "python"
@@ -753,13 +805,13 @@ def test_mcp_helper_parsers_cover_invalid_and_fallback_paths() -> None:
     http_cls = type("MCPServerStreamableHTTP", (), {})
     http_cls.__module__ = "pydantic_ai.mcp"
     http_toolset = http_cls()
-    cast(Any, http_toolset).url = "https://demo.test/mcp"
-    cast(Any, http_toolset).tool_prefix = "repo."
-    cast(Any, http_toolset)._id = "toolset-id"
+    cast("Any", http_toolset).url = "https://demo.test/mcp"
+    cast("Any", http_toolset).tool_prefix = "repo."
+    cast("Any", http_toolset)._id = "toolset-id"
     http_result = _mcp_server_info_from_http_toolset(http_toolset)
     assert http_result is not None
     assert http_result.target == "https://demo.test/mcp | prefix=repo."
-    cast(Any, http_toolset).url = ""
+    cast("Any", http_toolset).url = ""
     assert _mcp_server_info_from_http_toolset(http_toolset) is None
     assert _toolset_name(SimpleNamespace(), fallback="fallback") == "fallback"
 
@@ -768,20 +820,20 @@ def test_list_agent_mcp_servers_handles_fake_toolsets_and_nested_wrappers() -> N
     stdio_cls = type("MCPServerStdio", (), {})
     stdio_cls.__module__ = "pydantic_ai.mcp"
     stdio_toolset = stdio_cls()
-    cast(Any, stdio_toolset).command = "python"
-    cast(Any, stdio_toolset).args = ["server.py"]
-    cast(Any, stdio_toolset).tool_prefix = "fs"
-    cast(Any, stdio_toolset).id = "local-stdio"
+    cast("Any", stdio_toolset).command = "python"
+    cast("Any", stdio_toolset).args = ["server.py"]
+    cast("Any", stdio_toolset).tool_prefix = "fs"
+    cast("Any", stdio_toolset).id = "local-stdio"
 
     http_cls = type("MCPServerStreamableHTTP", (), {})
     http_cls.__module__ = "pydantic_ai.mcp"
     http_toolset = http_cls()
-    cast(Any, http_toolset).url = "https://example.com/mcp"
-    cast(Any, http_toolset).tool_prefix = "docs"
-    cast(Any, http_toolset)._id = "remote-http"
+    cast("Any", http_toolset).url = "https://example.com/mcp"
+    cast("Any", http_toolset).tool_prefix = "docs"
+    cast("Any", http_toolset)._id = "remote-http"
 
     dummy_agent = types.SimpleNamespace(toolsets=[stdio_toolset, http_toolset])
-    server_infos = list_agent_mcp_servers(cast(Any, dummy_agent))
+    server_infos = list_agent_mcp_servers(cast("Any", dummy_agent))
 
     assert [(info.name, info.transport, info.target) for info in server_infos] == [
         ("local-stdio", "stdio", "python server.py | prefix=fs"),
@@ -789,18 +841,175 @@ def test_list_agent_mcp_servers_handles_fake_toolsets_and_nested_wrappers() -> N
     ]
 
     dup_agent = types.SimpleNamespace(toolsets=[stdio_toolset, stdio_toolset])
-    deduped = list_agent_mcp_servers(cast(Any, dup_agent))
+    deduped = list_agent_mcp_servers(cast("Any", dup_agent))
     assert [(info.name, info.target) for info in deduped] == [
-        ("local-stdio", "python server.py | prefix=fs")
+        ("local-stdio", "python server.py | prefix=fs"),
     ]
 
     assert _iter_mcp_server_infos(CombinedToolset([])) == []
     assert _iter_mcp_server_infos(WrapperToolset(CombinedToolset([]))) == []
     assert _iter_mcp_server_infos(DynamicToolset(lambda _ctx: None)) == []
+    combined_infos = _iter_mcp_server_infos(
+        CombinedToolset(cast("Any", [http_toolset, stdio_toolset])),
+    )
+    assert [(info.name, info.transport) for info in combined_infos] == [
+        ("remote-http", "http"),
+        ("local-stdio", "stdio"),
+    ]
     dynamic_toolset = DynamicToolset(lambda _ctx: None)
-    dynamic_toolset._toolset = cast(Any, http_toolset)
+    dynamic_toolset._toolset = cast("Any", http_toolset)
     dynamic_infos = _iter_mcp_server_infos(dynamic_toolset)
     assert [(info.name, info.transport) for info in dynamic_infos] == [("remote-http", "http")]
+    assert _iter_mcp_server_infos(object()) == []
+
+
+def _make_named_transport(class_name: str, url: str) -> Any:
+    transport_cls = type(class_name, (), {})
+    transport = transport_cls()
+    cast("Any", transport).url = url
+    return transport
+
+
+def test_list_agent_mcp_servers_handles_mcp_toolset() -> None:
+    mcp_toolset_cls = type("MCPToolset", (), {})
+    mcp_toolset_cls.__module__ = "pydantic_ai.mcp"
+    http_toolset = mcp_toolset_cls()
+    cast("Any", http_toolset).id = "remote-mcp"
+    cast("Any", http_toolset).client = SimpleNamespace(url="https://example.com/mcp")
+
+    http_agent = types.SimpleNamespace(toolsets=[http_toolset])
+    http_infos = list_agent_mcp_servers(cast("Any", http_agent))
+    assert [(info.name, info.transport, info.target) for info in http_infos] == [
+        ("remote-mcp", "http", "https://example.com/mcp"),
+    ]
+
+    stdio_toolset = mcp_toolset_cls()
+    cast("Any", stdio_toolset)._id = "local-mcp"
+    cast("Any", stdio_toolset).client = SimpleNamespace(
+        transport=SimpleNamespace(command="python", args=["server.py"]),
+    )
+    stdio_agent = types.SimpleNamespace(toolsets=[stdio_toolset])
+    stdio_infos = list_agent_mcp_servers(cast("Any", stdio_agent))
+    assert [(info.name, info.transport, info.target) for info in stdio_infos] == [
+        ("local-mcp", "stdio", "python server.py"),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("client", "expected_transport", "expected_target"),
+    [
+        (SimpleNamespace(), "http", "<mcp>"),
+        (
+            SimpleNamespace(url="https://example.com/mcp"),
+            "http",
+            "https://example.com/mcp",
+        ),
+        (
+            SimpleNamespace(transport=SimpleNamespace(url="https://example.com/mcp")),
+            "http",
+            "https://example.com/mcp",
+        ),
+        (
+            SimpleNamespace(
+                transport=_make_named_transport(
+                    "StreamableHttpSseTransport",
+                    "https://example.com/sse",
+                ),
+            ),
+            "sse",
+            "https://example.com/sse",
+        ),
+        (
+            SimpleNamespace(
+                transport=SimpleNamespace(command="python", args=["server.py", "--serve"]),
+            ),
+            "stdio",
+            "python server.py --serve",
+        ),
+        (
+            SimpleNamespace(transport=SimpleNamespace(command="python", args="not-a-list")),
+            "stdio",
+            "python",
+        ),
+        (
+            SimpleNamespace(transport=SimpleNamespace(command="python")),
+            "stdio",
+            "python",
+        ),
+        (
+            SimpleNamespace(
+                transport=SimpleNamespace(url="", command=""),
+                url="https://fallback.example/mcp",
+            ),
+            "http",
+            "https://fallback.example/mcp",
+        ),
+    ],
+)
+def test_mcp_target_from_client_resolves_transport_and_target(
+    client: Any,
+    expected_transport: str,
+    expected_target: str,
+) -> None:
+    assert _mcp_target_from_client(client) == (expected_transport, expected_target)
+
+
+def test_mcp_server_info_from_mcp_toolset_returns_none_without_client() -> None:
+    mcp_toolset_cls = type("MCPToolset", (), {})
+    mcp_toolset_cls.__module__ = "pydantic_ai.mcp"
+    toolset = mcp_toolset_cls()
+
+    assert _mcp_server_info_from_mcp_toolset(toolset) is None
+    assert _iter_mcp_server_infos(toolset) == []
+
+
+def test_mcp_server_info_from_mcp_toolset_builds_server_info_from_client() -> None:
+    mcp_toolset_cls = type("MCPToolset", (), {})
+    mcp_toolset_cls.__module__ = "pydantic_ai.mcp"
+    toolset = mcp_toolset_cls()
+    cast("Any", toolset).id = "remote-mcp"
+    cast("Any", toolset).client = SimpleNamespace(
+        transport=_make_named_transport("StreamableHttpSseTransport", "https://example.com/sse"),
+    )
+
+    server_info = _mcp_server_info_from_mcp_toolset(toolset)
+    assert server_info == McpServerInfo(
+        name="remote-mcp",
+        transport="sse",
+        target="https://example.com/sse",
+        source="agent",
+    )
+
+
+def test_mcp_servers_slash_command_renders_attached_servers(tmp_path: Path) -> None:
+    session_store = MemorySessionStore()
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(model_name="openai:gpt-5-mini", custom_output_text="unused")),
+        config=AdapterConfig(session_store=session_store),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    stored_session = session_store.get(session.session_id)
+    assert stored_session is not None
+    stored_session.mcp_servers = [
+        {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
+        {
+            "name": "repo-stdio",
+            "transport": "stdio",
+            "command": "python",
+            "args": ["server.py"],
+        },
+    ]
+    session_store.save(stored_session)
+    asyncio.run(adapter.prompt(prompt=[text_block("/mcp-servers")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == [
+        "MCP servers:\n"
+        "- repo-http (http, session): https://repo.example/mcp\n"
+        "- repo-stdio (stdio, session): python server.py",
+    ]
 
 
 def test_extract_session_mcp_servers_dedupes_agent_and_session_duplicates(
@@ -835,7 +1044,7 @@ def test_extract_session_mcp_servers_dedupes_agent_and_session_duplicates(
         ],
     )
 
-    infos = extract_session_mcp_servers(session, agent=cast(Any, _INVALID_SLASH_VALUE))
+    infos = extract_session_mcp_servers(session, agent=cast("Any", _INVALID_SLASH_VALUE))
 
     assert [(info.name, info.source) for info in infos] == [
         ("docs", "agent"),
@@ -858,7 +1067,7 @@ def test_invalid_selected_model_does_not_leave_failed_tool_updates(
         adapter.prompt(
             prompt=[text_block("/model broken:model")],
             session_id=session.session_id,
-        )
+        ),
     )
     client.updates.clear()
 
@@ -866,7 +1075,7 @@ def test_invalid_selected_model_does_not_leave_failed_tool_updates(
         adapter.prompt(
             prompt=[text_block("Run after invalid model selection.")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     tool_failures = [
@@ -875,3 +1084,180 @@ def test_invalid_selected_model_does_not_leave_failed_tool_updates(
         if isinstance(update, ToolCallProgress) and update.status == "failed"
     ]
     assert tool_failures == []
+
+
+def test_static_custom_slash_command_is_advertised_and_handled(tmp_path: Path) -> None:
+    provider = StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="hello", description="Say hello."),
+                handler=lambda request: SlashCommandResult(
+                    text=f"hello {request.argument}",
+                    updates=[
+                        ToolCallStart(
+                            session_update="tool_call",
+                            tool_call_id="custom-command",
+                            title="Custom command",
+                            kind="execute",
+                            status="completed",
+                        ),
+                    ],
+                ),
+            ),
+        ],
+    )
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="model-output")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=provider,
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    asyncio.run(adapter.prompt(prompt=[text_block("/hello world")], session_id=session.session_id))
+    asyncio.run(adapter.prompt(prompt=[text_block("/missing")], session_id=session.session_id))
+
+    command_update = next(
+        update for _, update in client.updates if isinstance(update, AvailableCommandsUpdate)
+    )
+    assert "hello" in [command.name for command in command_update.available_commands]
+    assert any(
+        isinstance(update, ToolCallStart) and update.tool_call_id == "custom-command"
+        for _, update in client.updates
+    )
+    assert agent_message_texts(client) == ["hello world", "model-output"]
+
+
+def test_custom_slash_command_can_skip_text_and_surface_refresh(tmp_path: Path) -> None:
+    provider = StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="silent", description="Emit update only."),
+                handler=lambda request: SlashCommandResult(
+                    text=None,
+                    updates=[
+                        ToolCallStart(
+                            session_update="tool_call",
+                            tool_call_id="silent-command",
+                            title="Silent command",
+                            kind="execute",
+                            status="completed",
+                        ),
+                    ],
+                    refresh_session_surface=False,
+                ),
+            ),
+        ],
+    )
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="model-output")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=provider,
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    client.updates.clear()
+    asyncio.run(adapter.prompt(prompt=[text_block("/silent")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == []
+    assert [
+        update for _, update in client.updates if isinstance(update, AvailableCommandsUpdate)
+    ] == []
+    assert any(
+        isinstance(update, ToolCallStart) and update.tool_call_id == "silent-command"
+        for _, update in client.updates
+    )
+
+
+def test_custom_slash_command_can_decline_and_fall_through(tmp_path: Path) -> None:
+    class Provider:
+        def available_commands(self, session, agent):
+            del session, agent
+            return [AvailableCommand(name="maybe", description="Maybe handle.")]
+
+        def handle_command(self, request: SlashCommandRequest) -> SlashCommandResult | None:
+            del request
+            return SlashCommandResult(handled=False)
+
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="model-output")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=Provider(),
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    asyncio.run(adapter.prompt(prompt=[text_block("/maybe")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == ["model-output"]
+
+
+def test_custom_slash_command_collisions_are_rejected(tmp_path: Path) -> None:
+    provider = StaticSlashCommandProvider(
+        commands=[
+            StaticSlashCommand(
+                command=AvailableCommand(name="tools", description="Collides."),
+                handler=lambda request: SlashCommandResult(text=request.name),
+            ),
+        ],
+    )
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="unused")),
+        config=AdapterConfig(
+            session_store=MemorySessionStore(),
+            slash_command_provider=provider,
+        ),
+    )
+
+    with pytest.raises(ValueError, match="reserved slash command"):
+        asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+
+
+def test_validate_custom_commands_rejects_invalid_duplicates_and_mode_collisions() -> None:
+    with pytest.raises(ValueError, match="must match"):
+        validate_custom_commands(
+            [AvailableCommand(name="bad name", description="Invalid.")],
+            mode_state=None,
+        )
+
+    with pytest.raises(ValueError, match="normalized"):
+        validate_custom_commands(
+            [AvailableCommand(name=" Demo ", description="Not canonical.")],
+            mode_state=None,
+        )
+
+    with pytest.raises(ValueError, match="unique"):
+        validate_custom_commands(
+            [
+                AvailableCommand(name="demo", description="First."),
+                AvailableCommand(name="demo", description="Second."),
+            ],
+            mode_state=None,
+        )
+
+    with pytest.raises(ValueError, match="active mode ids"):
+        validate_custom_commands(
+            [AvailableCommand(name="plan", description="Collides with mode.")],
+            mode_state=SessionModeState(
+                current_mode_id="plan",
+                available_modes=[SessionMode(id=" plan ", name="Plan")],
+            ),
+        )
+
+    validate_custom_commands(
+        [AvailableCommand(name="review", description="Does not collide.")],
+        mode_state=SessionModeState(
+            current_mode_id="plan",
+            available_modes=[SessionMode(id=" plan ", name="Plan")],
+        ),
+    )

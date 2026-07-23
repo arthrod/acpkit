@@ -8,12 +8,15 @@ from .builtin import (
     ModeSelectionBridge,
     ToolSurfaceBridge,
 )
+from .external_hooks import EventEmissionMode, ExternalHookEventBridge
 
 __all__ = (
     "BufferedCapabilityBridge",
     "CapabilityBridge",
     "ConfigOptionsBridge",
     "DeepAgentsCompatibilityBridge",
+    "EventEmissionMode",
+    "ExternalHookEventBridge",
     "ModeSelectionBridge",
     "ModelSelectionBridge",
     "ToolSurfaceBridge",

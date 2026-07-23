@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 from uuid import uuid4
 
 from acp.exceptions import RequestError
-from acp.schema import AgentMessageChunk, TextContentBlock, ToolCallProgress, ToolCallStart
+from acp.schema import (
+    AgentMessageChunk,
+    TextContentBlock,
+    ToolCallProgress,
+    ToolCallStart,
+)
 from pydantic_ai import Agent as PydanticAgent
 from pydantic_ai import AgentRunResult, AgentRunResultEvent
 from pydantic_ai.exceptions import ModelAPIError, ModelHTTPError, UserError
@@ -18,7 +23,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
 
-from ..approvals import ApprovalResolution
+from ..approvals import ApprovalResolution, supports_projection_aware_approval_bridge
 from ..projection import (
     _is_output_tool,
     build_compaction_updates,
@@ -213,7 +218,37 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         projection_map = compose_projection_maps(self._runtime._owner._config.projection_maps)
         streamed_output = False
 
-        async for event in agent.run_stream_events(prompt_input, **run_kwargs):
+        stream_source = agent.run_stream_events(prompt_input, **run_kwargs)
+        if hasattr(stream_source, "__aenter__"):
+            async with stream_source as stream:
+                return await self._consume_run_events(
+                    stream,
+                    known_starts=known_starts,
+                    message_id=message_id,
+                    projection_map=projection_map,
+                    session=session,
+                    streamed_output=streamed_output,
+                )
+        return await self._consume_run_events(
+            stream_source,
+            known_starts=known_starts,
+            message_id=message_id,
+            projection_map=projection_map,
+            session=session,
+            streamed_output=streamed_output,
+        )
+
+    async def _consume_run_events(
+        self,
+        stream: Any,
+        *,
+        known_starts: dict[str, ToolCallStart],
+        message_id: str,
+        projection_map: Any,
+        session: AcpSessionContext,
+        streamed_output: bool,
+    ) -> tuple[AgentRunResult[Any], bool]:
+        async for event in stream:
             if isinstance(event, AgentRunResultEvent):
                 return event.result, streamed_output
             if self._runtime._owner._config.enable_generic_tool_projection and isinstance(
@@ -235,7 +270,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
                 event,
                 FunctionToolResultEvent,
             ):
-                result_part = event.result
+                result_part = event.part
                 if isinstance(result_part, RetryPromptPart):
                     if result_part.tool_name is None or _is_output_tool(result_part.tool_name):
                         continue
@@ -286,6 +321,15 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         approval_bridge = self._runtime._owner._config.approval_bridge
         if approval_bridge is None or self._runtime._owner._client is None:
             raise RequestError.internal_error({"reason": "deferred_approval_requires_client"})
+        projection_map = compose_projection_maps(self._runtime._owner._config.projection_maps)
+        if supports_projection_aware_approval_bridge(approval_bridge):
+            return await approval_bridge.resolve_deferred_approvals(
+                client=self._runtime._owner._client,
+                session=session,
+                requests=requests,
+                classifier=self._runtime._owner._tool_classifier,
+                projection_map=projection_map,
+            )
         return await approval_bridge.resolve_deferred_approvals(
             client=self._runtime._owner._client,
             session=session,
@@ -333,6 +377,7 @@ class _PromptExecution(Generic[AgentDepsT, OutputDataT]):
         )
         run_output_type = self._runtime._owner._build_run_output_type(agent, session=session)
         run_kwargs = self._runtime._owner._build_run_kwargs(
+            session=session,
             message_history=message_history,
             deferred_tool_results=deferred_tool_results,
             deps=deps,

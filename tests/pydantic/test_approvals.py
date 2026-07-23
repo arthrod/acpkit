@@ -1,36 +1,64 @@
 from __future__ import annotations as _annotations
 
-import asyncio
 from typing import Any, cast
 
+import pydantic_acp.approvals as approvals_module
 import pytest
+from pydantic_acp import supports_projection_aware_approval_bridge
+from pydantic_acp.approvals import ApprovalResolution
 from pydantic_acp.runtime.prompts import dump_message_history, load_message_history
 from pydantic_ai import ModelRequest, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.messages import UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults, ToolApproved
 
 from .support import (
+    UTC,
+    AcpSessionContext,
     AdapterConfig,
     Agent,
+    ApprovalPolicy,
     ApprovalRequired,
     AvailableCommandsUpdate,
     FileEditToolCallContent,
     FileSystemProjectionMap,
+    JsonValue,
     MemorySessionStore,
+    NativeApprovalBridge,
     Path,
+    PermissionOptionSet,
+    PermissionRequestContext,
     RecordingClient,
     RunContext,
+    SessionMetadataApprovalPolicyStore,
     TestModel,
     ToolCallProgress,
     ToolCallStart,
+    ToolCallUpdate,
     agent_message_texts,
     create_acp_agent,
+    datetime,
     text_block,
 )
 
 
-def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+class _RecordingPermissionBuilder:
+    def __init__(self) -> None:
+        self.contexts: list[PermissionRequestContext] = []
+
+    def build_tool_call_update(self, context: PermissionRequestContext) -> ToolCallUpdate:
+        self.contexts.append(context)
+        return ToolCallUpdate(
+            tool_call_id=context.tool_call.tool_call_id,
+            title="Custom Permission",
+            kind="edit",
+            status="pending",
+            raw_input=context.raw_input,
+        )
+
+
+async def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -46,12 +74,10 @@ def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
     client.queue_permission_selected("allow_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -68,8 +94,10 @@ def test_deferred_approval_allow_flow_resumes_run(tmp_path: Path) -> None:
     assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
 
 
-def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+async def test_deferred_approval_deny_flow_returns_denial_output(
+    tmp_path: Path,
+) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -85,12 +113,10 @@ def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> No
     client.queue_permission_selected("reject_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -103,8 +129,8 @@ def test_deferred_approval_deny_flow_returns_denial_output(tmp_path: Path) -> No
     assert agent_message_texts(client) == ['{"dangerous":"The tool call was denied."}']
 
 
-def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
-    agent = Agent(TestModel(call_tools=["dangerous"]))
+async def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -120,12 +146,10 @@ def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
     client.queue_permission_cancelled()
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the dangerous tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "cancelled"
@@ -141,7 +165,7 @@ def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
     assert tool_updates[1].status == "failed"
     assert tool_updates[1].raw_output == "Permission request cancelled."
 
-    stored_session = cast(Any, adapter)._config.session_store.get(new_session_response.session_id)
+    stored_session = cast("Any", adapter)._config.session_store.get(new_session_response.session_id)
     assert stored_session is not None
     message_history = load_message_history(stored_session.message_history_json)
     assert not any(
@@ -158,7 +182,7 @@ def test_deferred_approval_cancel_flow_stops_turn(tmp_path: Path) -> None:
     )
 
 
-def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
+async def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
     tmp_path: Path,
 ) -> None:
     def route_failing_tool(
@@ -175,12 +199,15 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
                                 "dangerous",
                                 {"path": "boom.txt"},
                                 tool_call_id="dangerous-call",
-                            )
-                        ]
+                            ),
+                        ],
                     )
         raise AssertionError("expected the failing tool call to be requested")  # pragma: no cover
 
-    agent = Agent(FunctionModel(route_failing_tool, model_name="failing-tool-model"))
+    agent = Agent(
+        FunctionModel(route_failing_tool, model_name="failing-tool-model"),
+        deps_type=type(None),
+    )
 
     @agent.tool
     def dangerous(ctx: RunContext[None], path: str) -> str:
@@ -194,8 +221,8 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
     client = RecordingClient()
     adapter.on_connect(client)
 
-    session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    stored_session = cast(Any, adapter)._config.session_store.get(session_response.session_id)
+    session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    stored_session = cast("Any", adapter)._config.session_store.get(session_response.session_id)
     assert stored_session is not None
     stored_session.message_history_json = dump_message_history(
         [
@@ -206,23 +233,21 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
                         "dangling_tool",
                         {"path": "a"},
                         tool_call_id="call-1",
-                    )
+                    ),
                 ],
                 model_name="test",
             ),
-        ]
+        ],
     )
-    cast(Any, adapter)._config.session_store.save(stored_session)
+    cast("Any", adapter)._config.session_store.save(stored_session)
 
     with pytest.raises(RuntimeError, match="tool exploded"):
-        asyncio.run(
-            adapter.prompt(
-                prompt=[text_block("Trigger the failing tool.")],
-                session_id=session_response.session_id,
-            )
+        await adapter.prompt(
+            prompt=[text_block("Trigger the failing tool.")],
+            session_id=session_response.session_id,
         )
 
-    updated_session = cast(Any, adapter)._config.session_store.get(session_response.session_id)
+    updated_session = cast("Any", adapter)._config.session_store.get(session_response.session_id)
     assert updated_session is not None
     message_history = load_message_history(updated_session.message_history_json)
     assert not any(
@@ -245,11 +270,11 @@ def test_prompt_error_sanitizes_unprocessed_tool_calls_and_records_traceback(
     )
 
 
-def test_deferred_approval_write_projection_keeps_diff_after_approval(
+async def test_deferred_approval_write_projection_keeps_diff_after_approval(
     tmp_path: Path,
 ) -> None:
     (tmp_path / "a").write_text("before", encoding="utf-8")
-    agent = Agent(TestModel(call_tools=["write_file"]))
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
 
     @agent.tool
     def write_file(ctx: RunContext[None], path: str, content: str) -> str:
@@ -266,12 +291,10 @@ def test_deferred_approval_write_projection_keeps_diff_after_approval(
     client.queue_permission_selected("allow_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the write tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -302,12 +325,304 @@ def test_deferred_approval_write_projection_keeps_diff_after_approval(
     assert tool_progress.status == "completed"
 
 
-def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_changes(
+async def test_deferred_approval_permission_request_uses_projection_content(
+    tmp_path: Path,
+) -> None:
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
+
+    @agent.tool
+    def write_file(ctx: RunContext[None], path: str, content: str) -> str:
+        if not ctx.tool_call_approved:
+            raise ApprovalRequired()
+        return f"approved:{path}"  # pragma: no cover
+
+    adapter = create_acp_agent(
+        agent=agent,
+        config=AdapterConfig(session_store=MemorySessionStore()),
+        projection_maps=[FileSystemProjectionMap(default_write_tool="write_file")],
+    )
+    client = RecordingClient()
+    client.queue_permission_selected("allow_once")
+    adapter.on_connect(client)
+
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=session.session_id,
+    )
+
+    permission_request = client.permission_option_ids[0][2]
+    assert permission_request.status == "pending"
+    assert permission_request.content is not None
+    content = permission_request.content[0]
+    assert isinstance(content, FileEditToolCallContent)
+    assert content.path == "a"
+    assert content.new_text == "a"
+
+
+async def test_native_approval_bridge_uses_custom_builder_store_and_labels(
+    tmp_path: Path,
+) -> None:
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
+
+    @agent.tool
+    def write_file(ctx: RunContext[None], path: str, content: str) -> str:
+        if not ctx.tool_call_approved:
+            raise ApprovalRequired()
+        return f"approved:{path}"  # pragma: no cover
+
+    class Store:
+        def __init__(self) -> None:
+            self.policies: dict[str, ApprovalPolicy] = {}
+            self.get_calls: list[str] = []
+            self.set_calls: list[tuple[str, ApprovalPolicy]] = []
+
+        def get_policy(
+            self,
+            session: AcpSessionContext,
+            policy_key: str,
+        ) -> ApprovalPolicy | None:
+            del session
+            self.get_calls.append(policy_key)
+            return self.policies.get(policy_key)
+
+        def set_policy(
+            self,
+            session: AcpSessionContext,
+            policy_key: str,
+            policy: ApprovalPolicy,
+        ) -> None:
+            del session
+            self.set_calls.append((policy_key, policy))
+            self.policies[policy_key] = policy
+
+        def export_state(self, session: AcpSessionContext) -> dict[str, JsonValue]:
+            del session
+            return dict(self.policies)
+
+    store = Store()
+    builder = _RecordingPermissionBuilder()
+    adapter = create_acp_agent(
+        agent=agent,
+        config=AdapterConfig(
+            approval_bridge=NativeApprovalBridge(
+                enable_persistent_choices=True,
+                option_set=PermissionOptionSet(
+                    allow_once_name="Allow this",
+                    reject_once_name="Deny this",
+                    allow_always_name="Always yes",
+                    reject_always_name="Always no",
+                ),
+                policy_store=store,
+                tool_call_builder=builder,
+            ),
+            session_store=MemorySessionStore(),
+        ),
+    )
+    client = RecordingClient()
+    client.queue_permission_selected("allow_always")
+    adapter.on_connect(client)
+
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=session.session_id,
+    )
+
+    assert client.permission_option_ids[0][1] == [
+        "allow_once",
+        "allow_always",
+        "reject_once",
+        "reject_always",
+    ]
+    assert client.permission_option_names[0][1] == [
+        "Allow this",
+        "Always yes",
+        "Deny this",
+        "Always no",
+    ]
+    assert client.permission_option_ids[0][2].title == "Custom Permission"
+    assert len(builder.contexts) == 1
+    assert store.get_calls == ["write_file"]
+    assert store.set_calls == [("write_file", "allow")]
+    export_session = AcpSessionContext(
+        session_id=session.session_id,
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    assert store.export_state(export_session) == {"write_file": "allow"}
+
+
+async def test_native_approval_bridge_live_policy_lookup_does_not_export_state(
+    tmp_path: Path,
+) -> None:
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
+
+    @agent.tool
+    def dangerous(ctx: RunContext[None], path: str) -> str:
+        if not ctx.tool_call_approved:
+            raise ApprovalRequired()
+        return f"approved:{path}"  # pragma: no cover
+
+    class Store:
+        def __init__(self) -> None:
+            self.get_calls: list[str] = []
+
+        def get_policy(
+            self,
+            session: AcpSessionContext,
+            policy_key: str,
+        ) -> ApprovalPolicy | None:
+            del session
+            self.get_calls.append(policy_key)
+            return "allow"
+
+        def set_policy(
+            self,
+            session: AcpSessionContext,
+            policy_key: str,
+            policy: ApprovalPolicy,
+        ) -> None:  # pragma: no cover
+            del session, policy_key, policy
+            raise AssertionError("remembered policy should not be rewritten")
+
+        def export_state(
+            self,
+            session: AcpSessionContext,
+        ) -> dict[str, JsonValue]:  # pragma: no cover
+            del session
+            raise AssertionError("export_state is metadata-only, not live approval lookup")
+
+    store = Store()
+    adapter = create_acp_agent(
+        agent=agent,
+        config=AdapterConfig(
+            approval_bridge=NativeApprovalBridge(
+                enable_persistent_choices=True,
+                policy_store=store,
+            ),
+            session_store=MemorySessionStore(),
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=session.session_id,
+    )
+
+    assert response.stop_reason == "end_turn"
+    assert store.get_calls == ["dangerous"]
+    assert client.permission_option_ids == []
+    assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
+
+
+def test_session_metadata_approval_policy_store_reads_valid_policy(
+    tmp_path: Path,
+) -> None:
+    session = AcpSessionContext(
+        session_id="approval-store",
+        cwd=tmp_path,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        metadata={"approval_policies": {"write_file": "allow"}},
+    )
+    store = SessionMetadataApprovalPolicyStore()
+
+    assert store.get_policy(session, "write_file") == "allow"
+
+
+async def test_projection_aware_approval_bridge_detection_edges(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class MissingCallable:
+        resolve_deferred_approvals = None
+
+    class VarKeywordBridge:
+        async def resolve_deferred_approvals(self, **kwargs: Any) -> ApprovalResolution:
+            raise AssertionError("not called")
+
+    class SignatureBridge:
+        async def resolve_deferred_approvals(self) -> ApprovalResolution:
+            raise AssertionError("not called")
+
+    assert not supports_projection_aware_approval_bridge(MissingCallable())
+    assert supports_projection_aware_approval_bridge(VarKeywordBridge())
+    with pytest.raises(AssertionError, match="not called"):
+        await VarKeywordBridge().resolve_deferred_approvals()
+
+    def raise_signature_error(value: object) -> object:
+        del value
+        raise ValueError("signature unavailable")
+
+    monkeypatch.setattr(approvals_module, "signature", raise_signature_error)
+    assert not supports_projection_aware_approval_bridge(SignatureBridge())
+    with pytest.raises(AssertionError, match="not called"):
+        await SignatureBridge().resolve_deferred_approvals()
+
+
+async def test_legacy_approval_bridge_without_projection_signature_still_runs(
+    tmp_path: Path,
+) -> None:
+    class LegacyBridge:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def resolve_deferred_approvals(
+            self,
+            *,
+            client: Any,
+            session: AcpSessionContext,
+            requests: DeferredToolRequests,
+            classifier: Any,
+        ) -> ApprovalResolution:
+            del client, session, classifier
+            self.called = True
+            results = DeferredToolResults(metadata=dict(requests.metadata))
+            for tool_call in requests.approvals:
+                results.approvals[tool_call.tool_call_id] = ToolApproved()
+            return ApprovalResolution(deferred_tool_results=results)
+
+    bridge = LegacyBridge()
+    agent = Agent(TestModel(call_tools=["dangerous"]), deps_type=type(None))
+
+    @agent.tool
+    def dangerous(ctx: RunContext[None], path: str) -> str:
+        if not ctx.tool_call_approved:
+            raise ApprovalRequired()
+        return f"approved:{path}"
+
+    adapter = create_acp_agent(
+        agent=agent,
+        config=AdapterConfig(
+            approval_bridge=bridge,
+            session_store=MemorySessionStore(),
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    response = await adapter.prompt(
+        prompt=[text_block("Use the dangerous tool.")],
+        session_id=session.session_id,
+    )
+
+    assert response.stop_reason == "end_turn"
+    assert bridge.called
+    assert client.permission_option_ids == []
+    assert agent_message_texts(client) == ['{"dangerous":"approved:a"}']
+
+
+async def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_changes(
     tmp_path: Path,
 ) -> None:
     target_path = tmp_path / "a"
     target_path.write_text("before", encoding="utf-8")
-    agent = Agent(TestModel(call_tools=["write_file"]))
+    agent = Agent(TestModel(call_tools=["write_file"]), deps_type=type(None))
 
     @agent.tool
     def write_file(ctx: RunContext[None], path: str, content: str) -> str:
@@ -326,12 +641,10 @@ def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_
     client.queue_permission_selected("allow_once")
     adapter.on_connect(client)
 
-    new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    prompt_response = asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Use the write tool.")],
-            session_id=new_session_response.session_id,
-        )
+    new_session_response = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    prompt_response = await adapter.prompt(
+        prompt=[text_block("Use the write tool.")],
+        session_id=new_session_response.session_id,
     )
 
     assert prompt_response.stop_reason == "end_turn"
@@ -361,7 +674,7 @@ def test_deferred_approval_write_projection_preserves_pre_write_diff_after_file_
     assert tool_progress.status == "completed"
 
 
-def test_prompt_without_generic_tool_projection_omits_tool_updates(
+async def test_prompt_without_generic_tool_projection_omits_tool_updates(
     tmp_path: Path,
 ) -> None:
     tool_model = TestModel(call_tools=["read_file"], custom_output_text="projection-disabled")
@@ -381,12 +694,10 @@ def test_prompt_without_generic_tool_projection_omits_tool_updates(
     client = RecordingClient()
     adapter.on_connect(client)
 
-    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
-    asyncio.run(
-        adapter.prompt(
-            prompt=[text_block("Do not emit tool updates.")],
-            session_id=session.session_id,
-        )
+    session = await adapter.new_session(cwd=str(tmp_path), mcp_servers=[])
+    await adapter.prompt(
+        prompt=[text_block("Do not emit tool updates.")],
+        session_id=session.session_id,
     )
 
     assert not any(

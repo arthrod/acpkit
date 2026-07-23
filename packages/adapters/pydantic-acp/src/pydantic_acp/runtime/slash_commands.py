@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, TypeAlias
@@ -24,6 +25,7 @@ from .._slash_commands import (
     HOOKS_COMMAND_NAME,
     MCP_SERVERS_COMMAND_NAME,
     MODEL_COMMAND_NAME,
+    RESERVED_SLASH_COMMAND_NAMES,
     THINKING_COMMAND_NAME,
     TOOLS_COMMAND_NAME,
     validate_mode_command_ids,
@@ -47,10 +49,12 @@ __all__ = (
     "render_model_message",
     "render_thinking_message",
     "render_tool_listing",
+    "validate_custom_commands",
     "validate_mode_command_ids",
 )
 
 _INTERNAL_TOOL_PREFIX = "acp_"
+_COMMAND_NAME_PATTERN = re.compile(r"^[a-z][a-z0-9-]*$")
 ConfigOptionType: TypeAlias = SessionConfigOptionSelect | SessionConfigOptionBoolean
 
 
@@ -80,6 +84,7 @@ def build_available_commands(
     mode_state: SessionModeState | None,
     model_state: SessionModelState | None,
     config_options: Sequence[ConfigOptionType] | None,
+    custom_commands: Sequence[AvailableCommand] | None = None,
 ) -> list[AvailableCommand]:
     commands: list[AvailableCommand] = []
     if mode_state is not None:
@@ -91,9 +96,9 @@ def build_available_commands(
                 name=MODEL_COMMAND_NAME,
                 description="Show the current session model, or set it with a provider:model value.",
                 input=AvailableCommandInput(
-                    root=UnstructuredCommandInput(hint="provider:model or codex:model")
+                    root=UnstructuredCommandInput(hint="provider:model or codex:model"),
                 ),
-            )
+            ),
         )
     if _has_config_option(config_options, THINKING_COMMAND_NAME):
         commands.append(
@@ -101,9 +106,9 @@ def build_available_commands(
                 name=THINKING_COMMAND_NAME,
                 description="Show or set the current thinking effort.",
                 input=AvailableCommandInput(
-                    root=UnstructuredCommandInput(hint="default|off|minimal|low|medium|high|xhigh")
+                    root=UnstructuredCommandInput(hint="default|off|minimal|low|medium|high|xhigh"),
                 ),
-            )
+            ),
         )
     commands.extend(
         [
@@ -119,9 +124,53 @@ def build_available_commands(
                 name=MCP_SERVERS_COMMAND_NAME,
                 description="List MCP servers extracted from the active agent and session metadata.",
             ),
-        ]
+        ],
     )
+    if custom_commands:
+        validate_custom_commands(custom_commands, mode_state=mode_state)
+        commands.extend(custom_commands)
     return commands
+
+
+def validate_custom_commands(
+    commands: Sequence[AvailableCommand],
+    *,
+    mode_state: SessionModeState | None,
+) -> None:
+    normalized_names: list[str] = []
+    for command in commands:
+        normalized_name = command.name.strip().lower()
+        if command.name != normalized_name:
+            raise ValueError(
+                f"Slash command name {command.name!r} must already be normalized as "
+                "a lowercase slash command id.",
+            )
+        if not _COMMAND_NAME_PATTERN.fullmatch(normalized_name):
+            raise ValueError(f"Slash command name {command.name!r} must match ^[a-z][a-z0-9-]*$.")
+        normalized_names.append(normalized_name)
+    duplicate_names = sorted(
+        name for name in set(normalized_names) if normalized_names.count(name) > 1
+    )
+    if duplicate_names:
+        raise ValueError(
+            "Custom slash command names must be unique after normalization. "
+            f"Duplicate ids: {', '.join(duplicate_names)}.",
+        )
+    reserved_names = sorted(set(normalized_names) & RESERVED_SLASH_COMMAND_NAMES)
+    if reserved_names:
+        raise ValueError(
+            "Custom slash command names cannot reuse reserved slash command names "
+            f"({', '.join(reserved_names)}).",
+        )
+    if mode_state is None:
+        return
+    mode_ids = {mode.id.strip().lower() for mode in mode_state.available_modes}
+    conflicting_mode_ids = sorted(set(normalized_names) & mode_ids)
+    if conflicting_mode_ids:
+        raise ValueError(
+            "Custom slash command names cannot reuse active mode ids "
+            f"({', '.join(conflicting_mode_ids)}).",
+        )
 
 
 def _mode_commands(modes: Sequence[SessionMode]) -> list[AvailableCommand]:
@@ -194,7 +243,7 @@ def list_agent_tools(agent: PydanticAgent[Any, Any]) -> list[ToolInfo]:
                 name=name,
                 description=description,
                 requires_approval=tool.requires_approval,
-            )
+            ),
         )
     return tool_infos
 
@@ -310,7 +359,7 @@ def render_mcp_server_listing(server_infos: list[McpServerInfo]) -> str:
     for server_info in server_infos:
         lines.append(
             f"- {server_info.name} ({server_info.transport}, {server_info.source}): "
-            f"{server_info.target}"
+            f"{server_info.target}",
         )
     return "\n".join(lines)
 
@@ -390,6 +439,9 @@ def _iter_mcp_server_infos(toolset: Any) -> list[McpServerInfo]:
     if _is_mcp_server_http(toolset):
         server_info = _mcp_server_info_from_http_toolset(toolset)
         return [server_info] if server_info is not None else []
+    if _is_mcp_toolset(toolset):
+        server_info = _mcp_server_info_from_mcp_toolset(toolset)
+        return [server_info] if server_info is not None else []
     return []
 
 
@@ -441,6 +493,48 @@ def _mcp_server_info_from_http_toolset(toolset: Any) -> McpServerInfo | None:
         target=target,
         source="agent",
     )
+
+
+def _is_mcp_toolset(toolset: Any) -> bool:
+    return type(toolset).__module__ == "pydantic_ai.mcp" and type(toolset).__name__ == "MCPToolset"
+
+
+def _mcp_server_info_from_mcp_toolset(toolset: Any) -> McpServerInfo | None:
+    client = getattr(toolset, "client", None)
+    if client is None:
+        return None
+    transport, target = _mcp_target_from_client(client)
+    return McpServerInfo(
+        name=_toolset_name(toolset, fallback=target),
+        transport=transport,
+        target=target,
+        source="agent",
+    )
+
+
+def _mcp_target_from_client(client: Any) -> tuple[str, str]:
+    transport_obj = getattr(client, "transport", None)
+    if transport_obj is not None:
+        url = getattr(transport_obj, "url", None)
+        if isinstance(url, str) and url:
+            transport_name = type(transport_obj).__name__.lower()
+            if "sse" in transport_name:
+                return "sse", url
+            return "http", url
+        command = getattr(transport_obj, "command", None)
+        if isinstance(command, str) and command:
+            args = getattr(transport_obj, "args", None)
+            rendered_args = (
+                " ".join(item for item in args if isinstance(item, str))
+                if isinstance(args, list)
+                else ""
+            )
+            target = command if not rendered_args else f"{command} {rendered_args}"
+            return "stdio", target
+    url = getattr(client, "url", None)
+    if isinstance(url, str) and url:
+        return "http", url
+    return "http", "<mcp>"
 
 
 def _toolset_name(toolset: Any, *, fallback: str) -> str:

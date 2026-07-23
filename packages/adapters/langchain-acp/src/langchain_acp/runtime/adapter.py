@@ -1,5 +1,6 @@
 from __future__ import annotations as _annotations
 
+import asyncio
 import json
 from collections.abc import Iterable
 from inspect import isawaitable
@@ -14,7 +15,10 @@ from acp.schema import (
     AgentCapabilities,
     AgentMessageChunk,
     AgentPlanUpdate,
+    AvailableCommandsUpdate,
     CloseSessionResponse,
+    ConfigOptionUpdate,
+    CurrentModeUpdate,
     ForkSessionResponse,
     HttpMcpServer,
     Implementation,
@@ -53,7 +57,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.types import Command
 from pydantic import BaseModel, ValidationError
 
-from ..approvals import ApprovalBridge
+from ..approvals import ApprovalBridge, supports_projection_aware_approval_bridge
 from ..bridge_manager import BridgeManager
 from ..builders import GraphBridgeBuilder
 from ..config import AdapterConfig
@@ -70,9 +74,23 @@ from ..projection import (
 from ..providers import ConfigOption, ModelSelectionState, ModeState
 from ..session.state import AcpSessionContext, JsonValue, StoredSessionUpdate, utc_now
 from ..session.store import SessionStore
+from ..slash import SlashCommandRequest, SlashCommandResult
 from ..types import AgentPromptBlock
 from ._native_plan_runtime import _NativePlanRuntime
 from ._prompt_conversion import message_text, prompt_to_langchain_content
+from .slash_commands import (
+    MCP_SERVERS_COMMAND_NAME,
+    MODEL_COMMAND_NAME,
+    TOOLS_COMMAND_NAME,
+    build_available_commands,
+    extract_session_mcp_servers,
+    list_graph_tools,
+    parse_slash_command,
+    render_mcp_server_listing,
+    render_mode_message,
+    render_model_message,
+    render_tool_listing,
+)
 
 __all__ = ("LangChainAcpAgent",)
 
@@ -86,13 +104,14 @@ class LangChainAcpAgent(AcpAgent):
         self._native_plan_runtime = _NativePlanRuntime(self)
         self._projection_map: ProjectionMap | None = compose_projection_maps(config.projection_maps)
         self._event_projection_map: EventProjectionMap | None = compose_event_projection_maps(
-            config.event_projection_maps
+            config.event_projection_maps,
         )
         self._graph_bridge_builder = GraphBridgeBuilder.from_config(config)
         self._bridge_manager: BridgeManager = self._graph_bridge_builder.build_manager()
         self._tool_classifier: ToolClassifier = self._bridge_manager.tool_classifier
         self._client: AcpClient | None = None
         self._cancelled_sessions: set[str] = set()
+        self._active_prompt_tasks: dict[str, asyncio.Task[Any]] = {}
 
     async def initialize(
         self,
@@ -113,9 +132,9 @@ class LangChainAcpAgent(AcpAgent):
                 load_session=True,
                 mcp_capabilities=McpCapabilities(http=True, sse=True),
                 prompt_capabilities=PromptCapabilities(
-                    audio=True,
-                    embedded_context=True,
-                    image=True,
+                    audio=self._config.prompt_capabilities.audio,
+                    embedded_context=self._config.prompt_capabilities.embedded_context,
+                    image=self._config.prompt_capabilities.image,
                 ),
                 session_capabilities=SessionCapabilities(
                     close=SessionCloseCapabilities(),
@@ -149,6 +168,7 @@ class LangChainAcpAgent(AcpAgent):
         session.session_mode_id = await self._initial_mode_id(session)
         self._sync_bridge_metadata(session)
         self._store.save(session)
+        await self._emit_available_commands(session=session)
         return NewSessionResponse(
             session_id=session_id,
             config_options=await self._config_options(session),
@@ -168,10 +188,11 @@ class LangChainAcpAgent(AcpAgent):
         if session is None:
             return None
         session.cwd = Path(cwd)
-        session.mcp_servers = self._serialize_mcp_servers(mcp_servers)
+        self._update_session_mcp_servers(session, mcp_servers)
         self._sync_bridge_metadata(session)
         await self._replay_transcript(session)
         await self._drain_bridge_updates(client=self._client, session=session)
+        await self._emit_available_commands(session=session)
         session.updated_at = utc_now()
         self._store.save(session)
         return LoadSessionResponse(
@@ -199,7 +220,7 @@ class LangChainAcpAgent(AcpAgent):
                     updated_at=session.updated_at.isoformat(),
                 )
                 for session in sessions
-            ]
+            ],
         )
 
     async def set_session_mode(
@@ -262,7 +283,7 @@ class LangChainAcpAgent(AcpAgent):
         else:
             session.config_values[config_id] = value
             provider_options = await self._await_maybe(
-                self._bridge_manager.set_config_option(session, config_id, value)
+                self._bridge_manager.set_config_option(session, config_id, value),
             )
             if provider_options is not None:
                 self._sync_bridge_metadata(session)
@@ -270,7 +291,7 @@ class LangChainAcpAgent(AcpAgent):
                 session.updated_at = utc_now()
                 self._store.save(session)
                 return SetSessionConfigOptionResponse(
-                    config_options=await self._config_options(session)
+                    config_options=await self._config_options(session),
                 )
         self._sync_bridge_metadata(session)
         await self._drain_bridge_updates(client=self._client, session=session)
@@ -286,14 +307,51 @@ class LangChainAcpAgent(AcpAgent):
         **kwargs: Any,
     ) -> PromptResponse:
         del kwargs
+        current_task = cast("asyncio.Task[Any]", asyncio.current_task())
+        self._active_prompt_tasks[session_id] = current_task
+        try:
+            return await self._execute_prompt(
+                prompt=prompt,
+                session_id=session_id,
+                message_id=message_id,
+            )
+        except asyncio.CancelledError:
+            if session_id not in self._cancelled_sessions:
+                raise
+            current_task.uncancel()
+            self._cancelled_sessions.discard(session_id)
+            return PromptResponse(stop_reason="cancelled", user_message_id=message_id)
+        finally:
+            active_task = self._active_prompt_tasks.get(session_id)
+            if active_task is current_task:
+                self._active_prompt_tasks.pop(session_id, None)
+
+    async def _execute_prompt(
+        self,
+        *,
+        prompt: list[AgentPromptBlock],
+        session_id: str,
+        message_id: str | None,
+    ) -> PromptResponse:
         session = self._require_session(session_id)
         client = self._require_client()
         self._sync_bridge_metadata(session)
         graph = await self._graph_source.get_graph(session)
         graph = self._ensure_checkpointer(graph)
+        slash_response = await self._maybe_handle_slash_prompt(
+            session=session,
+            graph=graph,
+            prompt=prompt,
+            acknowledged_message_id=message_id,
+        )
+        if slash_response is not None:
+            return slash_response
         await self._drain_bridge_updates(client=client, session=session)
         await self._emit_user_prompt(
-            client=client, session=session, prompt=prompt, message_id=message_id
+            client=client,
+            session=session,
+            prompt=prompt,
+            message_id=message_id,
         )
         active_tool_calls: dict[str, dict[str, Any]] = {}
         tool_call_accumulator: dict[int, dict[str, str | int | None]] = {}
@@ -315,8 +373,8 @@ class LangChainAcpAgent(AcpAgent):
                             {
                                 "role": "user",
                                 "content": prompt_to_langchain_content(prompt),
-                            }
-                        ]
+                            },
+                        ],
                     }
 
                 should_resume = False
@@ -375,9 +433,10 @@ class LangChainAcpAgent(AcpAgent):
         forked = self._store.fork(session_id, new_session_id=new_session_id, cwd=Path(cwd))
         if forked is None:
             raise RequestError.resource_not_found(f"session:{session_id}")
-        forked.mcp_servers = self._serialize_mcp_servers(mcp_servers)
+        self._update_session_mcp_servers(forked, mcp_servers)
         self._sync_bridge_metadata(forked)
         self._store.save(forked)
+        await self._emit_available_commands(session=forked)
         return ForkSessionResponse(
             session_id=new_session_id,
             config_options=await self._config_options(forked),
@@ -395,10 +454,11 @@ class LangChainAcpAgent(AcpAgent):
         del kwargs
         session = self._require_session(session_id)
         session.cwd = Path(cwd)
-        session.mcp_servers = self._serialize_mcp_servers(mcp_servers)
+        self._update_session_mcp_servers(session, mcp_servers)
         self._sync_bridge_metadata(session)
         await self._replay_transcript(session)
         await self._drain_bridge_updates(client=self._client, session=session)
+        await self._emit_available_commands(session=session)
         session.updated_at = utc_now()
         self._store.save(session)
         return ResumeSessionResponse(
@@ -415,10 +475,12 @@ class LangChainAcpAgent(AcpAgent):
     async def cancel(self, session_id: str, **kwargs: Any) -> None:
         del kwargs
         self._cancelled_sessions.add(session_id)
+        active_task = self._active_prompt_tasks.get(session_id)
+        if active_task is not None:
+            active_task.cancel()
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> None:
         del method_id, kwargs
-        return None
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         del params
@@ -430,6 +492,192 @@ class LangChainAcpAgent(AcpAgent):
 
     def on_connect(self, conn: AcpClient) -> None:
         self._client = conn
+
+    async def _maybe_handle_slash_prompt(
+        self,
+        *,
+        session: AcpSessionContext,
+        graph: Any,
+        prompt: list[AgentPromptBlock],
+        acknowledged_message_id: str | None,
+    ) -> PromptResponse | None:
+        prompt_text = self._prompt_text(prompt)
+        if prompt_text is None:
+            return None
+        slash_command = parse_slash_command(prompt_text)
+        if slash_command is None:
+            return None
+        builtin_text = await self._handle_builtin_slash_command(
+            session=session,
+            graph=graph,
+            command_name=slash_command.name,
+            argument=slash_command.argument,
+        )
+        if builtin_text is not None:
+            await self._emit_agent_text(
+                client=self._require_client(),
+                session=session,
+                text=builtin_text,
+                message_id=acknowledged_message_id,
+            )
+            await self._emit_available_commands(session=session, graph=graph)
+            return PromptResponse(
+                stop_reason="end_turn",
+                user_message_id=acknowledged_message_id,
+            )
+        slash_provider = self._config.slash_command_provider
+        if slash_provider is None:
+            return None
+        result = await self._await_maybe(
+            slash_provider.handle_command(
+                SlashCommandRequest(
+                    name=slash_command.name,
+                    argument=slash_command.argument,
+                    raw_prompt=prompt_text,
+                    session=session,
+                    graph=graph,
+                ),
+            ),
+        )
+        if result is None or not result.handled:
+            return None
+        return await self._emit_custom_slash_command_response(
+            session=session,
+            graph=graph,
+            result=result,
+            acknowledged_message_id=acknowledged_message_id,
+        )
+
+    def _prompt_text(self, prompt: list[AgentPromptBlock]) -> str | None:
+        parts: list[str] = []
+        for block in prompt:
+            if isinstance(block, TextContentBlock):
+                parts.append(block.text)
+        if not parts:
+            return None
+        return "\n".join(parts)
+
+    async def _handle_builtin_slash_command(
+        self,
+        *,
+        session: AcpSessionContext,
+        graph: Any,
+        command_name: str,
+        argument: str | None,
+    ) -> str | None:
+        mode_state = await self._mode_state(session)
+        if mode_state is not None:
+            for mode in mode_state.available_modes:
+                if mode.id.strip().lower() != command_name:
+                    continue
+                resolved_mode = await self._set_mode(session, mode.id)
+                if resolved_mode is None:
+                    return "Mode is unavailable or invalid"
+                current_mode_id = resolved_mode.current_mode_id
+                if current_mode_id is None:
+                    return "Mode is unavailable or invalid"
+                await self._emit_update(
+                    client=self._require_client(),
+                    session=session,
+                    update=CurrentModeUpdate(
+                        current_mode_id=current_mode_id,
+                        session_update="current_mode_update",
+                    ),
+                )
+                await self._emit_update(
+                    client=self._require_client(),
+                    session=session,
+                    update=ConfigOptionUpdate(
+                        session_update="config_option_update",
+                        config_options=await self._config_options(session),
+                    ),
+                )
+                return render_mode_message(current_mode_id)
+        if command_name == MODEL_COMMAND_NAME:
+            if argument is None:
+                return render_model_message(session.session_model_id)
+            resolved_model = await self._set_model(session, argument)
+            if resolved_model is None:
+                return "Model is unavailable or invalid"
+            await self._emit_update(
+                client=self._require_client(),
+                session=session,
+                update=ConfigOptionUpdate(
+                    session_update="config_option_update",
+                    config_options=await self._config_options(session),
+                ),
+            )
+            return render_model_message(resolved_model.current_model_id)
+        if command_name == TOOLS_COMMAND_NAME:
+            return render_tool_listing(list_graph_tools(graph))
+        if command_name == MCP_SERVERS_COMMAND_NAME:
+            return render_mcp_server_listing(extract_session_mcp_servers(session))
+        return None
+
+    async def _emit_custom_slash_command_response(
+        self,
+        *,
+        session: AcpSessionContext,
+        graph: Any,
+        result: SlashCommandResult,
+        acknowledged_message_id: str | None,
+    ) -> PromptResponse:
+        client = self._require_client()
+        if result.text is not None:
+            await self._emit_agent_text(
+                client=client,
+                session=session,
+                text=result.text,
+                message_id=acknowledged_message_id,
+            )
+        for update in result.updates:
+            await self._emit_update(client=client, session=session, update=update)
+        if result.refresh_session_surface:
+            await self._emit_available_commands(session=session, graph=graph)
+        return PromptResponse(
+            stop_reason=result.stop_reason,
+            user_message_id=acknowledged_message_id,
+        )
+
+    async def _emit_available_commands(
+        self,
+        *,
+        session: AcpSessionContext,
+        graph: Any | None = None,
+    ) -> None:
+        client = self._client
+        if client is None:
+            return
+        active_graph = graph
+        if active_graph is None:
+            active_graph = self._ensure_checkpointer(await self._graph_source.get_graph(session))
+        available_commands = await self._available_commands(session=session, graph=active_graph)
+        await client.session_update(
+            session_id=session.session_id,
+            update=AvailableCommandsUpdate(
+                session_update="available_commands_update",
+                available_commands=available_commands,
+            ),
+        )
+
+    async def _available_commands(
+        self,
+        *,
+        session: AcpSessionContext,
+        graph: Any,
+    ) -> list[Any]:
+        mode_state = await self._mode_state(session)
+        model_state = await self._model_state(session)
+        custom_commands = None
+        if self._config.slash_command_provider is not None:
+            custom_commands = await self._await_maybe(
+                self._config.slash_command_provider.available_commands(session, graph),
+            )
+        return build_available_commands(
+            mode_state=mode_state,
+            model_state=model_state,
+            custom_commands=custom_commands,
+        )
 
     async def _emit_user_prompt(
         self,
@@ -480,6 +728,7 @@ class LangChainAcpAgent(AcpAgent):
                 session=session,
                 message_chunk=message_chunk,
                 active_tool_calls=active_tool_calls,
+                tool_call_accumulator=tool_call_accumulator,
             )
             return
 
@@ -525,12 +774,14 @@ class LangChainAcpAgent(AcpAgent):
             if isinstance(tool_name, str):
                 state["name"] = tool_name
             if isinstance(args_fragment, str):
-                state["args"] = f"{cast(str, state['args'])}{args_fragment}"
-            resolved_id = cast(str | None, state["id"])
-            resolved_name = cast(str | None, state["name"])
+                state["args"] = f"{cast('str', state['args'])}{args_fragment}"
+            resolved_id = cast("str | None", state["id"])
+            resolved_name = cast("str | None", state["name"])
             if resolved_id is None or resolved_name is None or resolved_id in active_tool_calls:
                 continue
-            raw_input = self._parse_json_object(cast(str, state["args"]))
+            raw_input = self._try_parse_json_object(cast("str", state["args"]))
+            if raw_input is None:
+                continue
             update = build_tool_start_update(
                 tool_call_id=resolved_id,
                 tool_name=resolved_name,
@@ -543,6 +794,7 @@ class LangChainAcpAgent(AcpAgent):
                 "tool_name": resolved_name,
                 "raw_input": raw_input,
             }
+            tool_call_accumulator.pop(index, None)
             await self._emit_update(client=client, session=session, update=update)
 
     async def _handle_tool_message(
@@ -552,12 +804,54 @@ class LangChainAcpAgent(AcpAgent):
         session: AcpSessionContext,
         message_chunk: ToolMessage,
         active_tool_calls: dict[str, dict[str, Any]],
+        tool_call_accumulator: dict[int, dict[str, str | int | None]] | None = None,
     ) -> None:
         tool_call_id = getattr(message_chunk, "tool_call_id", None)
         if not isinstance(tool_call_id, str):
             return
-        active_tool = active_tool_calls.get(tool_call_id, {})
-        tool_name = cast(str, active_tool.get("tool_name", getattr(message_chunk, "name", "tool")))
+        active_tool = active_tool_calls.get(tool_call_id)
+        if active_tool is None:
+            pending_index: int | None = None
+            pending_state: dict[str, str | int | None] | None = None
+            for index, state in (tool_call_accumulator or {}).items():
+                if state["id"] == tool_call_id:
+                    pending_index = index
+                    pending_state = state
+                    break
+            pending_name = pending_state["name"] if pending_state is not None else None
+            message_name = getattr(message_chunk, "name", None)
+            tool_name = (
+                pending_name
+                if isinstance(pending_name, str) and pending_name
+                else (message_name if isinstance(message_name, str) and message_name else "tool")
+            )
+            pending_args = pending_state["args"] if pending_state is not None else ""
+            raw_input = (
+                self._try_parse_json_object(pending_args)
+                if isinstance(pending_args, str) and pending_args
+                else {}
+            )
+            active_tool = {
+                "tool_name": tool_name,
+                "raw_input": raw_input,
+            }
+            active_tool_calls[tool_call_id] = active_tool
+            if pending_index is not None and tool_call_accumulator is not None:
+                tool_call_accumulator.pop(pending_index, None)
+            await self._emit_update(
+                client=client,
+                session=session,
+                update=build_tool_start_update(
+                    tool_call_id=tool_call_id,
+                    tool_name=tool_name,
+                    classifier=self._tool_classifier,
+                    raw_input=raw_input,
+                    cwd=session.cwd,
+                    projection_map=self._projection_map,
+                ),
+            )
+        tool_name_value = active_tool.get("tool_name")
+        tool_name = tool_name_value if isinstance(tool_name_value, str) else "tool"
         raw_input = active_tool.get("raw_input")
         raw_output = self._projectable_raw_output(message_chunk.content)
         serialized_output = self._config.output_serializer.serialize(raw_output)
@@ -607,7 +901,7 @@ class LangChainAcpAgent(AcpAgent):
             )
         await self._emit_projected_events(client=client, session=session, payload=payload)
         for update in payload.values():
-            plan_entries = self._bridge_manager.extract_plan_entries(cast(JsonValue, update))
+            plan_entries = self._bridge_manager.extract_plan_entries(cast("JsonValue", update))
             if plan_entries is not None:
                 await self._emit_plan_update(client=client, session=session, entries=plan_entries)
         return None
@@ -621,11 +915,11 @@ class LangChainAcpAgent(AcpAgent):
     ) -> None:
         if self._event_projection_map is None:
             return
-        candidates: list[JsonValue] = [cast(JsonValue, payload)]
+        candidates: list[JsonValue] = [cast("JsonValue", payload)]
         seen_ids: set[int] = {id(payload)}
         for value in payload.values():
             if isinstance(value, dict) and id(value) not in seen_ids:
-                candidates.append(cast(JsonValue, value))
+                candidates.append(cast("JsonValue", value))
                 seen_ids.add(id(value))
         for candidate in candidates:
             projected_updates = self._event_projection_map.project_event_payload(candidate)
@@ -652,13 +946,23 @@ class LangChainAcpAgent(AcpAgent):
             review_configs = interrupt_value.get("review_configs")
             if not isinstance(action_requests, list) or not isinstance(review_configs, list):
                 raise RequestError.invalid_request({"interrupt_value": interrupt_value})
-            resolution = await self._approval_bridge.resolve_action_requests(
-                client=client,
-                session=session,
-                action_requests=cast(list[dict[str, Any]], action_requests),
-                review_configs=cast(list[dict[str, Any]], review_configs),
-                classifier=self._tool_classifier,
-            )
+            if supports_projection_aware_approval_bridge(self._approval_bridge):
+                resolution = await self._approval_bridge.resolve_action_requests(
+                    client=client,
+                    session=session,
+                    action_requests=cast("list[dict[str, Any]]", action_requests),
+                    review_configs=cast("list[dict[str, Any]]", review_configs),
+                    classifier=self._tool_classifier,
+                    projection_map=self._projection_map,
+                )
+            else:
+                resolution = await self._approval_bridge.resolve_action_requests(
+                    client=client,
+                    session=session,
+                    action_requests=cast("list[dict[str, Any]]", action_requests),
+                    review_configs=cast("list[dict[str, Any]]", review_configs),
+                    classifier=self._tool_classifier,
+                )
             if resolution.cancelled:
                 raise RequestError.invalid_request({"reason": "Prompt cancelled during approval."})
             decisions.extend(resolution.decisions)
@@ -735,13 +1039,16 @@ class LangChainAcpAgent(AcpAgent):
             )
 
     def _parse_json_object(self, value: str) -> dict[str, Any]:
+        return self._try_parse_json_object(value) or {}
+
+    def _try_parse_json_object(self, value: str) -> dict[str, Any] | None:
         if not value:
-            return {}
+            return None
         try:
             parsed = json.loads(value)
         except json.JSONDecodeError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
+            return None
+        return parsed if isinstance(parsed, dict) else None
 
     def _projectable_raw_output(self, value: Any) -> Any:
         if not isinstance(value, str):
@@ -768,7 +1075,7 @@ class LangChainAcpAgent(AcpAgent):
                             SessionConfigSelectOption(name=mode.name, value=mode.id)
                             for mode in mode_state.modes
                         ],
-                    )
+                    ),
                 )
         model_state = await self._resolved_model_selection_state(session)
         if model_state is not None and model_state.enable_config_option:
@@ -784,7 +1091,7 @@ class LangChainAcpAgent(AcpAgent):
                             SessionConfigSelectOption(name=model.name, value=model.model_id)
                             for model in model_state.available_models
                         ],
-                    )
+                    ),
                 )
         bridge_options = await self._await_maybe(self._bridge_manager.get_config_options(session))
         if bridge_options is not None:
@@ -851,11 +1158,20 @@ class LangChainAcpAgent(AcpAgent):
             return []
         return [
             cast(
-                dict[str, JsonValue],
+                "dict[str, JsonValue]",
                 server.model_dump(mode="json", by_alias=True, exclude_none=True),
             )
             for server in mcp_servers
         ]
+
+    def _update_session_mcp_servers(
+        self,
+        session: AcpSessionContext,
+        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None,
+    ) -> None:
+        if mcp_servers is None:
+            return
+        session.mcp_servers = self._serialize_mcp_servers(mcp_servers)
 
     def _derive_title(self, prompt: Iterable[AgentPromptBlock]) -> str | None:
         for block in prompt:
@@ -875,7 +1191,8 @@ class LangChainAcpAgent(AcpAgent):
         return builder.compile(checkpointer=MemorySaver(), name=getattr(graph, "name", None))
 
     async def _resolved_model_selection_state(
-        self, session: AcpSessionContext
+        self,
+        session: AcpSessionContext,
     ) -> ModelSelectionState | None:
         return await self._await_maybe(self._bridge_manager.get_model_state(session))
 
@@ -895,7 +1212,9 @@ class LangChainAcpAgent(AcpAgent):
         return mode_state.current_mode_id
 
     async def _set_model(
-        self, session: AcpSessionContext, model_id: str
+        self,
+        session: AcpSessionContext,
+        model_id: str,
     ) -> ModelSelectionState | None:
         return await self._await_maybe(self._bridge_manager.set_model(session, model_id))
 

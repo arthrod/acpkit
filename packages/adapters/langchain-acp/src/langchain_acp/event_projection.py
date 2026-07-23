@@ -90,18 +90,18 @@ def _extract_event_payloads(
         projected_payloads: list[dict[str, JsonValue]] = []
         for item in payload:
             if _is_string_keyed_json_object(item):
-                projected_payloads.append(cast(dict[str, JsonValue], item))
+                projected_payloads.append(cast("dict[str, JsonValue]", item))
         return tuple(projected_payloads) or None
     if not _is_string_keyed_json_object(payload):
         return None
-    payload_object = cast(dict[str, JsonValue], payload)
+    payload_object = cast("dict[str, JsonValue]", payload)
     for key in event_keys:
         candidate = payload_object.get(key)
         if isinstance(candidate, list):
             nested_payloads: list[dict[str, JsonValue]] = []
             for item in candidate:
                 if _is_string_keyed_json_object(item):
-                    nested_payloads.append(cast(dict[str, JsonValue], item))
+                    nested_payloads.append(cast("dict[str, JsonValue]", item))
             return tuple(nested_payloads) or None
     if _resolve_session_update_kind(payload_object) is not None:
         return (payload_object,)
@@ -144,8 +144,8 @@ def _event_payload_to_update(
             normalized["content"] = [
                 ContentToolCallContent(
                     type="content",
-                    content=TextContentBlock(type="text", text=cast(str, normalized["content"])),
-                ).model_dump(mode="json", by_alias=True)
+                    content=TextContentBlock(type="text", text=cast("str", normalized["content"])),
+                ).model_dump(mode="json", by_alias=True),
             ]
         try:
             return ToolCallProgress.model_validate(normalized)

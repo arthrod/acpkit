@@ -19,7 +19,7 @@ _T = TypeVar("_T")
 
 async def _resolve_bridge_value(value: _T | Awaitable[_T]) -> _T:
     if isawaitable(value):
-        return await cast(Awaitable[_T], value)
+        return await cast("Awaitable[_T]", value)
     return value
 
 
@@ -109,7 +109,7 @@ class BridgeManager:
     ) -> list[ConfigOption] | None:
         for bridge in self.bridges:
             options = await _resolve_bridge_value(
-                bridge.set_config_option(session, config_id, value)
+                bridge.set_config_option(session, config_id, value),
             )
             if options is not None:
                 return options

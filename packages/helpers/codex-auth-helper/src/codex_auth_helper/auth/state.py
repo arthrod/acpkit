@@ -87,7 +87,10 @@ def _extract_account_id_from_claims(claims: Mapping[str, JsonValue]) -> str | No
 
 
 def _extract_account_id(
-    *, access_token: str, account_id: str | None, id_token: str | None
+    *,
+    access_token: str,
+    account_id: str | None,
+    id_token: str | None,
 ) -> str | None:
     if account_id is not None:
         return account_id

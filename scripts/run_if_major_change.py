@@ -23,7 +23,7 @@ MAJOR_EXACT_PATHS: Final[frozenset[str]] = frozenset(
         "Makefile",
         ".pre-commit-config.yaml",
         "uv.lock",
-    }
+    },
 )
 
 
@@ -36,7 +36,7 @@ class ChangeSelection:
 
 def _parse_args() -> tuple[HookStage, list[str]]:
     parser = argparse.ArgumentParser(
-        description="Run an expensive command only when the staged change set is major."
+        description="Run an expensive command only when the staged change set is major.",
     )
     parser.add_argument(
         "--stage",
@@ -99,7 +99,7 @@ def _print_skip_message(selection: ChangeSelection, command: list[str]) -> None:
         return
     print(
         f"Skipping {' '.join(command)}: no major staged changes "
-        f"among {len(selection.changed_files)} staged file(s)."
+        f"among {len(selection.changed_files)} staged file(s).",
     )
 
 

@@ -70,12 +70,14 @@ class _SessionModelRuntime(Generic[AgentDepsT, OutputDataT]):
         if command_name == "thinking":
             if argument is None:
                 return render_thinking_message(
-                    self._runtime._current_thinking_value(session, agent)
+                    self._runtime._current_thinking_value(session, agent),
                 )
             normalized_argument = argument.strip().lower()
             if (
                 await self._runtime.set_config_option(
-                    "thinking", session.session_id, normalized_argument
+                    "thinking",
+                    session.session_id,
+                    normalized_argument,
                 )
                 is None
             ):
@@ -183,5 +185,11 @@ class _SessionModelRuntime(Generic[AgentDepsT, OutputDataT]):
                 from codex_auth_helper import create_codex_responses_model
             except ImportError as exc:
                 raise RequestError.invalid_params({"modelId": normalized_model_id}) from exc
-            return create_codex_responses_model(codex_model_id)
+            return create_codex_responses_model(
+                codex_model_id,
+                instructions=(
+                    "Follow the agent instructions already present in the request context "
+                    "and answer consistently with the selected Codex model."
+                ),
+            )
         return normalized_model_id

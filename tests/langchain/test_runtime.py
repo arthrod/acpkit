@@ -10,8 +10,12 @@ from acp.interfaces import Client as AcpClient
 from acp.schema import (
     AgentPlanUpdate,
     AudioContentBlock,
+    AvailableCommand,
+    AvailableCommandsUpdate,
     BlobResourceContents,
+    ConfigOptionUpdate,
     ContentToolCallContent,
+    CurrentModeUpdate,
     EmbeddedResourceContentBlock,
     ModelInfo,
     PlanEntry,
@@ -21,25 +25,32 @@ from acp.schema import (
     SessionMode,
     TerminalToolCallContent,
     TextResourceContents,
+    ToolCallLocation,
 )
+from deepagents import create_deep_agent
 from langchain.agents import create_agent
 from langchain.agents.middleware import HumanInTheLoopMiddleware
 from langchain_acp import (
     AdapterConfig,
+    AdapterPromptCapabilities,
     BrowserProjectionMap,
     CapabilityBridge,
     CommandProjectionMap,
     CommunityFileManagementProjectionMap,
+    DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     FileSystemProjectionMap,
     FinanceProjectionMap,
     HttpRequestProjectionMap,
+    StaticSlashCommand,
+    StaticSlashCommandProvider,
     StructuredEventProjectionMap,
     WebSearchProjectionMap,
     create_acp_agent,
     native_plan_tools,
 )
 from langchain_acp.providers import ModelSelectionState, ModeState
+from langchain_acp.slash import SlashCommandResult
 from langchain_core.messages import AIMessage
 from langgraph.graph import START, StateGraph
 
@@ -70,12 +81,12 @@ def test_langchain_acp_streams_tool_projection_and_text(tmp_path) -> None:
                             "args": {"path": "notes.txt"},
                             "id": "tool-1",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Done reading."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(model=fake_model, tools=[read_file], name="reader")
     adapter = create_acp_agent(
@@ -83,15 +94,15 @@ def test_langchain_acp_streams_tool_projection_and_text(tmp_path) -> None:
         config=AdapterConfig(
             projection_maps=[
                 FileSystemProjectionMap(read_tool_names=frozenset({"read_file"})),
-            ]
+            ],
         ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("read notes.txt")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("read notes.txt")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -109,6 +120,112 @@ def test_langchain_acp_streams_tool_projection_and_text(tmp_path) -> None:
     assert agent_message_texts(client) == ["Done reading."]
 
 
+def test_langchain_acp_initialize_uses_configured_prompt_capabilities() -> None:
+    graph = create_agent(
+        model=GenericFakeChatModel(messages=iter([])),
+        tools=[],
+        name="caps",
+    )
+    adapter = create_acp_agent(
+        graph=graph,
+        config=AdapterConfig(
+            prompt_capabilities=AdapterPromptCapabilities(
+                audio=False,
+                image=False,
+                embedded_context=True,
+            ),
+        ),
+    )
+
+    response = asyncio.run(adapter.initialize(protocol_version=1))
+    assert response.agent_capabilities is not None
+    assert response.agent_capabilities.prompt_capabilities is not None
+
+    assert response.agent_capabilities.prompt_capabilities.audio is False
+    assert response.agent_capabilities.prompt_capabilities.image is False
+    assert response.agent_capabilities.prompt_capabilities.embedded_context is True
+
+
+def test_langchain_acp_slash_commands_emit_surface_updates_and_skip_graph(
+    tmp_path,
+) -> None:
+    def read_file(path: str) -> str:
+        """Read a file from the workspace."""
+        return path
+
+    assert read_file("repo.txt") == "repo.txt"
+
+    graph = create_agent(
+        model=GenericFakeChatModel(messages=iter([])),
+        tools=[read_file],
+        name="slash-reader",
+    )
+    adapter = create_acp_agent(
+        graph=graph,
+        config=AdapterConfig(
+            available_models=[
+                ModelInfo(model_id="openai:gpt-5-mini", name="GPT-5 Mini"),
+                ModelInfo(model_id="openai:gpt-5", name="GPT-5"),
+            ],
+            available_modes=[
+                SessionMode(id="ask", name="Ask"),
+                SessionMode(id="review", name="Review"),
+            ],
+            default_model_id="openai:gpt-5-mini",
+            default_mode_id="ask",
+            slash_command_provider=StaticSlashCommandProvider(
+                commands=[
+                    StaticSlashCommand(
+                        command=AvailableCommand(name="ping", description="Return pong."),
+                        handler=lambda _request: SlashCommandResult(text="pong"),
+                    ),
+                ],
+            ),
+        ),
+    )
+    client = RecordingACPClient()
+    adapter.on_connect(cast("AcpClient", client))
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    stored_session = cast("Any", adapter)._store.get(session.session_id)
+    assert stored_session is not None
+    stored_session.mcp_servers = [
+        {"name": "repo-http", "transport": "http", "url": "https://repo.example/mcp"},
+    ]
+    cast("Any", adapter)._store.save(stored_session)
+    client.updates.clear()
+
+    asyncio.run(adapter.prompt(prompt=[text_block("/tools")], session_id=session.session_id))
+    asyncio.run(adapter.prompt(prompt=[text_block("/review")], session_id=session.session_id))
+    asyncio.run(
+        adapter.prompt(prompt=[text_block("/model openai:gpt-5")], session_id=session.session_id),
+    )
+    asyncio.run(adapter.prompt(prompt=[text_block("/mcp-servers")], session_id=session.session_id))
+    asyncio.run(adapter.prompt(prompt=[text_block("/ping")], session_id=session.session_id))
+
+    assert agent_message_texts(client) == [
+        "Available tools:\n- read_file: Read a file from the workspace.",
+        "Current mode: review",
+        "Current model: openai:gpt-5",
+        "MCP servers:\n- repo-http (http, session): https://repo.example/mcp",
+        "pong",
+    ]
+    assert any(isinstance(update, CurrentModeUpdate) for _, update in client.updates)
+    assert any(isinstance(update, ConfigOptionUpdate) for _, update in client.updates)
+    available_command_updates = [
+        update for _, update in client.updates if isinstance(update, AvailableCommandsUpdate)
+    ]
+    assert available_command_updates
+    assert [command.name for command in available_command_updates[0].available_commands] == [
+        "ask",
+        "review",
+        "model",
+        "tools",
+        "mcp-servers",
+        "ping",
+    ]
+
+
 def test_langchain_acp_projects_web_search_results_at_runtime(tmp_path) -> None:
     def duckduckgo_results_json(query: str) -> list[dict[str, str]]:
         """Search the web and return result records."""
@@ -117,7 +234,7 @@ def test_langchain_acp_projects_web_search_results_at_runtime(tmp_path) -> None:
                 "title": "ACP Kit",
                 "url": "https://example.com/acpkit",
                 "snippet": "Truthful ACP adapters.",
-            }
+            },
         ]
 
     fake_model = GenericFakeChatModel(
@@ -131,12 +248,12 @@ def test_langchain_acp_projects_web_search_results_at_runtime(tmp_path) -> None:
                             "args": {"query": "acpkit"},
                             "id": "tool-search",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Search finished."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(model=fake_model, tools=[duckduckgo_results_json], name="web-search")
     adapter = create_acp_agent(
@@ -144,11 +261,11 @@ def test_langchain_acp_projects_web_search_results_at_runtime(tmp_path) -> None:
         config=AdapterConfig(projection_maps=[WebSearchProjectionMap()]),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("search acpkit")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("search acpkit")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -185,12 +302,12 @@ def test_langchain_acp_projects_web_fetch_results_at_runtime(tmp_path) -> None:
                             "args": {"url": "https://example.com/docs"},
                             "id": "tool-fetch",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Fetch finished."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(model=fake_model, tools=[requests_get], name="web-fetch")
     adapter = create_acp_agent(
@@ -198,11 +315,11 @@ def test_langchain_acp_projects_web_fetch_results_at_runtime(tmp_path) -> None:
         config=AdapterConfig(projection_maps=[HttpRequestProjectionMap()]),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("fetch the docs")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("fetch the docs")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -248,7 +365,7 @@ def test_langchain_acp_projects_browser_and_terminal_updates_at_runtime(
                             "args": {"url": "https://example.com/docs"},
                             "id": "tool-nav",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(
@@ -259,7 +376,7 @@ def test_langchain_acp_projects_browser_and_terminal_updates_at_runtime(
                             "args": {},
                             "id": "tool-links",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(
@@ -270,12 +387,12 @@ def test_langchain_acp_projects_browser_and_terminal_updates_at_runtime(
                             "args": {"commands": ["pwd", "ls"]},
                             "id": "tool-terminal",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Browser and shell finished."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(
         model=fake_model,
@@ -289,11 +406,11 @@ def test_langchain_acp_projects_browser_and_terminal_updates_at_runtime(
         ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("browse and inspect")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("browse and inspect")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -302,7 +419,7 @@ def test_langchain_acp_projects_browser_and_terminal_updates_at_runtime(
     assert [update.title for update in starts] == [
         "Navigate https://example.com/docs",
         "Extract hyperlinks",
-        "Run shell command",
+        "pwd ls",
     ]
     assert len(progresses) == 3
     assert progresses[0].content is not None
@@ -340,12 +457,12 @@ def test_langchain_acp_projects_file_management_updates_at_runtime(tmp_path) -> 
                             },
                             "id": "tool-move",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Move finished."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(model=fake_model, tools=[move_file], name="file-manager")
     adapter = create_acp_agent(
@@ -353,11 +470,11 @@ def test_langchain_acp_projects_file_management_updates_at_runtime(tmp_path) -> 
         config=AdapterConfig(projection_maps=[CommunityFileManagementProjectionMap()]),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("archive draft")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("archive draft")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -392,12 +509,12 @@ def test_langchain_acp_projects_finance_updates_at_runtime(tmp_path) -> None:
                             "args": {"query": "NVDA"},
                             "id": "tool-finance",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Finance finished."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(model=fake_model, tools=[google_finance], name="finance")
     adapter = create_acp_agent(
@@ -405,11 +522,11 @@ def test_langchain_acp_projects_finance_updates_at_runtime(tmp_path) -> None:
         config=AdapterConfig(projection_maps=[FinanceProjectionMap()]),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("check nvda")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("check nvda")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -441,27 +558,27 @@ def test_langchain_acp_bridges_hitl_permissions(tmp_path) -> None:
                             "args": {"path": "draft.txt"},
                             "id": "tool-2",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Approved."),
-            ]
-        )
+            ],
+        ),
     )
     middleware = [
         HumanInTheLoopMiddleware(
-            interrupt_on={"delete_file": {"allowed_decisions": ["approve", "reject"]}}
-        )
+            interrupt_on={"delete_file": {"allowed_decisions": ["approve", "reject"]}},
+        ),
     ]
     graph = create_agent(model=fake_model, tools=[delete_file], middleware=middleware)
     adapter = create_acp_agent(graph=graph, config=AdapterConfig())
     client = RecordingACPClient()
     client.queue_permission_selected("allow_once")
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("delete draft.txt")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("delete draft.txt")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -486,7 +603,7 @@ def test_langchain_acp_emits_plan_updates_from_graph_state(tmp_path) -> None:
                     "status": "in_progress",
                     "priority": "medium",
                 },
-            ]
+            ],
         }
 
     builder = StateGraph(_PlanState)
@@ -496,16 +613,16 @@ def test_langchain_acp_emits_plan_updates_from_graph_state(tmp_path) -> None:
     graph = builder.compile()
     adapter = create_acp_agent(graph=graph, config=AdapterConfig())
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("plan this")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("plan this")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
     plan_update = next(
-        cast(AgentPlanUpdate, update)
+        cast("AgentPlanUpdate", update)
         for _, update in client.updates
         if isinstance(update, AgentPlanUpdate)
     )
@@ -540,9 +657,9 @@ def test_langchain_acp_phase5_allows_custom_plan_extraction_bridge(tmp_path) -> 
                 entries.append(
                     PlanEntry(
                         content=content,
-                        status=cast(PlanEntryStatus, task.get("status", "pending")),
-                        priority=cast(PlanEntryPriority, task.get("priority", "medium")),
-                    )
+                        status=cast("PlanEntryStatus", task.get("status", "pending")),
+                        priority=cast("PlanEntryPriority", task.get("priority", "medium")),
+                    ),
                 )
             return entries
 
@@ -560,7 +677,7 @@ def test_langchain_acp_phase5_allows_custom_plan_extraction_bridge(tmp_path) -> 
                     "status": "in_progress",
                     "priority": "medium",
                 },
-            ]
+            ],
         }
 
     builder = StateGraph(_CustomPlanState)
@@ -573,16 +690,16 @@ def test_langchain_acp_phase5_allows_custom_plan_extraction_bridge(tmp_path) -> 
         config=AdapterConfig(capability_bridges=[_TasksBridge()]),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("plan this")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("plan this")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
     plan_update = next(
-        cast(AgentPlanUpdate, update)
+        cast("AgentPlanUpdate", update)
         for _, update in client.updates
         if isinstance(update, AgentPlanUpdate)
     )
@@ -597,7 +714,6 @@ def test_langchain_acp_phase6_projects_deepagents_execute_updates_at_runtime(
 ) -> None:
     def execute(command: str) -> dict[str, str]:
         """Execute a shell command in the workspace."""
-
         return {
             "terminal_id": "terminal-1",
             "stdout": f"ran:{command}",
@@ -614,12 +730,12 @@ def test_langchain_acp_phase6_projects_deepagents_execute_updates_at_runtime(
                             "args": {"command": "echo hi && sudo rm /tmp/demo"},
                             "id": "tool-exec",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Command finished."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(model=fake_model, tools=[execute], name="deepagents-execute")
     adapter = create_acp_agent(
@@ -627,11 +743,11 @@ def test_langchain_acp_phase6_projects_deepagents_execute_updates_at_runtime(
         config=AdapterConfig(projection_maps=[DeepAgentsProjectionMap()]),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
 
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("run the command")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("run the command")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -655,6 +771,66 @@ def test_langchain_acp_phase6_projects_deepagents_execute_updates_at_runtime(
     assert agent_message_texts(client) == ["Command finished."]
 
 
+def test_langchain_acp_runs_real_deepagents_graph(tmp_path: Path) -> None:
+    graph = create_deep_agent(
+        model=GenericFakeChatModel(messages=iter([AIMessage(content="DeepAgents ready.")])),
+        tools=[],
+        name="deepagents-smoke",
+    )
+    adapter = create_acp_agent(
+        graph=graph,
+        config=AdapterConfig(
+            capability_bridges=[DeepAgentsCompatibilityBridge()],
+            projection_maps=[DeepAgentsProjectionMap()],
+        ),
+    )
+    client = RecordingACPClient()
+    adapter.on_connect(cast("AcpClient", client))
+
+    session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    response = asyncio.run(
+        adapter.prompt(
+            prompt=[text_block("Confirm the integration.")],
+            session_id=session.session_id,
+        ),
+    )
+
+    assert response.stop_reason == "end_turn"
+    assert agent_message_texts(client) == ["DeepAgents ready."]
+
+
+def test_deepagents_projection_matches_builtin_tool_schemas() -> None:
+    projection_map = DeepAgentsProjectionMap()
+
+    read_start = projection_map.project_start(
+        "read_file",
+        raw_input={"file_path": "/workspace/notes.md", "offset": 0, "limit": 20},
+    )
+    write_start = projection_map.project_start(
+        "write_file",
+        raw_input={"file_path": "/workspace/report.md", "content": "Ready."},
+    )
+    search_start = projection_map.project_start(
+        "glob",
+        raw_input={"pattern": "**/*.py", "path": "/workspace"},
+    )
+    execute_start = projection_map.project_start(
+        "execute",
+        raw_input={"command": "pytest -q"},
+    )
+
+    assert read_start is not None
+    assert read_start.title == "Read `/workspace/notes.md`"
+    assert read_start.locations == [ToolCallLocation(path="/workspace/notes.md")]
+    assert write_start is not None
+    assert write_start.title == "Write `/workspace/report.md`"
+    assert write_start.locations == [ToolCallLocation(path="/workspace/report.md")]
+    assert search_start is not None
+    assert search_start.title == "Glob `**/*.py`"
+    assert execute_start is not None
+    assert execute_start.title == "pytest -q"
+
+
 def test_langchain_acp_graph_factory_receives_session_context(tmp_path) -> None:
     captured_session_ids: list[str] = []
 
@@ -667,18 +843,18 @@ def test_langchain_acp_graph_factory_receives_session_context(tmp_path) -> None:
     def graph_factory(session) -> Any:
         captured_session_ids.append(session.session_id)
         fake_model = GenericFakeChatModel(
-            messages=iter([AIMessage(content="Factory graph ready.")])
+            messages=iter([AIMessage(content="Factory graph ready.")]),
         )
         return create_agent(model=fake_model, tools=[read_file])
 
     adapter = create_acp_agent(graph_factory=graph_factory, config=AdapterConfig())
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
     asyncio.run(adapter.prompt(prompt=[text_block("hello")], session_id=session.session_id))
 
-    assert captured_session_ids == [session.session_id]
+    assert captured_session_ids == [session.session_id, session.session_id]
     assert agent_message_texts(client) == ["Factory graph ready."]
 
 
@@ -737,7 +913,7 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
         mode_id = session.session_mode_id or "ask"
         captured_builds.append((model_id, mode_id))
         fake_model = GenericFakeChatModel(
-            messages=iter([AIMessage(content=f"{model_id}:{mode_id}")])
+            messages=iter([AIMessage(content=f"{model_id}:{mode_id}")]),
         )
         return create_agent(model=fake_model, tools=[], name=f"{model_id}-{mode_id}")
 
@@ -749,7 +925,7 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
         ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
     assert session.models is not None
@@ -764,11 +940,11 @@ def test_langchain_acp_phase3_rebuilds_graph_from_session_model_and_mode(
     asyncio.run(adapter.set_session_model("gpt-5", session_id=session.session_id))
     asyncio.run(adapter.set_session_mode("plan", session_id=session.session_id))
     second = asyncio.run(
-        adapter.prompt(prompt=[text_block("again")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("again")], session_id=session.session_id),
     )
     assert second.stop_reason == "end_turn"
     assert agent_message_texts(client)[-1] == "gpt-5:plan"
-    assert captured_builds == [("base", "ask"), ("gpt-5", "plan")]
+    assert captured_builds == [("base", "ask"), ("base", "ask"), ("gpt-5", "plan")]
 
 
 @dataclass(slots=True, kw_only=True)
@@ -831,16 +1007,16 @@ def test_langchain_acp_phase4_structured_plan_output_persists_task_plan(
                                     "priority": "medium",
                                 },
                             ],
-                        }
-                    }
+                        },
+                    },
                 },
-            )
-        ]
+            ),
+        ],
     )
     adapter = cast(
-        Any,
+        "Any",
         create_acp_agent(
-            graph=cast(Any, graph),
+            graph=cast("Any", graph),
             config=AdapterConfig(
                 available_modes=[SessionMode(id="plan", name="Plan")],
                 default_mode_id="plan",
@@ -849,11 +1025,11 @@ def test_langchain_acp_phase4_structured_plan_output_persists_task_plan(
         ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("plan the work")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("plan the work")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -864,7 +1040,7 @@ def test_langchain_acp_phase4_structured_plan_output_persists_task_plan(
         "Write summary",
     ]
     plan_update = next(
-        cast(AgentPlanUpdate, update)
+        cast("AgentPlanUpdate", update)
         for _, update in client.updates
         if isinstance(update, AgentPlanUpdate)
     )
@@ -891,13 +1067,13 @@ def test_langchain_acp_phase4_tool_based_plan_generation_updates_plan_state(
                                         "content": "Book flights",
                                         "status": "pending",
                                         "priority": "high",
-                                    }
+                                    },
                                 ],
                                 "plan_md": "# Travel booking",
                             },
                             "id": "tool-1",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(
@@ -908,20 +1084,20 @@ def test_langchain_acp_phase4_tool_based_plan_generation_updates_plan_state(
                             "args": {"index": 1},
                             "id": "tool-2",
                             "type": "tool_call",
-                        }
+                        },
                     ],
                 ),
                 AIMessage(content="Trip plan saved."),
-            ]
-        )
+            ],
+        ),
     )
     graph = create_agent(
         model=fake_model,
-        tools=cast(list[Callable[..., Any]], list(native_plan_tools())),
+        tools=cast("list[Callable[..., Any]]", list(native_plan_tools())),
         name="planner",
     )
     adapter = cast(
-        Any,
+        "Any",
         create_acp_agent(
             graph=graph,
             config=AdapterConfig(
@@ -933,11 +1109,11 @@ def test_langchain_acp_phase4_tool_based_plan_generation_updates_plan_state(
         ),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("save a plan")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("save a plan")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -948,16 +1124,16 @@ def test_langchain_acp_phase4_tool_based_plan_generation_updates_plan_state(
             "content": "Book flights",
             "status": "completed",
             "priority": "high",
-        }
+        },
     ]
     plan_updates = [
-        cast(AgentPlanUpdate, update)
+        cast("AgentPlanUpdate", update)
         for _, update in client.updates
         if isinstance(update, AgentPlanUpdate)
     ]
     assert len(plan_updates) == 2
     assert plan_updates[-1].entries == [
-        PlanEntry(content="Book flights", status="completed", priority="high")
+        PlanEntry(content="Book flights", status="completed", priority="high"),
     ]
     assert agent_message_texts(client)[-1] == "Trip plan saved."
 
@@ -985,21 +1161,21 @@ def test_langchain_acp_phase6_projects_structured_runtime_events(
                             "status": "completed",
                             "content": "shell complete",
                         },
-                    ]
+                    ],
                 },
-            )
-        ]
+            ),
+        ],
     )
     adapter = create_acp_agent(
-        graph=cast(Any, graph),
+        graph=cast("Any", graph),
         config=AdapterConfig(event_projection_maps=[StructuredEventProjectionMap()]),
     )
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
     response = asyncio.run(
-        adapter.prompt(prompt=[text_block("run diagnostics")], session_id=session.session_id)
+        adapter.prompt(prompt=[text_block("run diagnostics")], session_id=session.session_id),
     )
 
     assert response.stop_reason == "end_turn"
@@ -1009,20 +1185,20 @@ def test_langchain_acp_phase6_projects_structured_runtime_events(
         if isinstance(update, ToolCallStart | ToolCallProgress)
     ]
     assert len(projected_updates) == 2
-    assert cast(ToolCallStart, projected_updates[0]).title == "run shell"
-    progress = cast(ToolCallProgress, projected_updates[1])
+    assert cast("ToolCallStart", projected_updates[0]).title == "run shell"
+    progress = cast("ToolCallProgress", projected_updates[1])
     assert progress.status == "completed"
     assert progress.content is not None
-    assert cast(Any, progress.content[0]).content.text == "shell complete"
+    assert cast("Any", progress.content[0]).content.text == "shell complete"
 
 
 def test_langchain_acp_phase6_preserves_multimodal_and_resource_prompt_blocks(
     tmp_path: Path,
 ) -> None:
     graph = _RecordingGraph()
-    adapter = create_acp_agent(graph=cast(Any, graph), config=AdapterConfig())
+    adapter = create_acp_agent(graph=cast("Any", graph), config=AdapterConfig())
     client = RecordingACPClient()
-    adapter.on_connect(cast(AcpClient, client))
+    adapter.on_connect(cast("AcpClient", client))
     session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
     response = asyncio.run(
@@ -1054,7 +1230,7 @@ def test_langchain_acp_phase6_preserves_multimodal_and_resource_prompt_blocks(
                 ),
             ],
             session_id=session.session_id,
-        )
+        ),
     )
 
     assert response.stop_reason == "end_turn"

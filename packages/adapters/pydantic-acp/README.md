@@ -2,11 +2,25 @@
 
 `pydantic-acp` adapts `pydantic_ai.Agent` instances to the ACP agent interface without rewriting the underlying agent.
 
+Install the stable v1 package with optional harness integration:
+
+```bash
+uv add "pydantic-acp[harness]>=1.0.0,<2.0.0"
+```
+
+```bash
+pip install "pydantic-acp[harness]>=1.0.0,<2.0.0"
+```
+
 The core contract is simple:
 
 1. keep the existing `pydantic_ai.Agent`
 2. expose it through ACP
 3. only publish ACP-visible state the runtime can actually honor
+
+The package also includes the inverse bridge: an ACP agent can be consumed as a Pydantic AI v2 provider/model pair via `AcpProvider` and `AcpModel`.
+The final v1 stability boundary is defined by the
+[ACP Kit versioning policy](https://vcoderun.github.io/acpkit/versioning/).
 
 ## Entry Points
 
@@ -16,8 +30,9 @@ The core contract is simple:
 - `AcpSessionContext`
 - `StaticAgentSource`
 - `FactoryAgentSource`
-- `MemorySessionStore`
-- `FileSessionStore`
+- `AcpProvider`
+- `AcpModel`
+- `AcpHostBridge`
 
 ## What It Covers
 
@@ -32,8 +47,11 @@ The core contract is simple:
 - projection maps for filesystem, hooks, web tools, and builtin tool families
 - capability bridges for upstream Pydantic AI capabilities
 - client-backed filesystem and terminal helpers
+- ACP client/provider bridging for consuming ACP agents from the Pydantic AI ecosystem
 
 ## Quick Start
+
+Expose a Pydantic AI agent through ACP:
 
 ```python
 from pydantic_ai import Agent
@@ -59,6 +77,68 @@ acp_agent = create_acp_agent(
 
 run_agent(acp_agent)
 ```
+
+## ACP Client Provider Bridge
+
+`AcpProvider` is the client-side mirror of the ACP server adapter. It wraps an ACP agent as a Pydantic AI v2 `Provider`; `AcpModel` is the model object Pydantic AI agents run against.
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import AcpProvider
+
+# `remote_acp_agent` can be any object implementing the ACP Agent interface.
+provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
+model = provider.model()
+agent = Agent(model)
+
+result = await agent.run("Summarize the current workspace state.")
+print(result.output)
+```
+
+This keeps ownership boundaries explicit:
+
+- Pydantic AI owns the outer agent run, output validation, and normal model/provider lifecycle.
+- ACP owns the delegated agent session, ACP-visible updates, and any editor or host capabilities requested by that agent.
+- `provider.model()` leaves ACP model selection to the wrapped agent's session default; pass `provider.model("zed-agent")` only when the ACP agent accepts that concrete `session/set_model` ID.
+- `AcpHostBridge` records ACP `session_update` messages and can delegate filesystem, terminal, approval, and extension callbacks to a real ACP host client when one is supplied.
+- Pydantic AI function tools are intentionally not executed directly by `AcpModel`; register tools on the ACP agent or expose host capabilities through ACP.
+
+Use this bridge when the thing you have is already an ACP agent and you want it to participate in code that expects a Pydantic AI provider/model. It is not another ACP server adapter and it does not replace `create_acp_agent(...)`.
+If you are using Codex-backed Pydantic models through `codex-auth-helper`, pass explicit
+instructions when building the model. That is the preferred seam for Codex-specific system behavior:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a careful coding assistant.",
+)
+agent = Agent(model, name="codex-agent")
+```
+
+On the Pydantic path, `Agent(instructions=...)` is also valid and may still be useful for
+agent-specific behavior layered on top of the model:
+
+```python
+from codex_auth_helper import create_codex_responses_model
+from pydantic_ai import Agent
+
+model = create_codex_responses_model(
+    "gpt-5.4",
+    instructions="You are a careful coding assistant.",
+)
+agent = Agent(
+    model,
+    name="codex-agent",
+    instructions="Ask for clarification when the task is underspecified.",
+)
+```
+
+In short: Codex-backed Pydantic models should not rely on an implicit default instruction string.
+Set instructions explicitly at the factory level, and add `Agent(instructions=...)` when you want
+extra agent-owned behavior.
 
 ## Native Plan Mode
 
@@ -176,6 +256,68 @@ Current built-in bridges include:
 
 Use bridges when the runtime should gain upstream Pydantic AI capabilities and ACP-visible metadata without rewriting the adapter core.
 
+## Harness-backed Capabilities
+
+`pydantic-acp` also ships a maintained bridge and projection layer for `pydantic-ai-harness`.
+
+Public seams:
+
+- `HarnessFileSystemBridge`
+- `HarnessShellBridge`
+- `HarnessCodeModeBridge`
+- `HarnessFileSystemProjectionMap`
+- `HarnessShellProjectionMap`
+- `HarnessCodeModeProjectionMap`
+
+Minimal example:
+
+```python
+from pathlib import Path
+
+from pydantic_ai import Agent
+from pydantic_acp import (
+    AdapterConfig,
+    HarnessFileSystemBridge,
+    HarnessFileSystemProjectionMap,
+    HarnessShellBridge,
+    HarnessShellProjectionMap,
+    MemorySessionStore,
+    run_acp,
+)
+
+workspace_root = Path("agent_demos/harness-agent")
+
+agent = Agent(
+    "openai:gpt-5",
+    name="harness-agent",
+    instructions="Use the harness filesystem and shell tools inside the workspace only.",
+)
+
+run_acp(
+    agent=agent,
+    config=AdapterConfig(
+        session_store=MemorySessionStore(),
+        capability_bridges=[
+            HarnessFileSystemBridge(root_dir=workspace_root),
+            HarnessShellBridge(cwd=workspace_root),
+        ],
+        projection_maps=[
+            HarnessFileSystemProjectionMap(),
+            HarnessShellProjectionMap(),
+        ],
+    ),
+)
+```
+
+Use `HarnessCodeModeBridge` only when the run should expose CodeMode. The maintained example keeps
+that bridge opt-in so the native ACP target stays limited to filesystem and shell by default:
+
+- [example source](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py)
+- [detailed guide](https://github.com/vcoderun/acpkit/blob/main/docs/pydantic-acp/harness-capabilities.md)
+
+The harness filesystem projection now renders `read_file` as a read-specific preview instead of a
+fake diff, which makes ACP transcript output much more truthful for inspection-only tool calls.
+
 ## Factories, Sources, And Host-owned State
 
 Use `agent_factory=` when the ACP session should influence which agent gets built:
@@ -201,6 +343,21 @@ run_acp(
 
 Use `AgentSource` when the agent and its dependencies should be built separately. Use providers when models, modes, config values, plans, or approvals belong to the host layer instead of the adapter.
 
+## Session Store Notes
+
+Use `MemorySessionStore` for ephemeral local runs and `FileSessionStore` when ACP sessions should
+survive process restarts. `FileSessionStore` is a local durable store, not a distributed coordination
+layer.
+
+File-backed session ids are constrained before they become filenames:
+
+- allowed characters are ASCII letters, digits, `_`, and `-`
+- maximum length is 128 characters
+- path separators, dot-prefixed ids, whitespace, and shell metacharacters are rejected
+
+The file store writes through a temp file, `fsync`, and atomic replace. Malformed or partially
+written session files are skipped by public load/list flows.
+
 ## Maintained Examples
 
 Maintained runnable examples:
@@ -222,11 +379,35 @@ Focused docs recipes:
 - [Session State and Lifecycle](https://vcoderun.github.io/acpkit/pydantic-acp/session-state/)
 - [Bridges](https://vcoderun.github.io/acpkit/bridges/)
 - [Providers](https://vcoderun.github.io/acpkit/providers/)
+- [Security Guidance](https://vcoderun.github.io/acpkit/security/)
 - [Host Backends and Projections](https://vcoderun.github.io/acpkit/host-backends/)
 - [API Reference](https://vcoderun.github.io/acpkit/api/pydantic_acp/)
 
 ## Compatibility Policy
 
-`pydantic-acp` currently pins `pydantic-ai-slim==1.83.0`.
+`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
+no longer supported.
 
-That pin is deliberate. The adapter is tested against a specific Pydantic AI surface and should still be upgraded deliberately, but the hook-compatibility seam is now isolated behind ACP Kit’s own compatibility layer instead of scattering private upstream imports through the runtime.
+The ACP client provider bridge depends on the Pydantic AI v2 `Provider` and `Model` contracts. Upgrades across major Pydantic AI versions should be deliberate because the adapter exposes both server-side ACP translation and client-side ACP provider integration.
+
+Every supported minor is exercised by the repository's runtime and type-check
+compatibility matrix. The adapter keeps upstream compatibility behind ACP Kit's
+bridge and runtime seams instead of scattering version checks through callers.
+
+Pydantic AI V2 defaults agent dependency and output generics to `object`. When
+your tools or hooks explicitly use `RunContext[None]` or `Hooks[None]`, also
+declare the dependency type on the agent:
+
+```python
+from pydantic_ai import Agent
+
+agent: Agent[None, str] = Agent(
+    "openai:gpt-5",
+    deps_type=type(None),
+    name="typed-agent",
+)
+```
+
+The supported surface includes tool and output-tool preparation, output
+validation and processing hooks, deferred tool-call hooks, run metadata,
+conversation IDs, and the `run_stream_events()` lifecycle used through 2.4.0.

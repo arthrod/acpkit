@@ -2,7 +2,7 @@ from __future__ import annotations as _annotations
 
 import inspect
 from collections.abc import Awaitable
-from typing import TypeVar
+from typing import TypeVar, cast
 
 from typing_extensions import TypeIs
 
@@ -21,6 +21,6 @@ def is_resolved(value: ValueT | Awaitable[ValueT]) -> TypeIs[ValueT]:
 
 async def resolve_value(value: ValueT | Awaitable[ValueT]) -> ValueT:
     if is_awaitable(value):
-        return await value
+        return await cast("Awaitable[ValueT]", value)
     assert is_resolved(value)
     return value

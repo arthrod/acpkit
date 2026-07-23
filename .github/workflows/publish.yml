@@ -3,11 +3,11 @@ name: Publish Packages
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch:
+      - "v[0-9]*"
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: publish-${{ github.workflow }}-${{ github.ref }}
@@ -17,8 +17,6 @@ jobs:
   publish:
     name: Build And Publish Workspace
     runs-on: ubuntu-latest
-    env:
-      UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
     steps:
       - name: Check Out Repository
         uses: actions/checkout@v7
@@ -33,39 +31,18 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Validate Release
+      - name: Validate, Build, And Smoke Test Release
         run: |
-          uv sync --all-extras
-          make prod
+          uv sync --frozen --all-extras
+          make release RELEASE_TAG="${GITHUB_REF_NAME}"
 
-      - name: Build And Publish Root, Adapter, And Helper Projects
-        shell: bash
-        run: |
-          project_dirs() {
-            if [ -d packages/helpers ]; then
-              find packages/helpers -type f -name pyproject.toml -exec dirname {} \; | sort -u
-            fi
-            if [ -d packages/adapters ]; then
-              find packages/adapters -type f -name pyproject.toml -exec dirname {} \; | sort -u
-            fi
-            printf '.\n'
-          }
+      - name: Upload Validated Release Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: acpkit-${{ github.ref_name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
 
-          sync_project() {
-            local project_dir="$1"
-            local pyproject_path="$project_dir/pyproject.toml"
-
-            if grep -Eq '^\[project\.optional-dependencies\]' "$pyproject_path"; then
-              uv sync --project "$project_dir" --all-extras
-            else
-              uv sync --project "$project_dir"
-            fi
-          }
-
-          while IFS= read -r project_dir; do
-            echo "==> Publishing $project_dir"
-            sync_project "$project_dir"
-            rm -rf "$project_dir/dist"
-            uv build --project "$project_dir" --out-dir "$project_dir/dist"
-            uv publish "$project_dir"/dist/*
-          done < <(project_dirs)
+      - name: Publish Validated Artifacts
+        run: uv publish --trusted-publishing always dist/*

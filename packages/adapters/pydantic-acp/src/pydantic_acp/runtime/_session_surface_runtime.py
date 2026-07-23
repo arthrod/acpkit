@@ -5,11 +5,13 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 from acp.schema import (
     AgentPlanUpdate,
+    AvailableCommand,
     AvailableCommandsUpdate,
     ConfigOptionUpdate,
     CurrentModeUpdate,
     PlanEntry,
     SessionInfoUpdate,
+    SessionModeState,
 )
 from pydantic_ai import Agent as PydanticAgent
 from pydantic_ai import models as pydantic_models
@@ -29,7 +31,7 @@ from .session_surface import (
     build_model_state_from_selection,
     find_model_option,
 )
-from .slash_commands import build_available_commands
+from .slash_commands import build_available_commands, validate_custom_commands
 
 if TYPE_CHECKING:
     from ._session_runtime import _SessionRuntime
@@ -58,6 +60,11 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
             mode_state=mode_state,
         )
         surface = SessionSurface(
+            available_commands=await self.get_custom_available_commands(
+                session,
+                agent,
+                mode_state=build_mode_state_from_selection(mode_state),
+            ),
             config_options=config_options,
             model_state=build_model_state_from_selection(model_selection_state),
             mode_state=build_mode_state_from_selection(mode_state),
@@ -81,7 +88,7 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         client = self._runtime._owner._client
         if client is None:
             return
-        if emit_session_info and session.metadata:
+        if emit_session_info and (session.title is not None or session.metadata):
             await client.session_update(
                 session_id=session.session_id,
                 update=SessionInfoUpdate(
@@ -100,6 +107,7 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
                         mode_state=surface.mode_state,
                         model_state=surface.model_state,
                         config_options=surface.config_options,
+                        custom_commands=surface.available_commands,
                     ),
                 ),
             )
@@ -280,6 +288,20 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
             return None
         return await resolve_value(provider.get_config_options(session, agent))
 
+    async def get_custom_available_commands(
+        self,
+        session: AcpSessionContext,
+        agent: PydanticAgent[AgentDepsT, OutputDataT],
+        *,
+        mode_state: SessionModeState | None,
+    ) -> list[AvailableCommand] | None:
+        provider = self._runtime._owner._config.slash_command_provider
+        if provider is None:
+            return None
+        commands = list(await resolve_value(provider.available_commands(session, agent)))
+        validate_custom_commands(commands, mode_state=mode_state)
+        return commands or None
+
     async def set_provider_config_options(
         self,
         session: AcpSessionContext,
@@ -318,7 +340,8 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         agent: PydanticAgent[AgentDepsT, OutputDataT],
     ) -> None:
         metadata_sections = self._runtime._owner._bridge_manager.get_metadata_sections(
-            session, agent
+            session,
+            agent,
         )
         approval_state = await self.get_approval_state(session, agent)
         if approval_state is not None:
@@ -326,7 +349,12 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         plan_storage = self.plan_storage_metadata(session)
         if plan_storage is not None:
             metadata_sections["plan_storage"] = plan_storage
-        session.metadata = {"pydantic_acp": metadata_sections} if metadata_sections else {}
+        preserved_metadata = {
+            key: value for key, value in session.metadata.items() if key != "pydantic_acp"
+        }
+        if metadata_sections:
+            preserved_metadata["pydantic_acp"] = metadata_sections
+        session.metadata = preserved_metadata
 
     async def get_approval_state(
         self,
@@ -382,7 +410,7 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
             if model_option.override is model_value:
                 return model_option.model_id
             if model_identity is not None and model_identity == self._runtime._model_identity(
-                model_option.override
+                model_option.override,
             ):
                 return model_option.model_id
         if model_identity is not None:
@@ -419,7 +447,9 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
 
 
 def _known_pydantic_model_ids() -> tuple[str, ...]:
-    from ._session_runtime import _known_pydantic_model_ids as load_known_pydantic_model_ids
+    from ._session_runtime import (
+        _known_pydantic_model_ids as load_known_pydantic_model_ids,
+    )
 
     return load_known_pydantic_model_ids()
 
@@ -448,7 +478,7 @@ def _default_available_models(
                 model_id=normalized_model_id,
                 name=normalized_model_id,
                 override=normalized_model_id if override is None else override,
-            )
+            ),
         )
 
     add_model(current_model_id, override=current_model_value)

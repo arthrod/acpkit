@@ -42,7 +42,8 @@ def test_root_adapter_detects_langchain_graph_targets() -> None:
 
 
 def test_load_target_resolves_langchain_graph_targets(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -63,7 +64,7 @@ def test_load_target_resolves_langchain_graph_targets(
                 "    tools=[read_file],",
                 '    name="langchain-demo",',
                 ")",
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -74,7 +75,8 @@ def test_load_target_resolves_langchain_graph_targets(
 
 
 def test_load_target_uses_latest_langchain_graph_when_attribute_is_omitted(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_module(
         tmp_path,
@@ -100,7 +102,7 @@ def test_load_target_uses_latest_langchain_graph_when_attribute_is_omitted(
                 "    tools=[read_file],",
                 '    name="second-graph",',
                 ")",
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -134,7 +136,7 @@ def test_run_target_dispatches_langchain_graph_through_adapter(
                 "    tools=[read_file],",
                 '    name="run-graph",',
                 ")",
-            )
+            ),
         ),
     )
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -145,7 +147,7 @@ def test_run_target_dispatches_langchain_graph_through_adapter(
     def fake_import_module(name: str, package: str | None = None) -> ModuleType:
         if name == "langchain_acp":
             return cast(
-                ModuleType,
+                "ModuleType",
                 SimpleNamespace(run_acp=lambda *, graph: captured_graphs.append(graph)),
             )
         return original_import_module(name, package)
@@ -174,13 +176,17 @@ def test_load_target_reports_missing_langchain_adapter_from_import_error(
         "sample_present_langchain_dependency"
     )
 
-    monkeypatch.setattr("acpkit.runtime.importlib.import_module", fake_import_module)
+    from acpkit import adapters as adapters_module
+
+    monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    original_find_spec = adapters_module.find_spec
     monkeypatch.setattr(
-        "acpkit.adapters.find_spec",
+        adapters_module,
+        "find_spec",
         lambda name: (
             None
             if name in {"langchain", "langgraph", "langchain_acp"}
-            else importlib.util.find_spec(name)
+            else original_find_spec(name)
         ),
     )
 

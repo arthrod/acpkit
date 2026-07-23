@@ -51,7 +51,7 @@ class _RecordingClient:
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self.updates.append(
-            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None)
+            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None),
         )
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -70,7 +70,7 @@ async def test_phase2_recording_client_stub_methods() -> None:
     client = _RecordingClient()
 
     with pytest.raises(AssertionError, match="permission flow"):
-        await client.request_permission([], "session-1", cast(Any, object()))
+        await client.request_permission([], "session-1", cast("Any", object()))
     with pytest.raises(AssertionError, match="extension methods"):
         await client.ext_method("demo.echo", {"value": 1})
 
@@ -81,7 +81,7 @@ async def test_phase2_recording_client_stub_methods() -> None:
         source="phase2",
     )
     assert client.updates[0].field_meta == {"source": "phase2"}
-    assert client.on_connect(cast(Agent, object())) is None
+    assert client.on_connect(cast("Agent", object())) is None
 
 
 @dataclass(slots=True)
@@ -149,6 +149,8 @@ def test_phase2_server_path_and_metadata_helpers() -> None:
     assert normalize_mount_path("/") == "/"
     with pytest.raises(ValueError, match="mount_path must not be empty"):
         normalize_mount_path("   ")
+    with pytest.raises(ValueError, match="health endpoint"):
+        build_server_paths("/healthz")
 
     assert build_server_paths("/acp/").metadata_path == "/acp"
     assert build_server_paths("/acp/").websocket_path == "/acp/ws"
@@ -160,7 +162,7 @@ def test_phase2_server_path_and_metadata_helpers() -> None:
             bearer_token="secret",
             supported_agent_families=("pydantic-acp", "langchain-acp"),
             remote_cwd="/srv/app",
-        )
+        ),
     )
     assert metadata.auth_required is True
     assert metadata.supported_auth_modes == ("bearer",)
@@ -174,13 +176,13 @@ def test_phase2_server_path_and_metadata_helpers() -> None:
 @pytest.mark.asyncio
 async def test_phase2_http_metadata_and_health_routes_are_served() -> None:
     server = await serve_acp(
-        cast(Agent, _EchoAgent()),
+        cast("Agent", _EchoAgent()),
         mount_path="/transport/",
         supported_agent_families=("generic-acp",),
     )
     try:
         assert server.sockets is not None
-        port = server.sockets[0].getsockname()[1]
+        port = next(iter(server.sockets)).getsockname()[1]
         health_status, health_body = await asyncio.to_thread(
             _http_get,
             f"http://127.0.0.1:{port}/healthz",
@@ -213,13 +215,13 @@ async def test_phase2_http_metadata_and_health_routes_are_served() -> None:
 @pytest.mark.asyncio
 async def test_phase2_websocket_path_and_bearer_auth_are_enforced() -> None:
     server = await serve_acp(
-        cast(Agent, _EchoAgent()),
+        cast("Agent", _EchoAgent()),
         mount_path="/secure",
         bearer_token="secret-token",
         supported_agent_families=("generic-acp",),
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     try:
         with pytest.raises(InvalidStatus) as missing_token:
             async with connect(f"ws://127.0.0.1:{port}/secure/ws"):
@@ -236,7 +238,7 @@ async def test_phase2_websocket_path_and_bearer_auth_are_enforced() -> None:
 
         client = _RecordingClient()
         remote = await connect_remote_agent(
-            cast(Client, client),
+            cast("Client", client),
             f"ws://127.0.0.1:{port}/secure/ws",
             bearer_token="secret-token",
         )
@@ -263,7 +265,7 @@ async def test_phase2_websocket_path_and_bearer_auth_are_enforced() -> None:
 async def test_phase2_rejects_mixed_server_and_transport_options() -> None:
     with pytest.raises(ValueError, match="pass either options or server_options, not both"):
         await serve_remote_agent(
-            cast(Agent, _EchoAgent()),
+            cast("Agent", _EchoAgent()),
             options=ServerOptions().transport,
             server_options=ServerOptions(),
         )

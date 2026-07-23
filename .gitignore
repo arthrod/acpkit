@@ -61,7 +61,6 @@ tmp/
 # Cache & Config
 .pytest_cache/
 .ruff_cache
-uv.lock
 .logfire
 
 # Specs
@@ -69,10 +68,6 @@ references
 /pydantic-acp.md
 AGENTS.md
 SPEC.md
-
-# Sessions
-.acp-sessions/
-.demo-sessions/
 
 # Temporary
 tmp
@@ -90,9 +85,13 @@ coverage.json
 direction.md
 scripts/openrouter*.py
 scripts/check_releases.py
-/.finance-agent
+# Example runtime output
+/agent_demos/
 
 # Scripts
 connect*.py
 expose*.py
+probe*.py
+pydantic_test*.py
 CHANGELOG
+.acprouter-state

@@ -80,7 +80,7 @@ class _RecordingClient:
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self.updates.append(
-            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None)
+            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None),
         )
 
     async def write_text_file(
@@ -154,7 +154,7 @@ async def test_phase1_recording_client_stub_methods_cover_error_paths() -> None:
     client = _RecordingClient()
 
     with pytest.raises(AssertionError, match="permission flow"):
-        await client.request_permission([], "session-1", cast(Any, object()))
+        await client.request_permission([], "session-1", cast("Any", object()))
     with pytest.raises(AssertionError, match="filesystem flow"):
         await client.write_text_file("content", "/tmp/demo", "session-1")
     with pytest.raises(AssertionError, match="filesystem flow"):
@@ -176,7 +176,7 @@ async def test_phase1_recording_client_stub_methods_cover_error_paths() -> None:
     with pytest.raises(RequestError):
         await client.ext_method("demo.missing", {})
     await client.ext_notification("demo.note", {"value": 1})
-    assert client.on_connect(cast(Agent, object())) is None
+    assert client.on_connect(cast("Agent", object())) is None
 
 
 @dataclass(slots=True)
@@ -235,11 +235,11 @@ class _EchoAgent:
 @pytest.mark.asyncio
 async def test_phase1_round_trip_supports_initialize_prompt_and_session_update() -> None:
     agent = _EchoAgent()
-    server = await serve_remote_agent(cast(Agent, agent))
+    server = await serve_remote_agent(cast("Agent", agent))
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     client = _RecordingClient()
-    remote = await connect_remote_agent(cast(Client, client), f"ws://127.0.0.1:{port}/acp/ws")
+    remote = await connect_remote_agent(cast("Client", client), f"ws://127.0.0.1:{port}/acp/ws")
     try:
         response = await remote.connection.initialize(protocol_version=1)
         assert response.protocol_version == 1
@@ -270,7 +270,7 @@ def test_phase1_helpers_cover_header_merge_and_transport_defaults() -> None:
     assert bearer_headers("   ") is None
     assert bearer_headers("token") == {"Authorization": "Bearer token"}
     assert _merge_headers(None, {"Authorization": "Bearer token"}) == {
-        "Authorization": "Bearer token"
+        "Authorization": "Bearer token",
     }
     assert _merge_headers({"X-Test": "1"}, {"Authorization": "Bearer token"}) == [
         ("X-Test", "1"),
@@ -294,7 +294,7 @@ def test_phase1_helpers_cover_header_merge_and_transport_defaults() -> None:
 async def test_phase1_stream_bridge_handles_partial_lines_and_binary_frame_failures() -> None:
     websocket = _FakeWebSocket()
     await websocket.incoming.put("from remote")
-    bridge = await open_websocket_stream_bridge(cast(Any, websocket))
+    bridge = await open_websocket_stream_bridge(cast("Any", websocket))
 
     bridge.writer.write(b"partial")
     await bridge.writer.drain()
@@ -316,7 +316,7 @@ async def test_phase1_stream_bridge_handles_partial_lines_and_binary_frame_failu
 @pytest.mark.asyncio
 async def test_phase1_stream_bridge_supports_large_lines_with_configured_reader_limit() -> None:
     websocket = _FakeWebSocket()
-    bridge = await open_websocket_stream_bridge(cast(Any, websocket), reader_limit=1_048_576)
+    bridge = await open_websocket_stream_bridge(cast("Any", websocket), reader_limit=1_048_576)
     large_message = "x" * 70_000
     try:
         await websocket.incoming.put(large_message)
@@ -332,7 +332,7 @@ async def test_phase1_stream_bridge_supports_large_lines_with_configured_reader_
 @pytest.mark.asyncio
 async def test_phase1_stream_bridge_handles_sender_failures_and_transport_edges() -> None:
     websocket = _FakeWebSocket(send_error=RuntimeError("send failed"))
-    bridge = await open_websocket_stream_bridge(cast(Any, websocket))
+    bridge = await open_websocket_stream_bridge(cast("Any", websocket))
 
     assert bridge.writer.transport.can_write_eof() is False
     assert bridge.writer.transport.get_extra_info("missing", "fallback") == "fallback"

@@ -15,7 +15,12 @@ from acp.schema import (
     SessionNotification,
     ToolCallUpdate,
 )
-from acpremote import CommandOptions, connect_remote_agent, serve_command, serve_stdio_command
+from acpremote import (
+    CommandOptions,
+    connect_remote_agent,
+    serve_command,
+    serve_stdio_command,
+)
 from acpremote import command as command_module
 
 
@@ -35,7 +40,7 @@ class _RecordingClient:
 
     async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         self.updates.append(
-            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None)
+            SessionNotification(session_id=session_id, update=update, field_meta=kwargs or None),
         )
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
@@ -54,7 +59,7 @@ async def test_command_server_recording_client_stub_methods() -> None:
     client = _RecordingClient()
 
     with pytest.raises(AssertionError, match="permission flow"):
-        await client.request_permission([], "session-1", cast(Any, object()))
+        await client.request_permission([], "session-1", cast("Any", object()))
     with pytest.raises(AssertionError, match="extension methods"):
         await client.ext_method("demo.echo", {"value": 1})
 
@@ -137,7 +142,7 @@ def _write_stdio_acp_script(tmp_path: Path, *, emit_stderr: bool = False) -> Pat
                 "    await run_agent(EchoAgent())",
                 "",
                 "asyncio.run(main())",
-            )
+            ),
         ).strip()
         + "\n",
         encoding="utf-8",
@@ -177,9 +182,9 @@ async def test_serve_command_relays_stdio_acp_process(tmp_path: Path) -> None:
         },
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     remote = await connect_remote_agent(
-        cast(Client, client),
+        cast("Client", client),
         f"ws://127.0.0.1:{port}/command/ws",
     )
     try:
@@ -218,9 +223,9 @@ async def test_serve_command_metadata_exposes_remote_cwd(tmp_path: Path) -> None
         },
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     remote = await connect_remote_agent(
-        cast(Client, client),
+        cast("Client", client),
         f"ws://127.0.0.1:{port}/command/ws",
     )
     try:
@@ -249,9 +254,9 @@ async def test_serve_stdio_command_supports_discarded_stderr(tmp_path: Path) -> 
         mount_path="/discard",
     )
     assert server.sockets is not None
-    port = server.sockets[0].getsockname()[1]
+    port = next(iter(server.sockets)).getsockname()[1]
     remote = await connect_remote_agent(
-        cast(Client, client),
+        cast("Client", client),
         f"ws://127.0.0.1:{port}/discard/ws",
     )
     try:

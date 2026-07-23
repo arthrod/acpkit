@@ -9,11 +9,14 @@ from pydantic_ai import Agent
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
 
 agent = Agent(
-    create_codex_responses_model(MODEL_NAME),
-    name="codex-responses-agent",
-    instructions=(
-        "You are a concise coding assistant. Ask for clarification when the task is underspecified."
+    create_codex_responses_model(
+        MODEL_NAME,
+        instructions=(
+            "You are a concise coding assistant. "
+            "Ask for clarification when the task is underspecified."
+        ),
     ),
+    name="codex-responses-agent",
 )
 
 

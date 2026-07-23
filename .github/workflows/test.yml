@@ -43,3 +43,48 @@ jobs:
       run: |
         source .venv/bin/activate
         make tests
+
+  pydantic-ai-compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        pydantic-ai-version: ["2.0.0", "2.1.0", "2.2.0", "2.3.0", "2.4.0"]
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+
+    - name: Set up Python 3.11
+      run: uv python install 3.11
+
+    - name: Test Pydantic AI ${{ matrix.pydantic-ai-version }}
+      run: |
+        uv run --extra dev --with "pydantic-ai-slim==${{ matrix.pydantic-ai-version }}" \
+          pytest tests/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py -q
+
+    - name: Type check Pydantic AI ${{ matrix.pydantic-ai-version }}
+      run: |
+        uv run --extra dev --with "pydantic-ai-slim==${{ matrix.pydantic-ai-version }}" \
+          ty check packages/adapters/pydantic-acp/src tests/pydantic examples/pydantic \
+          tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py
+
+  langchain-stack-compatibility:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        enable-cache: true
+
+    - name: Set up Python 3.11
+      run: uv python install 3.11
+
+    - name: Test and type check the supported LangChain stack
+      run: make check-langchain-stack

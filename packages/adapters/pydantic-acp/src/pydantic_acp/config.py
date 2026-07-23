@@ -10,6 +10,7 @@ from .hook_projection import HookProjectionMap
 from .host import HostAccessPolicy
 from .models import AdapterModel
 from .projection import DefaultToolClassifier, ProjectionMap, ToolClassifier
+from .prompt_capabilities import AdapterPromptCapabilities
 from .providers import (
     ApprovalStateProvider,
     ConfigOptionsProvider,
@@ -21,6 +22,7 @@ from .providers import (
 )
 from .serialization import DefaultOutputSerializer, OutputSerializer
 from .session.store import MemorySessionStore, SessionStore
+from .slash import SlashCommandProvider
 
 DEFAULT_AGENT_NAME = "pydantic-acp"
 DEFAULT_AGENT_TITLE = "Pydantic ACP"
@@ -53,8 +55,12 @@ class AdapterConfig:
     native_plan_additional_instructions: str | None = None
     native_plan_persistence_provider: NativePlanPersistenceProvider | None = None
     plan_provider: PlanProvider | None = None
+    prompt_capabilities: AdapterPromptCapabilities = field(
+        default_factory=AdapterPromptCapabilities,
+    )
     prompt_model_override_provider: PromptModelOverrideProvider | None = None
     replay_history_on_load: bool = True
+    slash_command_provider: SlashCommandProvider | None = None
     available_models: list[AdapterModel] = field(default_factory=list)
     session_store: SessionStore = field(default_factory=MemorySessionStore)
     output_serializer: OutputSerializer = field(default_factory=DefaultOutputSerializer)

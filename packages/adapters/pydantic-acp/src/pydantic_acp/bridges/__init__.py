@@ -3,6 +3,9 @@ from __future__ import annotations as _annotations
 from .base import BufferedCapabilityBridge, CapabilityBridge
 from .capability_support import (
     AnthropicCompactionBridge,
+    HarnessCodeModeBridge,
+    HarnessFileSystemBridge,
+    HarnessShellBridge,
     ImageGenerationBridge,
     IncludeToolReturnSchemasBridge,
     McpCapabilityBridge,
@@ -14,6 +17,7 @@ from .capability_support import (
     WebFetchBridge,
     WebSearchBridge,
 )
+from .external_hooks import EventEmissionMode, ExternalHookEventBridge
 from .history_processor import (
     HistoryProcessorBridge,
     HistoryProcessorCallable,
@@ -24,15 +28,26 @@ from .history_processor import (
 )
 from .hooks import HookBridge
 from .mcp import McpBridge, McpServerDefinition, McpToolDefinition
-from .prepare_tools import PlanGenerationType, PrepareToolsBridge, PrepareToolsMode
+from .prepare_tools import (
+    PlanGenerationType,
+    PrepareOutputToolsBridge,
+    PrepareOutputToolsMode,
+    PrepareToolsBridge,
+    PrepareToolsMode,
+)
 from .thinking import ThinkingBridge
 
 __all__ = (
+    "AnthropicCompactionBridge",
     "BufferedCapabilityBridge",
     "CapabilityBridge",
-    "AnthropicCompactionBridge",
-    "HistoryProcessorCallable",
+    "EventEmissionMode",
+    "ExternalHookEventBridge",
+    "HarnessCodeModeBridge",
+    "HarnessFileSystemBridge",
+    "HarnessShellBridge",
     "HistoryProcessorBridge",
+    "HistoryProcessorCallable",
     "HistoryProcessorContextual",
     "HistoryProcessorPlain",
     "HistoryProcessorWithContextAsync",
@@ -40,18 +55,20 @@ __all__ = (
     "HookBridge",
     "ImageGenerationBridge",
     "IncludeToolReturnSchemasBridge",
-    "McpCapabilityBridge",
     "McpBridge",
+    "McpCapabilityBridge",
     "McpServerDefinition",
     "McpToolDefinition",
     "OpenAICompactionBridge",
     "PlanGenerationType",
     "PrefixToolsBridge",
+    "PrepareOutputToolsBridge",
+    "PrepareOutputToolsMode",
     "PrepareToolsBridge",
     "PrepareToolsMode",
     "SetToolMetadataBridge",
-    "ThreadExecutorBridge",
     "ThinkingBridge",
+    "ThreadExecutorBridge",
     "ToolsetBridge",
     "WebFetchBridge",
     "WebSearchBridge",

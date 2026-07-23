@@ -17,7 +17,11 @@ from pydantic_ai.tools import DeferredToolRequests, DeferredToolResults
 from ..approvals import ApprovalResolution
 from ..bridges import PrepareToolsBridge
 from ..models import ModelOverride
-from ..session.state import AcpSessionContext, SessionTranscriptUpdate, StoredSessionUpdate
+from ..session.state import (
+    AcpSessionContext,
+    SessionTranscriptUpdate,
+    StoredSessionUpdate,
+)
 from ._native_plan_runtime import _NativePlanRuntime
 from ._prompt_execution import _PromptExecution
 from ._prompt_model_runtime import _PromptModelRuntime
@@ -30,7 +34,7 @@ AgentDepsT = TypeVar("AgentDepsT", contravariant=True)
 OutputDataT = TypeVar("OutputDataT", covariant=True)
 RunOutputType: TypeAlias = OutputSpec[Any]
 
-__all__ = ("TaskPlan", "NativePlanGeneration", "_PromptRuntime")
+__all__ = ("NativePlanGeneration", "TaskPlan", "_PromptRuntime")
 
 
 class TaskPlan(BaseModel):
@@ -130,6 +134,7 @@ class _PromptRuntime(Generic[AgentDepsT, OutputDataT]):
     def _build_run_kwargs(
         self,
         *,
+        session: AcpSessionContext,
         message_history: list[ModelMessage] | None,
         deferred_tool_results: DeferredToolResults | None,
         deps: AgentDepsT | None,
@@ -140,7 +145,9 @@ class _PromptRuntime(Generic[AgentDepsT, OutputDataT]):
         run_kwargs: dict[str, Any] = {
             "message_history": message_history,
             "deferred_tool_results": deferred_tool_results,
+            "conversation_id": session.session_id,
             "model": model_override,
+            "metadata": {"pydantic_acp_session_id": session.session_id},
         }
         if deps is not None:
             run_kwargs["deps"] = deps

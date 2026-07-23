@@ -5,7 +5,13 @@ from collections.abc import Sequence
 
 import click
 
-from .runtime import AcpKitError, launch_target, run_remote_addr, run_target, serve_target
+from .runtime import (
+    AcpKitError,
+    launch_target,
+    run_remote_addr,
+    run_target,
+    serve_target,
+)
 from .runtime import launch_command as launch_raw_command
 
 __all__ = ("cli", "main")
@@ -154,7 +160,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             standalone_mode=False,
         )
     except click.ClickException as exc:
-        exc.show(file=sys.stderr)
+        click.echo(f"Error: {exc.format_message()}", file=sys.stderr, err=True)
         return exc.exit_code
     except click.exceptions.Exit as exc:
         return exc.exit_code
