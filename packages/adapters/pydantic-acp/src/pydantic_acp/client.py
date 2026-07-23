@@ -24,6 +24,7 @@ from acp.schema import (
     EnvVariable,
     Implementation,
     KillTerminalResponse,
+    NewSessionResponse,
     PermissionOption,
     ReadTextFileResponse,
     ReleaseTerminalResponse,
@@ -75,7 +76,7 @@ from ._version import __version__
 from .types import AgentPromptBlock
 
 HistoryMode: TypeAlias = Literal["latest_user", "full"]
-_DEFAULT_MODEL_NAME = "agent"
+_DEFAULT_MODEL_NAME: str = "agent"
 
 AcpPromptRenderer: TypeAlias = Callable[
     [Sequence[ModelMessage], ModelRequestParameters],
@@ -740,7 +741,7 @@ class AcpProvider(Provider[AcpAgent]):
 
         return self._session_id
 
-    async def _new_session_with_auth(self) -> Any:
+    async def _new_session_with_auth(self) -> NewSessionResponse:
         """Create an ACP session, authenticating once if the agent demands it.
 
         ACP agents may reject ``session/new`` with an ``auth_required``
@@ -1203,7 +1204,7 @@ def _agent_supports_pydantic_acp_meta(acp_agent: AcpAgent) -> bool:
     return getattr(acp_agent, "_pydantic_acp_meta_supported", False) is True
 
 
-_TEXT_FIELD_NAMES = ("text", "delta", "message", "output_text", "response", "data")
+_TEXT_FIELD_NAMES: tuple[str, ...] = ("text", "delta", "message", "output_text", "response", "data")
 
 
 def _extract_text(value: Any) -> str:
