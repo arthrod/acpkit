@@ -115,10 +115,10 @@ def _merge_headers(
     if base is None:
         return extra
     if isinstance(base, Mapping):
-        base_mapping = cast(Mapping[str, str], base)
+        base_mapping = cast("Mapping[str, str]", base)
         merged_items: list[tuple[str, str]] = [*base_mapping.items(), *extra.items()]
         return merged_items
-    base_pairs = cast(Sequence[tuple[str, str]], base)
+    base_pairs = cast("Sequence[tuple[str, str]]", base)
     merged_pairs: list[tuple[str, str]] = [*base_pairs, *extra.items()]
     return merged_pairs
 

@@ -28,7 +28,7 @@ def test_recording_acp_client_records_permission_file_and_terminal_calls() -> No
         terminal_output_response=TerminalOutputResponse(output="captured", truncated=True),
     )
     permission_options = [
-        PermissionOption(option_id="allow_once", name="Allow once", kind="allow_once")
+        PermissionOption(option_id="allow_once", name="Allow once", kind="allow_once"),
     ]
     tool_call = ToolCallProgress(
         session_update="tool_call_update",
@@ -94,7 +94,7 @@ def test_recording_acp_client_records_permission_file_and_terminal_calls() -> No
             await client.ext_notification("ext/test", {})
 
     asyncio.run(exercise_client())
-    client.on_connect(cast(Any, object()))
+    client.on_connect(cast("Any", object()))
 
     assert client.permission_option_ids == [
         ("session-1", ["allow_once"], tool_call),
@@ -158,7 +158,7 @@ def test_agent_message_texts_groups_streamed_and_anonymous_messages() -> None:
                     content=text_block("second"),
                 ),
             ),
-        ]
+        ],
     )
 
     assert agent_message_texts(client) == ["hello", "anon", "second"]

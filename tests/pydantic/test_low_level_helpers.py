@@ -182,7 +182,7 @@ def test_default_output_serializer_covers_special_cases() -> None:
     )
     assert serializer.serialize({"payload": b"hi\xff"}) == '{\n  "payload": "hi\\ufffd"\n}'
     serialized_binary_image = serializer.serialize(
-        [BinaryImage(data=b"hi", media_type="image/png")]
+        [BinaryImage(data=b"hi", media_type="image/png")],
     )
     assert "image/png" in serialized_binary_image
     assert (
@@ -196,8 +196,8 @@ def test_default_output_serializer_covers_special_cases() -> None:
                     3,
                     1.5,
                     "ok",
-                )
-            }
+                ),
+            },
         )
         == '{\n  "items": [\n    "hi\\ufffd",\n    "demo-object",\n    null,\n    true,\n    3,\n    1.5,\n    "ok"\n  ]\n}'
     )
@@ -250,7 +250,9 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
             return ReleaseTerminalResponse()
 
         async def wait_for_terminal_exit(
-            self, *args: Any, **kwargs: Any
+            self,
+            *args: Any,
+            **kwargs: Any,
         ) -> WaitForTerminalExitResponse:
             self.calls.append(("wait_for_terminal_exit", args, dict(kwargs)))
             return WaitForTerminalExitResponse(exit_code=0)
@@ -260,8 +262,8 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
             return KillTerminalResponse()
 
     client = FakeClient()
-    filesystem = ClientFilesystemBackend(client=cast(Any, client), session=session)
-    terminal = ClientTerminalBackend(client=cast(Any, client), session=session)
+    filesystem = ClientFilesystemBackend(client=cast("Any", client), session=session)
+    terminal = ClientTerminalBackend(client=cast("Any", client), session=session)
 
     assert asyncio.run(filesystem.read_text_file("note.txt", limit=3, line=1)).content == "hello"
     assert asyncio.run(filesystem.write_text_file("note.txt", "body")) is not None
@@ -273,7 +275,7 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
                 cwd=str(tmp_path),
                 env=[EnvVariable(name="X", value="1")],
                 output_byte_limit=10,
-            )
+            ),
         ).terminal_id
         == "term-1"
     )
@@ -287,65 +289,80 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
     assert client.calls[2][0] == "create_terminal"
     assert client.calls[2][2]["session_id"] == "protocols"
 
-    assert cast(Any, AgentFactory.__call__)(_LOW_LEVEL_SENTINEL, session) is None
-    assert asyncio.run(cast(Any, AgentSource.get_agent)(_LOW_LEVEL_SENTINEL, session)) is None
+    assert cast("Any", AgentFactory.__call__)(_LOW_LEVEL_SENTINEL, session) is None
+    assert asyncio.run(cast("Any", AgentSource.get_agent)(_LOW_LEVEL_SENTINEL, session)) is None
     assert (
         asyncio.run(
-            cast(Any, AgentSource.get_deps)(_LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL)
+            cast("Any", AgentSource.get_deps)(_LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL),
         )
         is None
     )
     assert (
-        asyncio.run(cast(Any, FilesystemBackend.read_text_file)(_LOW_LEVEL_SENTINEL, "x")) is None
+        asyncio.run(cast("Any", FilesystemBackend.read_text_file)(_LOW_LEVEL_SENTINEL, "x")) is None
     )
     assert (
-        asyncio.run(cast(Any, FilesystemBackend.write_text_file)(_LOW_LEVEL_SENTINEL, "x", "y"))
+        asyncio.run(cast("Any", FilesystemBackend.write_text_file)(_LOW_LEVEL_SENTINEL, "x", "y"))
         is None
     )
     assert (
-        asyncio.run(cast(Any, TerminalBackend.create_terminal)(_LOW_LEVEL_SENTINEL, "bash")) is None
-    )
-    assert asyncio.run(cast(Any, TerminalBackend.terminal_output)(_LOW_LEVEL_SENTINEL, "t")) is None
-    assert (
-        asyncio.run(cast(Any, TerminalBackend.release_terminal)(_LOW_LEVEL_SENTINEL, "t")) is None
-    )
-    assert (
-        asyncio.run(cast(Any, TerminalBackend.wait_for_terminal_exit)(_LOW_LEVEL_SENTINEL, "t"))
+        asyncio.run(cast("Any", TerminalBackend.create_terminal)(_LOW_LEVEL_SENTINEL, "bash"))
         is None
     )
-    assert asyncio.run(cast(Any, TerminalBackend.kill_terminal)(_LOW_LEVEL_SENTINEL, "t")) is None
     assert (
-        cast(Any, SessionModelsProvider.get_model_state)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL
+        asyncio.run(cast("Any", TerminalBackend.terminal_output)(_LOW_LEVEL_SENTINEL, "t")) is None
+    )
+    assert (
+        asyncio.run(cast("Any", TerminalBackend.release_terminal)(_LOW_LEVEL_SENTINEL, "t")) is None
+    )
+    assert (
+        asyncio.run(cast("Any", TerminalBackend.wait_for_terminal_exit)(_LOW_LEVEL_SENTINEL, "t"))
+        is None
+    )
+    assert asyncio.run(cast("Any", TerminalBackend.kill_terminal)(_LOW_LEVEL_SENTINEL, "t")) is None
+    assert (
+        cast("Any", SessionModelsProvider.get_model_state)(
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
     assert (
-        cast(Any, SessionModelsProvider.set_model)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL, "m"
+        cast("Any", SessionModelsProvider.set_model)(
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
+            "m",
         )
         is None
     )
     assert (
-        cast(Any, SessionModesProvider.get_mode_state)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL
+        cast("Any", SessionModesProvider.get_mode_state)(
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
     assert (
-        cast(Any, SessionModesProvider.set_mode)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL, "plan"
+        cast("Any", SessionModesProvider.set_mode)(
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
+            "plan",
         )
         is None
     )
     assert (
-        cast(Any, ConfigOptionsProvider.get_config_options)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL
+        cast("Any", ConfigOptionsProvider.get_config_options)(
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
     assert (
-        cast(Any, ConfigOptionsProvider.set_config_option)(
+        cast("Any", ConfigOptionsProvider.set_config_option)(
             _LOW_LEVEL_SENTINEL,
             session,
             _LOW_LEVEL_SENTINEL,
@@ -355,17 +372,20 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
         is None
     )
     assert (
-        cast(Any, PlanProvider.get_plan)(_LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL) is None
+        cast("Any", PlanProvider.get_plan)(_LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL)
+        is None
     )
     assert (
-        cast(Any, ApprovalStateProvider.get_approval_state)(
-            _LOW_LEVEL_SENTINEL, session, _LOW_LEVEL_SENTINEL
+        cast("Any", ApprovalStateProvider.get_approval_state)(
+            _LOW_LEVEL_SENTINEL,
+            session,
+            _LOW_LEVEL_SENTINEL,
         )
         is None
     )
-    assert cast(Any, SessionStore.delete)(_LOW_LEVEL_SENTINEL, "missing") is None
+    assert cast("Any", SessionStore.delete)(_LOW_LEVEL_SENTINEL, "missing") is None
     assert (
-        cast(Any, SessionStore.fork)(
+        cast("Any", SessionStore.fork)(
             _LOW_LEVEL_SENTINEL,
             "missing",
             new_session_id="copy",
@@ -373,9 +393,9 @@ def test_protocol_contracts_and_client_backends_cover_interfaces(
         )
         is None
     )
-    assert cast(Any, SessionStore.get)(_LOW_LEVEL_SENTINEL, "missing") is None
-    assert cast(Any, SessionStore.list_sessions)(_LOW_LEVEL_SENTINEL) is None
-    assert cast(Any, SessionStore.save)(_LOW_LEVEL_SENTINEL, session) is None
+    assert cast("Any", SessionStore.get)(_LOW_LEVEL_SENTINEL, "missing") is None
+    assert cast("Any", SessionStore.list_sessions)(_LOW_LEVEL_SENTINEL) is None
+    assert cast("Any", SessionStore.save)(_LOW_LEVEL_SENTINEL, session) is None
 
 
 def test_file_session_store_covers_delete_fork_missing_and_list_skip(
@@ -391,7 +411,14 @@ def test_file_session_store_covers_delete_fork_missing_and_list_skip(
     with pytest.raises(ValueError, match="session path"):
         _store_child_path(store.root, "../escape.json")
 
-    unsafe_session_ids = ["", "../escape", "nested/session", ".hidden", "two words", "x" * 129]
+    unsafe_session_ids = [
+        "",
+        "../escape",
+        "nested/session",
+        ".hidden",
+        "two words",
+        "x" * 129,
+    ]
     for unsafe_session_id in unsafe_session_ids:
         with pytest.raises(ValueError, match="session_id"):
             store._session_path(unsafe_session_id)
@@ -507,7 +534,7 @@ def test_history_processor_bridge_covers_duplicate_names_and_failures(
         await wrapped_plain(messages)
 
     async def run_contextual() -> None:
-        await wrapped_contextual(cast(RunContext[None], None), messages)
+        await wrapped_contextual(cast("RunContext[None]", None), messages)
 
     with pytest.raises(RuntimeError, match="plain boom"):
         asyncio.run(run_plain())
@@ -537,14 +564,14 @@ def test_prepare_tools_bridge_covers_validation_none_and_require_mode(
             PrepareToolsMode(
                 id="chat",
                 name="Chat",
-                prepare_func=cast(Any, lambda _c, _t: None),
-            )
+                prepare_func=cast("Any", lambda _c, _t: None),
+            ),
         ],
     )
     session = _session(tmp_path)
 
     async def run_prepare() -> Any:
-        prepared = bridge.build_prepare_tools(session)(cast(RunContext[None], None), [])
+        prepared = bridge.build_prepare_tools(session)(cast("RunContext[None]", None), [])
         if asyncio.iscoroutine(prepared):
             return await prepared
         assert prepared is not None  # pragma: no cover
@@ -646,7 +673,7 @@ def test_hook_projection_map_covers_hidden_fallbacks_and_truncation() -> None:
 
 def test_prompt_history_handles_resources_and_usage_paths() -> None:
     prompt = cast(
-        list[Any],
+        "list[Any]",
         [
             ResourceContentBlock(type="resource_link", name="doc", uri="file:///doc"),
             EmbeddedResourceContentBlock(
@@ -674,8 +701,8 @@ def test_prompt_history_handles_resources_and_usage_paths() -> None:
             parts=[
                 TextPart("keep"),
                 ToolCallPart("demo_tool", {}, tool_call_id="call-1"),
-            ]
-        )
+            ],
+        ),
     ]
     sanitized = sanitize_message_history(unresolved, error_text="traceback here")
     assert len(sanitized) == 2
@@ -687,9 +714,9 @@ def test_prompt_history_handles_resources_and_usage_paths() -> None:
     history = dump_message_history(
         [
             ModelResponse(
-                parts=[TextPart("The previous run failed before completion.\n\nTraceback:\nboom")]
-            )
-        ]
+                parts=[TextPart("The previous run failed before completion.\n\nTraceback:\nboom")],
+            ),
+        ],
     )
     error_history = build_error_history(
         history,
@@ -719,7 +746,7 @@ def test_prompt_history_handles_resources_and_usage_paths() -> None:
 
 def test_prompt_to_input_maps_resource_links_and_blob_resources() -> None:
     prompt = cast(
-        list[Any],
+        "list[Any]",
         [
             TextContentBlock(type="text", text="hello"),
             ResourceContentBlock(
@@ -758,7 +785,7 @@ def test_prompt_to_input_maps_resource_links_and_blob_resources() -> None:
     assert prompt_input[3].media_type == "application/pdf"
 
     document_prompt = cast(
-        list[Any],
+        "list[Any]",
         [
             ResourceContentBlock(
                 type="resource_link",
@@ -790,14 +817,14 @@ def test_prompt_to_input_maps_resource_links_and_blob_resources() -> None:
 
 def test_prompt_history_covers_cancelled_resource_and_blank_text_edges() -> None:
     unknown_resource_prompt = cast(
-        list[Any],
+        "list[Any]",
         [
             ResourceContentBlock(
                 type="resource_link",
                 name="",
                 uri="resource://opaque-item",
                 mime_type=None,
-            )
+            ),
         ],
     )
 
@@ -820,10 +847,10 @@ def test_prompt_history_covers_cancelled_resource_and_blank_text_edges() -> None
     assert cancelled_texts == ["User stopped the run.\n\nRun details:\ncancelled"]
 
     existing_cancelled = dump_message_history(
-        [ModelResponse(parts=[TextPart("User stopped the run.\n\nRun details:\ncancelled")])]
+        [ModelResponse(parts=[TextPart("User stopped the run.\n\nRun details:\ncancelled")])],
     )
     loaded_cancelled = load_message_history(
-        build_cancelled_history(existing_cancelled, prompt_text="", details_text="cancelled")
+        build_cancelled_history(existing_cancelled, prompt_text="", details_text="cancelled"),
     )
     repeated_cancelled_texts = [
         part.content
@@ -841,18 +868,18 @@ def test_prompt_history_covers_cancelled_resource_and_blank_text_edges() -> None
     assert _find_unprocessed_tool_calls([ModelResponse(parts=[tool_call])]) == [tool_call]
     assert (
         _find_unprocessed_tool_calls(
-            [ModelResponse(parts=[tool_call]), ModelRequest(parts=[tool_result])]
+            [ModelResponse(parts=[tool_call]), ModelRequest(parts=[tool_result])],
         )
         == []
     )
     assert (
         _find_unprocessed_tool_calls(
-            [ModelRequest(parts=[tool_result]), ModelResponse(parts=[tool_call])]
+            [ModelRequest(parts=[tool_result]), ModelResponse(parts=[tool_call])],
         )
         == []
     )
     assert _find_unprocessed_tool_calls(
-        [cast(Any, SimpleNamespace()), ModelResponse(parts=[tool_call])]
+        [cast("Any", SimpleNamespace()), ModelResponse(parts=[tool_call])],
     ) == [tool_call]
 
 
@@ -867,7 +894,7 @@ def test_prompt_to_input_keeps_text_only_prompt_as_string() -> None:
 def test_prompt_to_input_preserves_zed_git_diff_selection_context() -> None:
     uri = "zed:///agent/git-diff?base=main"
     prompt = cast(
-        list[Any],
+        "list[Any]",
         [
             EmbeddedResourceContentBlock(
                 type="resource",
@@ -876,7 +903,7 @@ def test_prompt_to_input_preserves_zed_git_diff_selection_context() -> None:
                     text="diff --git a/app.py b/app.py\n@@ -1 +1 @@\n-old\n+new",
                     mime_type="text/x-diff",
                 ),
-            )
+            ),
         ],
     )
 
@@ -902,7 +929,7 @@ def test_prompt_to_input_preserves_file_refs_rule_text_and_directory_links() -> 
     coverage_uri = "file:///workspace/acpkit/COVERAGE"
     repo_uri = "file:///workspace/acpkit"
     prompt = cast(
-        list[Any],
+        "list[Any]",
         [
             TextContentBlock(type="text", text="@rule iyi kod yaz"),
             EmbeddedResourceContentBlock(
@@ -977,7 +1004,7 @@ def test_session_state_round_trips_and_rejects_invalid_payloads(tmp_path: Path) 
             session_update="user_message_chunk",
             content=text_block("hello"),
             message_id="msg-1",
-        )
+        ),
     )
     restored = update.to_update()
     assert restored.session_update == "user_message_chunk"
@@ -987,7 +1014,7 @@ def test_session_state_round_trips_and_rejects_invalid_payloads(tmp_path: Path) 
             title="Demo",
             updated_at=utc_now().isoformat(),
             field_meta={"demo": {"ok": True}},
-        )
+        ),
     )
     assert session_info_update.to_update().session_update == "session_info_update"
 
@@ -997,7 +1024,7 @@ def test_session_state_round_trips_and_rejects_invalid_payloads(tmp_path: Path) 
             return {"nope": "missing"}
 
     with pytest.raises(TypeError, match="missing `sessionUpdate`"):
-        StoredSessionUpdate.from_update(cast(Any, BadUpdate()))
+        StoredSessionUpdate.from_update(cast("Any", BadUpdate()))
     with pytest.raises(TypeError, match="Expected a JSON object"):
         _coerce_json_object("x")
     with pytest.raises(TypeError, match="keys must be strings"):
@@ -1005,7 +1032,7 @@ def test_session_state_round_trips_and_rejects_invalid_payloads(tmp_path: Path) 
     with pytest.raises(TypeError, match="Unsupported JSON value"):
         _coerce_json_value(_LOW_LEVEL_SENTINEL)
     with pytest.raises(AssertionError):
-        StoredSessionUpdate(kind=cast(Any, "unknown"), payload={}).to_update()
+        StoredSessionUpdate(kind=cast("Any", "unknown"), payload={}).to_update()
 
 
 def test_session_surface_helpers_handle_missing_state_and_errors() -> None:
@@ -1017,7 +1044,7 @@ def test_session_surface_helpers_handle_missing_state_and_errors() -> None:
                 config_option_name="Model",
                 config_option_description="Select",
                 available_models=[model],
-            )
+            ),
         )
     with pytest.raises(RequestError):
         build_mode_config_option(ModeState(current_mode_id=None, modes=[]))
@@ -1030,7 +1057,7 @@ def test_session_surface_helpers_handle_missing_state_and_errors() -> None:
         ModeState(
             current_mode_id="plan",
             modes=[SessionMode(id="plan", name="Plan", description="d")],
-        )
+        ),
     )
     assert mode_state is not None
     assert mode_state.current_mode_id == "plan"
@@ -1089,32 +1116,32 @@ def test_bridge_manager_merges_metadata_and_classification_fallbacks(
 
         def get_session_metadata(self, session, agent):
             del session, agent  # pragma: no cover
-            return cast(Any, {"hidden": True})  # pragma: no cover
+            return cast("Any", {"hidden": True})  # pragma: no cover
 
     class FullBridge(CapabilityBridge):
         metadata_key = "visible"
 
         def drain_updates(self, session, agent):
             del session, agent
-            return cast(Any, [_LOW_LEVEL_SENTINEL])
+            return cast("Any", [_LOW_LEVEL_SENTINEL])
 
         def get_config_options(self, session, agent):
             del session, agent
             return cast(
-                Any,
+                "Any",
                 [
                     SessionConfigOptionBoolean(
                         id="flag",
                         name="Flag",
                         type="boolean",
                         current_value=True,
-                    )
+                    ),
                 ],
             )
 
         def get_mcp_capabilities(self, agent=None):
             del agent
-            return cast(Any, SimpleNamespace(http=True, sse=False))
+            return cast("Any", SimpleNamespace(http=True, sse=False))
 
         def get_mode_state(self, session, agent):
             del session, agent
@@ -1122,21 +1149,21 @@ def test_bridge_manager_merges_metadata_and_classification_fallbacks(
 
         def get_session_metadata(self, session, agent):
             del session, agent
-            return cast(Any, {"ok": True})
+            return cast("Any", {"ok": True})
 
         def set_config_option(self, session, agent, config_id, value):
             del session, agent
             if config_id != "flag":
                 return None
             return cast(
-                Any,
+                "Any",
                 [
                     SessionConfigOptionBoolean(
                         id="flag",
                         name="Flag",
                         type="boolean",
                         current_value=bool(value),
-                    )
+                    ),
                 ],
             )
 
@@ -1159,7 +1186,6 @@ def test_bridge_manager_merges_metadata_and_classification_fallbacks(
 
         def get_session_metadata(self, session, agent):
             del session, agent
-            return None
 
     manager = BridgeManager(
         base_classifier=DefaultToolClassifier(),
@@ -1236,11 +1262,11 @@ def test_projection_helpers_handle_fallback_and_edge_paths(
     assert extract_tool_call_locations({"other": "x"}) is None
     assert _candidate_keys(None, ("a", "b")) == ("a", "b")
     assert _candidate_keys("x", ("a", "b")) == ("x", "a", "b")
-    assert cast(Any, ToolClassifier.classify)(_LOW_LEVEL_SENTINEL, "tool") is None
-    assert cast(Any, ToolClassifier.approval_policy_key)(_LOW_LEVEL_SENTINEL, "tool") is None
-    assert cast(Any, ProjectionMap.project_start)(_LOW_LEVEL_SENTINEL, "tool") is None
+    assert cast("Any", ToolClassifier.classify)(_LOW_LEVEL_SENTINEL, "tool") is None
+    assert cast("Any", ToolClassifier.approval_policy_key)(_LOW_LEVEL_SENTINEL, "tool") is None
+    assert cast("Any", ProjectionMap.project_start)(_LOW_LEVEL_SENTINEL, "tool") is None
     assert (
-        cast(Any, ProjectionMap.project_progress)(
+        cast("Any", ProjectionMap.project_progress)(
             _LOW_LEVEL_SENTINEL,
             "tool",
             serialized_output="x",
@@ -1253,7 +1279,7 @@ def test_projection_helpers_handle_fallback_and_edge_paths(
         [
             ToolProjection(title="first"),
             ToolProjection(status="failed"),
-        ]
+        ],
     )
     assert merged is not None
     assert merged.title == "first"
@@ -1276,7 +1302,7 @@ def test_projection_helpers_handle_fallback_and_edge_paths(
     assert _preserve_file_diff_content(
         known_start=known_start,
         projection=ToolProjection(
-            content=[ContentToolCallContent(type="content", content=text_block("x"))]
+            content=[ContentToolCallContent(type="content", content=text_block("x"))],
         ),
     ) == [ContentToolCallContent(type="content", content=text_block("x"))]
     assert (
@@ -1365,13 +1391,13 @@ def test_projection_helpers_handle_fallback_and_edge_paths(
     duplicate_updates = build_tool_updates(
         [
             ModelResponse(
-                parts=[ToolCallPart("write_file", {"path": "a", "content": "b"}, tool_call_id="1")]
+                parts=[ToolCallPart("write_file", {"path": "a", "content": "b"}, tool_call_id="1")],
             ),
             ModelRequest(
                 parts=[
                     ToolReturnPart("final_result", "done"),
                     RetryPromptPart("retry", tool_name=None),
-                ]
+                ],
             ),
         ],
         classifier=DefaultToolClassifier(),
@@ -1398,7 +1424,7 @@ def test_native_approval_bridge_handles_remembered_policies_and_invalid_options(
             session=session,
             requests=requests,
             classifier=classifier,
-        )
+        ),
     )
     assert isinstance(resolution.deferred_tool_results.approvals["1"], ToolApproved)
     session.metadata["approval_policies"] = {"write_file": "reject"}
@@ -1408,7 +1434,7 @@ def test_native_approval_bridge_handles_remembered_policies_and_invalid_options(
             session=session,
             requests=requests,
             classifier=classifier,
-        )
+        ),
     )
     assert isinstance(rejected.deferred_tool_results.approvals["1"], ToolDenied)
 
@@ -1416,7 +1442,7 @@ def test_native_approval_bridge_handles_remembered_policies_and_invalid_options(
         async def request_permission(self, *args, **kwargs):
             del args, kwargs
             return RequestPermissionResponse(
-                outcome=AllowedOutcome(outcome="selected", option_id="bad-option")
+                outcome=AllowedOutcome(outcome="selected", option_id="bad-option"),
             )
 
     session.metadata["approval_policies"] = "bad"
@@ -1427,7 +1453,7 @@ def test_native_approval_bridge_handles_remembered_policies_and_invalid_options(
                 session=session,
                 requests=requests,
                 classifier=classifier,
-            )
+            ),
         )
 
     disabled = NativeApprovalBridge(enable_persistent_choices=False)
@@ -1524,7 +1550,7 @@ def test_build_tool_updates_filters_output_parts_and_empty_messages() -> None:
     updates = build_tool_updates(
         [
             ModelResponse(
-                parts=[ToolCallPart("final_result", {"value": "done"}, tool_call_id="final-1")]
+                parts=[ToolCallPart("final_result", {"value": "done"}, tool_call_id="final-1")],
             ),
             ModelRequest(parts=[ToolReturnPart("final_result", "done")]),
         ],

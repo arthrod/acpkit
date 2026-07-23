@@ -155,5 +155,5 @@ def assign_model(
     agent: Any,
     model: ModelOverride,
 ) -> None:
-    mutable_agent = cast(_AgentRuntimeCarrier, agent)
+    mutable_agent = cast("_AgentRuntimeCarrier", agent)
     mutable_agent.model = model

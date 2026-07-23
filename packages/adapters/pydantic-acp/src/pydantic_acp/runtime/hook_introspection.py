@@ -10,7 +10,12 @@ from uuid import uuid4
 
 import anyio
 from pydantic_ai import Agent as PydanticAgent
-from pydantic_ai.capabilities import AbstractCapability, CombinedCapability, Hooks, HookTimeoutError
+from pydantic_ai.capabilities import (
+    AbstractCapability,
+    CombinedCapability,
+    Hooks,
+    HookTimeoutError,
+)
 from pydantic_ai.messages import ModelResponse, ToolCallPart
 from pydantic_ai.models import ModelRequestContext
 
@@ -167,7 +172,7 @@ def list_agent_hooks(agent: PydanticAgent[Any, Any]) -> list[RegisteredHookInfo]
                         event_id=event_id,
                         hook_name=getattr(func, "__name__", "") or event_id,
                         tool_filters=_tool_filters(entry),
-                    )
+                    ),
                 )
     return sorted(
         hook_infos,

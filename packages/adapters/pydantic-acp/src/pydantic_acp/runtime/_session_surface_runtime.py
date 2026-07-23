@@ -340,7 +340,8 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
         agent: PydanticAgent[AgentDepsT, OutputDataT],
     ) -> None:
         metadata_sections = self._runtime._owner._bridge_manager.get_metadata_sections(
-            session, agent
+            session,
+            agent,
         )
         approval_state = await self.get_approval_state(session, agent)
         if approval_state is not None:
@@ -409,7 +410,7 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
             if model_option.override is model_value:
                 return model_option.model_id
             if model_identity is not None and model_identity == self._runtime._model_identity(
-                model_option.override
+                model_option.override,
             ):
                 return model_option.model_id
         if model_identity is not None:
@@ -446,7 +447,9 @@ class _SessionSurfaceRuntime(Generic[AgentDepsT, OutputDataT]):
 
 
 def _known_pydantic_model_ids() -> tuple[str, ...]:
-    from ._session_runtime import _known_pydantic_model_ids as load_known_pydantic_model_ids
+    from ._session_runtime import (
+        _known_pydantic_model_ids as load_known_pydantic_model_ids,
+    )
 
     return load_known_pydantic_model_ids()
 
@@ -475,7 +478,7 @@ def _default_available_models(
                 model_id=normalized_model_id,
                 name=normalized_model_id,
                 override=normalized_model_id if override is None else override,
-            )
+            ),
         )
 
     add_model(current_model_id, override=current_model_value)

@@ -34,12 +34,14 @@ def _passthrough_tools(
 
 def test_passthrough_tools_helper_returns_a_copy() -> None:
     tool_defs: list[ToolDefinition] = []
-    copied = _passthrough_tools(cast(Any, None), tool_defs)
+    copied = _passthrough_tools(cast("Any", None), tool_defs)
     assert copied == []
     assert copied is not tool_defs
 
 
-def test_prepare_output_tools_bridge_builds_capability_and_metadata(tmp_path: Path) -> None:
+def test_prepare_output_tools_bridge_builds_capability_and_metadata(
+    tmp_path: Path,
+) -> None:
     def keep_public(
         ctx: RunContext[None],
         tool_defs: list[ToolDefinition],
@@ -74,7 +76,7 @@ def test_prepare_output_tools_bridge_builds_capability_and_metadata(tmp_path: Pa
 
     async def run_prepare() -> list[ToolDefinition]:
         prepared = bridge.build_prepare_output_tools(session)
-        result = cast(Awaitable[list[ToolDefinition]], prepared(cast(Any, None), tool_defs))
+        result = cast("Awaitable[list[ToolDefinition]]", prepared(cast("Any", None), tool_defs))
         return await result
 
     capability = bridge.build_capability(session)
@@ -114,7 +116,9 @@ def test_prepare_output_tools_bridge_builds_capability_and_metadata(tmp_path: Pa
     assert updates is not None
 
 
-def test_prepare_output_tools_bridge_validation_and_failure_paths(tmp_path: Path) -> None:
+def test_prepare_output_tools_bridge_validation_and_failure_paths(
+    tmp_path: Path,
+) -> None:
     with pytest.raises(ValueError, match="requires at least one mode"):
         PrepareOutputToolsBridge(default_mode_id="x", modes=[])
     with pytest.raises(ValueError, match="default mode"):
@@ -125,7 +129,7 @@ def test_prepare_output_tools_bridge_validation_and_failure_paths(tmp_path: Path
                     id="default",
                     name="Default",
                     prepare_func=_passthrough_tools,
-                )
+                ),
             ],
         )
     with pytest.raises(ValueError, match="reserved slash command names"):
@@ -136,7 +140,7 @@ def test_prepare_output_tools_bridge_validation_and_failure_paths(tmp_path: Path
                     id="model",
                     name="Model",
                     prepare_func=_passthrough_tools,
-                )
+                ),
             ],
         )
 
@@ -154,7 +158,7 @@ def test_prepare_output_tools_bridge_validation_and_failure_paths(tmp_path: Path
                 id="default",
                 name="Default",
                 prepare_func=boom,
-            )
+            ),
         ],
     )
     session = AcpSessionContext(
@@ -166,7 +170,7 @@ def test_prepare_output_tools_bridge_validation_and_failure_paths(tmp_path: Path
 
     async def run_prepare() -> None:
         prepared = bridge.build_prepare_output_tools(session)
-        result = cast(Awaitable[list[ToolDefinition]], prepared(cast(Any, None), []))
+        result = cast("Awaitable[list[ToolDefinition]]", prepared(cast("Any", None), []))
         await result
 
     with pytest.raises(RuntimeError, match="output boom"):
@@ -209,9 +213,9 @@ def test_prepare_tools_bridge_rejects_invalid_default_plan_generation_type() -> 
                     name="Plan",
                     prepare_func=_passthrough_tools,
                     plan_mode=True,
-                )
+                ),
             ],
-            default_plan_generation_type=cast(Any, "invalid"),
+            default_plan_generation_type=cast("Any", "invalid"),
         )
 
 
@@ -332,7 +336,7 @@ def test_prepare_tools_bridge_records_failure_events(tmp_path: Path) -> None:
                 name="Plan",
                 prepare_func=boom,
                 plan_mode=True,
-            )
+            ),
         ],
     )
     session = AcpSessionContext(
@@ -344,7 +348,7 @@ def test_prepare_tools_bridge_records_failure_events(tmp_path: Path) -> None:
 
     async def run_prepare() -> None:
         prepared = bridge.build_prepare_tools(session)
-        result = prepared(cast(Any, None), [])
+        result = prepared(cast("Any", None), [])
         if asyncio.iscoroutine(result):
             await result
             return  # pragma: no cover
@@ -366,6 +370,6 @@ def test_prepare_tools_bridge_rejects_reserved_mode_ids() -> None:
                     id="model",
                     name="Model",
                     prepare_func=_passthrough_tools,
-                )
+                ),
             ],
         )

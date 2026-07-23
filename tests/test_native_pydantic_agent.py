@@ -5,7 +5,13 @@ import importlib.util
 from pathlib import Path
 from typing import Any, cast
 
-from pydantic_ai import ModelRequest, ModelResponse, TextPart, ToolCallPart, ToolReturnPart
+from pydantic_ai import (
+    ModelRequest,
+    ModelResponse,
+    TextPart,
+    ToolCallPart,
+    ToolReturnPart,
+)
 from pydantic_ai.messages import UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -42,7 +48,8 @@ def _latest_user_prompt(messages: list[ModelRequest | ModelResponse]) -> str:
 
 
 def _travel_demo_model(
-    messages: list[ModelRequest | ModelResponse], info: AgentInfo
+    messages: list[ModelRequest | ModelResponse],
+    info: AgentInfo,
 ) -> ModelResponse:
     del info
     latest_message = messages[-1]
@@ -54,7 +61,7 @@ def _travel_demo_model(
     prompt = _latest_user_prompt(messages)
     if prompt == "read trip file itinerary.md":
         return ModelResponse(
-            parts=[ToolCallPart("read_trip_file", {"path": "itinerary.md", "max_chars": 4000})]
+            parts=[ToolCallPart("read_trip_file", {"path": "itinerary.md", "max_chars": 4000})],
         )
     if prompt == "write trip file scratch.txt: hello from the native demo":
         return ModelResponse(
@@ -62,8 +69,8 @@ def _travel_demo_model(
                 ToolCallPart(
                     "write_trip_file",
                     {"path": "scratch.txt", "content": "hello from the native demo"},
-                )
-            ]
+                ),
+            ],
         )
     return ModelResponse(parts=[TextPart("Travel demo mode is active.")])
 
@@ -77,7 +84,7 @@ def test_native_pydantic_agent_helpers_cover_text_and_fallback_paths() -> None:
         [
             ModelRequest(parts=[UserPromptPart(content=["not-a-string"])]),
             ModelResponse(parts=[TextPart("ignored")]),
-        ]
+        ],
     )
     plain_prompt = _latest_user_prompt([ModelRequest(parts=[UserPromptPart(content="hello")])])
 
@@ -87,15 +94,15 @@ def test_native_pydantic_agent_helpers_cover_text_and_fallback_paths() -> None:
 
     tool_return_response = _travel_demo_model(
         [ModelRequest(parts=[ToolReturnPart(tool_name="read_trip_file", content="done")])],
-        cast(Any, object()),
+        cast("Any", object()),
     )
     fallback_response = _travel_demo_model(
         [ModelRequest(parts=[UserPromptPart(content="something else")])],
-        cast(Any, object()),
+        cast("Any", object()),
     )
     response_passthrough = _travel_demo_model(
         [ModelResponse(parts=[TextPart("already done")])],
-        cast(Any, object()),
+        cast("Any", object()),
     )
 
     assert tool_return_response.parts == [TextPart("read_trip_file: done")]
@@ -125,7 +132,7 @@ def test_native_pydantic_agent_read_prompt_emits_hook_and_diff(
         adapter.prompt(
             prompt=[text_block("read trip file itinerary.md")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     hook_titles = [
@@ -170,11 +177,11 @@ def test_native_pydantic_agent_write_prompt_emits_hook_and_diff(
         adapter.prompt(
             prompt=[text_block("write trip file scratch.txt: hello from the native demo")],
             session_id=session.session_id,
-        )
+        ),
     )
 
     write_start = next(
-        cast(Any, update)
+        cast("Any", update)
         for _, update in client.updates
         if isinstance(update, ToolCallStart) and update.title == "write_trip_file"
     )

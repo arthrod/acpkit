@@ -4,13 +4,13 @@ import asyncio
 import inspect
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, TypeAlias
+from typing import Any, Literal, TypeAlias, cast
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
+from acp.exceptions import RequestError
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
@@ -62,18 +62,21 @@ from pydantic_ai.usage import RequestUsage
 from ._version import __version__
 from .types import AgentPromptBlock
 
+HistoryMode: TypeAlias = Literal["latest_user", "full"]
+_DEFAULT_MODEL_NAME = "agent"
+
 AcpPromptRenderer: TypeAlias = Callable[
     [Sequence[ModelMessage], ModelRequestParameters],
     Sequence[AgentPromptBlock] | Awaitable[Sequence[AgentPromptBlock]],
 ]
 
-ACP_MODEL_PROFILE: ModelProfile = {
-    "supports_tools": False,
-    "supports_json_schema_output": False,
-    "supports_json_object_output": False,
-    "supports_image_output": False,
-    "supported_native_tools": frozenset(),
-}
+ACP_MODEL_PROFILE: ModelProfile = ModelProfile(
+    supports_tools=False,
+    supports_json_schema_output=False,
+    supports_json_object_output=False,
+    supports_image_output=False,
+    supported_native_tools=frozenset[type[AbstractNativeTool]](),
+)
 
 __all__ = (
     "ACP_MODEL_PROFILE",
@@ -85,16 +88,27 @@ __all__ = (
 )
 
 
-@dataclass(slots=True, frozen=True, kw_only=True)
+# ---------------------------------------------------------------------------
+# AcpUpdateRecord
+# ---------------------------------------------------------------------------
+
+
 class AcpUpdateRecord:
     """A host-side ACP update observed while an ACP-backed model request runs."""
 
-    session_id: str
-    update: Any
-    source: str | None = None
+    __slots__ = ("session_id", "source", "update")
+
+    def __init__(self, *, session_id: str, update: Any, source: str | None = None) -> None:
+        self.session_id = session_id
+        self.update = update
+        self.source = source
 
 
-@dataclass(slots=True, kw_only=True)
+# ---------------------------------------------------------------------------
+# AcpHostBridge
+# ---------------------------------------------------------------------------
+
+
 class AcpHostBridge:
     """Minimal ACP host/client implementation used by :class:`AcpProvider`.
 
@@ -111,8 +125,9 @@ class AcpHostBridge:
     inventing host behavior that is not present.
     """
 
-    delegate: AcpClient | None = None
-    updates: list[AcpUpdateRecord] = field(default_factory=list)
+    def __init__(self, *, delegate: AcpClient | None = None) -> None:
+        self.delegate = delegate
+        self.updates: list[AcpUpdateRecord] = []
 
     def snapshot_index(self) -> int:
         """Return an index that can later be used to read only new updates."""
@@ -165,15 +180,15 @@ class AcpHostBridge:
                 session_id=session_id,
                 update=update,
                 source=kwargs.get("source"),
+            ),
+        )
+        if self.delegate is not None and hasattr(self.delegate, "session_update"):
+            await self._call_delegate(
+                "session_update",
+                session_id=session_id,
+                update=update,
+                **kwargs,
             )
-        )
-        await self._call_delegate(
-            "session_update",
-            required=False,
-            session_id=session_id,
-            update=update,
-            **kwargs,
-        )
 
     async def request_permission(
         self,
@@ -299,7 +314,9 @@ class AcpHostBridge:
         return await self._call_delegate("ext_method", method=method, params=params)
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
-        await self._call_delegate("ext_notification", required=False, method=method, params=params)
+        if self.delegate is None or not hasattr(self.delegate, "ext_notification"):
+            return
+        await self._call_delegate("ext_notification", method=method, params=params)
 
     def on_connect(self, conn: AcpAgent) -> None:
         """Forward reverse connections to a delegate host client when it supports them."""
@@ -315,7 +332,7 @@ class AcpHostBridge:
                 return None
             raise RuntimeError(
                 f"ACP agent requested host method {method_name!r}, but no host client delegate "
-                "was supplied to AcpProvider."
+                "was supplied to AcpProvider.",
             )
         result = method(**kwargs)
         if inspect.isawaitable(result):
@@ -323,16 +340,35 @@ class AcpHostBridge:
         return result
 
 
-@dataclass(slots=True, frozen=True, kw_only=True)
+# ---------------------------------------------------------------------------
+# Internal result type
+# ---------------------------------------------------------------------------
+
+
 class _AcpPromptResult:
-    text: str
-    usage: RequestUsage
-    stop_reason: str | None
-    session_id: str
+    __slots__ = ("session_id", "stop_reason", "text", "usage")
+
+    def __init__(
+        self,
+        *,
+        text: str,
+        usage: RequestUsage,
+        stop_reason: str | None,
+        session_id: str,
+    ) -> None:
+        self.text = text
+        self.usage = usage
+        self.stop_reason = stop_reason
+        self.session_id = session_id
+
+
+# ---------------------------------------------------------------------------
+# AcpProvider
+# ---------------------------------------------------------------------------
 
 
 class AcpProvider(Provider[AcpAgent]):
-    """Pydantic AI v2 provider that treats an ACP agent as the model backend.
+    """Pydantic AI provider that treats an ACP agent as the model backend.
 
     This is the inverse of the normal ``pydantic-acp`` server adapter. The
     server adapter exposes a ``pydantic_ai.Agent`` through ACP. ``AcpProvider``
@@ -347,12 +383,14 @@ class AcpProvider(Provider[AcpAgent]):
     run, result validation, usage accumulation, and history shape.
     """
 
+    _history_mode: HistoryMode
+
     def __init__(
         self,
         *,
-        agent: AcpAgent,
-        cwd: str | Path = ".",
+        acp_agent: AcpAgent,
         host_client: AcpClient | None = None,
+        cwd: str | Path = ".",
         name: str = "acp",
         base_url: str = "acp://local",
         protocol_version: int = PROTOCOL_VERSION,
@@ -360,8 +398,38 @@ class AcpProvider(Provider[AcpAgent]):
         client_info: Implementation | None = None,
         mcp_servers: Sequence[Any] | None = None,
         prompt_renderer: AcpPromptRenderer | None = None,
+        history_mode: HistoryMode = "latest_user",
     ) -> None:
-        self._client = agent
+        """Create a new ACP provider.
+
+        Args:
+            acp_agent: The ACP agent to wrap as a Pydantic AI provider/model.
+            host_client: Optional upstream :class:`AcpClient` to delegate real
+                host operations to (file I/O, terminals, permissions, etc.).
+            cwd: Working directory passed to the ACP session on creation.
+            name: Provider name reported via :attr:`name`. Defaults to
+                ``"acp"``.
+            base_url: Base URL reported via :attr:`base_url`. Defaults to
+                ``"acp://local"``.
+            protocol_version: ACP protocol version used during
+                ``initialize``. Defaults to :data:`acp.PROTOCOL_VERSION`.
+            client_capabilities: ACP client capabilities sent during
+                ``initialize``. Defaults to an empty
+                :class:`~acp.schema.ClientCapabilities`.
+            client_info: ACP implementation info sent during ``initialize``.
+                Defaults to a ``pydantic-acp-client`` stub.
+            mcp_servers: Optional list of MCP servers forwarded to
+                ``new_session``.
+            prompt_renderer: Custom callable that converts Pydantic AI
+                messages into ACP prompt blocks. When ``None`` the built-in
+                renderer is used.
+            history_mode: Controls how previous messages are rendered into
+                the ACP prompt. ``"latest_user"`` (default) sends only the
+                latest user turn; ``"full"`` sends the entire conversation.
+
+        """
+        self._client = acp_agent
+
         self._host = AcpHostBridge(delegate=host_client)
         self._name = name
         self._base_url = base_url
@@ -374,14 +442,17 @@ class AcpProvider(Provider[AcpAgent]):
         )
         self._mcp_servers = list(mcp_servers or [])
         self._prompt_renderer = prompt_renderer
+        self._history_mode = history_mode
         self._initialized = False
         self._session_id: str | None = None
         self._current_model_name: str | None = None
         self._session_lock: asyncio.Lock | None = None
         self._session_lock_loop: asyncio.AbstractEventLoop | None = None
 
-        if hasattr(agent, "on_connect"):
-            agent.on_connect(self._host)
+        if hasattr(self._client, "on_connect"):
+            self._client.on_connect(self._host)
+
+    # -- Provider abstract interface ----------------------------------------
 
     @property
     def name(self) -> str:
@@ -395,48 +466,72 @@ class AcpProvider(Provider[AcpAgent]):
     def client(self) -> AcpAgent:
         return self._client
 
-    @property
-    def host(self) -> AcpHostBridge:
-        """The ACP host bridge connected to the wrapped ACP agent."""
-        return self._host
-
     @staticmethod
     def model_profile(model_name: str) -> ModelProfile | None:
         del model_name
         return ACP_MODEL_PROFILE
 
+    # -- Additional public API ----------------------------------------------
+
+    @property
+    def session_id(self) -> str | None:
+        return self._session_id
+
+    @property
+    def host(self) -> AcpHostBridge:
+        """The ACP host bridge connected to the wrapped ACP agent."""
+        return self._host
+
+    @property
+    def updates(self) -> list[AcpUpdateRecord]:
+        """All ACP updates recorded by the host bridge so far."""
+        return list(self._host.updates)
+
     def model(
         self,
-        model_name: str = "agent",
+        model_name: str | None = None,
         *,
         settings: ModelSettings | None = None,
         profile: ModelProfileSpec | None = None,
+        history_mode: HistoryMode | None = None,
     ) -> AcpModel:
-        """Build an ``AcpModel`` bound to this provider."""
+        """Build an :class:`AcpModel` bound to this provider.
+
+        When ``model_name`` is ``None``, the bridge does not call ACP
+        ``session/set_model`` and leaves model selection to the wrapped agent's
+        session default. The visible Pydantic AI model name remains ``"agent"``.
+        """
         return AcpModel(
             model_name=model_name,
             provider=self,
             settings=settings,
             profile=profile,
+            history_mode=history_mode,
         )
 
     async def render_prompt_blocks(
         self,
         messages: Sequence[ModelMessage],
         model_request_parameters: ModelRequestParameters,
+        *,
+        history_mode: HistoryMode | None = None,
     ) -> list[AgentPromptBlock]:
         """Render Pydantic AI model messages into ACP prompt blocks."""
         if self._prompt_renderer is None:
-            return _default_render_prompt_blocks(messages, model_request_parameters)
+            return _default_render_prompt_blocks(
+                messages,
+                model_request_parameters,
+                history_mode=history_mode or self._history_mode,
+            )
         rendered = self._prompt_renderer(messages, model_request_parameters)
         if inspect.isawaitable(rendered):
             rendered = await rendered
-        return list(rendered)
+        return list(cast(Sequence[AgentPromptBlock], rendered))
 
     async def request_prompt(
         self,
         *,
-        model_name: str,
+        model_name: str | None,
         prompt: Sequence[AgentPromptBlock],
     ) -> _AcpPromptResult:
         """Send one prompt turn to the ACP agent and collect its visible text."""
@@ -448,6 +543,9 @@ class AcpProvider(Provider[AcpAgent]):
             message_id=uuid4().hex,
         )
         text = self._host.agent_message_text_since(start_index, session_id=session_id)
+        if not text:
+            text = _extract_text(prompt_response)
+
         usage = _usage_from_acp(getattr(prompt_response, "usage", None))
         if not usage.has_values():
             usage = self._host.usage_update_since(start_index, session_id=session_id)
@@ -463,7 +561,7 @@ class AcpProvider(Provider[AcpAgent]):
             session_id=session_id,
         )
 
-    async def _ensure_session(self, *, model_name: str) -> str:
+    async def _ensure_session(self, *, model_name: str | None) -> str:
         async with self._get_session_lock():
             if not self._initialized:
                 await self._client.initialize(
@@ -480,18 +578,37 @@ class AcpProvider(Provider[AcpAgent]):
                 )
                 self._session_id = session.session_id
 
-            if self._current_model_name != model_name:
-                set_session_model = getattr(self._client, "set_session_model", None)
-                if set_session_model is not None:
+            if model_name is None:
+                return self._session_id
+
+            if self._current_model_name == model_name:
+                return self._session_id
+
+            set_session_model = getattr(self._client, "set_session_model", None)
+            if set_session_model is not None:
+                try:
                     result = set_session_model(
                         model_id=model_name,
                         session_id=self._session_id,
                     )
                     if inspect.isawaitable(result):
                         await result
+                    self._current_model_name = model_name
+                except RequestError as exc:
+                    if exc.code != -32601:
+                        raise
+                    if not (
+                        (exc.data or {}).get("method") == "session/set_model"
+                        or "session/set_model" in str(exc)
+                    ):
+                        raise
+                    # Method not found - assume model was set during session creation
+                    self._current_model_name = model_name
+            else:
+                # Method doesn't exist - assume model was set during session creation
                 self._current_model_name = model_name
 
-            return self._session_id
+        return self._session_id
 
     def _get_session_lock(self) -> asyncio.Lock:
         loop = asyncio.get_running_loop()
@@ -501,24 +618,35 @@ class AcpProvider(Provider[AcpAgent]):
         return self._session_lock
 
 
+# ---------------------------------------------------------------------------
+# AcpModel
+# ---------------------------------------------------------------------------
+
+
 class AcpModel(Model[AcpAgent]):
-    """Pydantic AI v2 ``Model`` backed by an ACP agent provider."""
+    """Pydantic AI ``Model`` backed by an ACP agent provider."""
+
+    _provider: Provider[AcpAgent]
+    _history_mode: HistoryMode | None
+    _model_name: str | None
 
     def __init__(
         self,
-        model_name: str,
+        model_name: str | None = None,
         *,
         provider: AcpProvider,
         settings: ModelSettings | None = None,
         profile: ModelProfileSpec | None = None,
+        history_mode: HistoryMode | None = None,
     ) -> None:
         self._model_name = model_name
+        self._history_mode = history_mode
         self._provider = provider
         super().__init__(settings=settings, profile=profile or ACP_MODEL_PROFILE)
 
     @property
     def model_name(self) -> str:
-        return self._model_name
+        return self._model_name or _DEFAULT_MODEL_NAME
 
     @property
     def system(self) -> str:
@@ -527,6 +655,10 @@ class AcpModel(Model[AcpAgent]):
     @property
     def base_url(self) -> str:
         return self._provider.base_url
+
+    @classmethod
+    def supported_native_tools(cls) -> frozenset[type[AbstractNativeTool]]:
+        return frozenset()
 
     async def request(
         self,
@@ -540,9 +672,14 @@ class AcpModel(Model[AcpAgent]):
         )
         del model_settings
         self._ensure_supported_request(model_request_parameters)
-        prompt = await self._provider.render_prompt_blocks(messages, model_request_parameters)
-        acp_result = await self._provider.request_prompt(
-            model_name=self.model_name,
+        provider = cast(AcpProvider, self._provider)
+        prompt = await provider.render_prompt_blocks(
+            messages,
+            model_request_parameters,
+            history_mode=self._history_mode,
+        )
+        acp_result = await provider.request_prompt(
+            model_name=self._model_name,
             prompt=prompt,
         )
         parts = [TextPart(acp_result.text, provider_name=self.system)] if acp_result.text else []
@@ -564,16 +701,11 @@ class AcpModel(Model[AcpAgent]):
         model_request_parameters: ModelRequestParameters,
         run_context: Any | None = None,
     ) -> AsyncGenerator[StreamedResponse, None]:
-        del run_context
         response = await self.request(messages, model_settings, model_request_parameters)
         yield _AcpBufferedStreamedResponse(
             model_request_parameters=model_request_parameters,
             response=response,
         )
-
-    @classmethod
-    def supported_native_tools(cls) -> frozenset[type[AbstractNativeTool]]:
-        return frozenset()
 
     def _ensure_supported_request(self, params: ModelRequestParameters) -> None:
         if params.function_tools:
@@ -581,32 +713,51 @@ class AcpModel(Model[AcpAgent]):
             raise UserError(
                 "AcpModel delegates a model turn to an ACP agent and cannot execute "
                 f"Pydantic AI function tools directly: {tool_names}. Register tools on "
-                "the ACP agent or provide them through an ACP host bridge instead."
+                "the ACP agent or provide them through an ACP host bridge instead.",
             )
         if params.native_tools:
             raise UserError(
                 "AcpModel does not expose Pydantic AI native tools directly; use the "
-                "ACP agent/provider side for native capabilities."
+                "ACP agent/provider side for native capabilities.",
             )
         if params.output_tools or not params.allow_text_output:
             raise UserError(
                 "AcpModel is a text-response provider bridge. Structured/tool-only "
-                "output must be implemented by the ACP agent or validated after the run."
+                "output must be implemented by the ACP agent or validated after the run.",
             )
 
 
-@dataclass
+# ---------------------------------------------------------------------------
+# _AcpBufferedStreamedResponse
+# ---------------------------------------------------------------------------
+
+
 class _AcpBufferedStreamedResponse(StreamedResponse):
-    response: ModelResponse
+    __slots__ = (
+        "_response",
+        "_usage",
+        "finish_reason",
+        "provider_details",
+        "provider_response_id",
+    )
 
-    def __post_init__(self) -> None:
-        self._usage = self.response.usage
-        self.provider_response_id = self.response.provider_response_id
-        self.provider_details = self.response.provider_details
-        self.finish_reason = self.response.finish_reason
+    def __init__(
+        self,
+        *,
+        model_request_parameters: ModelRequestParameters,
+        response: ModelResponse,
+    ) -> None:
+        super().__init__(model_request_parameters=model_request_parameters)
+        self._response = response
+        self._usage = response.usage
+        self.provider_response_id = response.provider_response_id
+        self.provider_details = response.provider_details
+        self.finish_reason = response.finish_reason
 
-    async def _get_event_iterator(self) -> AsyncGenerator[ModelResponseStreamEvent, None]:
-        for part in self.response.parts:
+    async def _get_event_iterator(
+        self,
+    ) -> AsyncGenerator[ModelResponseStreamEvent, None]:
+        for part in self._response.parts:
             if not isinstance(part, TextPart):
                 continue
             for event in self._parts_manager.handle_text_delta(
@@ -620,51 +771,63 @@ class _AcpBufferedStreamedResponse(StreamedResponse):
 
     @property
     def model_name(self) -> str:
-        return self.response.model_name or "acp"
+        return self._response.model_name or "acp"
 
     @property
     def provider_name(self) -> str | None:
-        return self.response.provider_name
+        return self._response.provider_name
 
     @property
     def provider_url(self) -> str | None:
-        return self.response.provider_url
+        return self._response.provider_url
 
     @property
     def timestamp(self) -> datetime:
-        return self.response.timestamp
+        return self._response.timestamp
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
 def _default_render_prompt_blocks(
     messages: Sequence[ModelMessage],
     model_request_parameters: ModelRequestParameters,
+    *,
+    history_mode: HistoryMode = "latest_user",
 ) -> list[AgentPromptBlock]:
     del model_request_parameters
-    request = _latest_request(messages)
-    if request is None:
-        text = _render_messages_as_text(messages)
-    else:
-        text = _render_request_as_text(request)
-    return [text_block(text)] if text else []
+    if history_mode == "latest_user":
+        latest = _latest_model_request(messages)
+        if latest is not None:
+            text = _render_message(latest, include_role=False)
+            if text.strip():
+                return [text_block(text)]
+    if not messages:
+        return []
+    full_text = "\n\n".join(
+        _render_message(message, include_role=True) for message in messages
+    ).strip()
+    return [text_block(full_text)] if full_text else []
 
 
-def _latest_request(messages: Sequence[ModelMessage]) -> ModelRequest | None:
+def _latest_model_request(messages: Sequence[ModelMessage]) -> ModelMessage | None:
     for message in reversed(messages):
         if isinstance(message, ModelRequest):
             return message
-    return None
+    return messages[-1] if messages else None
 
 
-def _render_messages_as_text(messages: Sequence[ModelMessage]) -> str:
-    rendered: list[str] = []
-    for message in messages:
-        if isinstance(message, ModelRequest):
-            rendered_text = _render_request_as_text(message)
-        else:
-            rendered_text = message.text or ""
-        if rendered_text:
-            rendered.append(rendered_text)
-    return "\n\n".join(rendered).strip()
+def _render_message(message: ModelMessage, *, include_role: bool) -> str:
+    if isinstance(message, ModelRequest):
+        text = _render_request_as_text(message)
+    else:
+        text = message.text or ""
+    if not include_role or not text:
+        return text
+    role = "user" if isinstance(message, ModelRequest) else "assistant"
+    return f"<{role}>\n{text}\n{role}>"
 
 
 def _render_request_as_text(request: ModelRequest) -> str:
@@ -725,7 +888,10 @@ def _section(title: str, content: str) -> str:
 
 
 def _is_agent_message_chunk(update: Any) -> bool:
-    return isinstance(update, AgentMessageChunk) or getattr(update, "session_update", None) == "agent_message_chunk"
+    return (
+        isinstance(update, AgentMessageChunk)
+        or getattr(update, "session_update", None) == "agent_message_chunk"
+    )
 
 
 def _usage_from_acp(value: Any) -> RequestUsage:
@@ -757,3 +923,47 @@ def _finish_reason_from_acp(stop_reason: str | None) -> FinishReason:
     if stop_reason == "cancelled":
         return "error"
     return "stop"
+
+
+_TEXT_FIELD_NAMES = ("text", "delta", "message", "output_text", "response", "data")
+
+
+def _extract_text(value: Any) -> str:
+    """Recursively collect text from an ACP response or session-update payload."""
+    return "".join(
+        candidate for candidate in _walk_text_candidates(value) if isinstance(candidate, str)
+    )
+
+
+def _walk_text_candidates(value: Any) -> list[Any]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, AgentMessageChunk):
+        content = getattr(value, "content", None)
+        text = getattr(content, "text", None)
+        return [text] if isinstance(text, str) else []
+    if isinstance(value, Sequence) and not isinstance(value, (bytes, bytearray)):
+        items: list[Any] = []
+        for item in value:
+            items.extend(_walk_text_candidates(item))
+        return items
+    candidates: list[Any] = []
+    content = _response_field(value, "content")
+    if content is not None and content is not value:
+        candidates.extend(_walk_text_candidates(content))
+    for name in _TEXT_FIELD_NAMES:
+        attr = _response_field(value, name)
+        if isinstance(attr, str):
+            candidates.append(attr)
+    return candidates
+
+
+def _response_field(response: Any, *names: str) -> Any:
+    for name in names:
+        if isinstance(response, dict) and name in response:
+            return response[name]
+        if hasattr(response, name):
+            return getattr(response, name)
+    return None

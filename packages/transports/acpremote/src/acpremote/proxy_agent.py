@@ -85,8 +85,8 @@ class _TransportLatencyTracker:
                     "elapsed_ms": elapsed_ms,
                     "first_update_ms": state.first_update_ms,
                     "update_count": state.update_count,
-                }
-            }
+                },
+            },
         }
 
     def finish_prompt(self, session_id: str) -> _PromptLatencySnapshot | None:
@@ -378,7 +378,7 @@ class RemoteProxyAgent:
             remote_client: Client = client
             if self.options.emit_latency_meta:
                 remote_client = cast(
-                    Client,
+                    "Client",
                     _LatencyClient(
                         delegate=client,
                         tracker=self._latency_tracker,
@@ -435,8 +435,8 @@ class RemoteProxyAgent:
                             "total_ms": snapshot.total_ms,
                             "first_update_ms": snapshot.first_update_ms,
                             "update_count": snapshot.update_count,
-                        }
-                    }
+                        },
+                    },
                 },
             ),
             source="acpremote-latency",
@@ -451,7 +451,7 @@ def connect_acp(
     options: TransportOptions | None = None,
 ) -> Agent:
     return cast(
-        Agent,
+        "Agent",
         RemoteProxyAgent(
             url=url,
             bearer_token=bearer_token,

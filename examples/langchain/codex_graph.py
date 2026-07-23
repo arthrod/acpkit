@@ -22,17 +22,20 @@ __all__ = (
     "MODEL_NAME",
     "acp_agent",
     "build_graph",
+    "codex_instructions",
     "config",
     "describe_codex_surface",
-    "codex_instructions",
     "graph",
     "graph_from_session",
     "main",
 )
 
 MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
+_DEMO_ROOT = Path("agent_demos")
 _SESSION_STORE_ROOT = (
-    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", ".acp-sessions")).expanduser().resolve()
+    Path(os.getenv("ACP_EXAMPLE_SESSION_DIR", str(_DEMO_ROOT / "acp-sessions")))
+    .expanduser()
+    .resolve()
     / "langchain-codex"
 )
 AVAILABLE_MODELS = (
@@ -48,7 +51,6 @@ AVAILABLE_MODES = (
 
 def codex_instructions(*, mode_id: str) -> str:
     """Return the Codex Responses instructions used by this example graph."""
-
     base = (
         "You are a precise workspace assistant. "
         "Use the available tools when they help, keep answers concise, "
@@ -63,14 +65,13 @@ def codex_instructions(*, mode_id: str) -> str:
 
 def describe_codex_surface() -> str:
     """Summarize the Codex-backed LangChain example surface."""
-
     return "\n".join(
         (
             "Codex graph features:",
             "- LangChain ChatOpenAI wired through codex-auth-helper",
             "- OpenAI Responses API transport through local Codex auth state",
             "- ready for `langchain-acp` exposure through `run_acp(graph=...)`",
-        )
+        ),
     )
 
 

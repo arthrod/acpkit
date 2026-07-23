@@ -11,7 +11,6 @@ MODEL_NAME = os.getenv("CODEX_MODEL", "gpt-5.4")
 
 def describe_codex_surface() -> str:
     """Describe the LangChain-facing Codex helper seam."""
-
     return (
         "This graph uses codex-auth-helper to build a LangChain ChatOpenAI model "
         "backed by the local Codex login."

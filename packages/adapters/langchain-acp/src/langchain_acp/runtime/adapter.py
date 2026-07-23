@@ -104,7 +104,7 @@ class LangChainAcpAgent(AcpAgent):
         self._native_plan_runtime = _NativePlanRuntime(self)
         self._projection_map: ProjectionMap | None = compose_projection_maps(config.projection_maps)
         self._event_projection_map: EventProjectionMap | None = compose_event_projection_maps(
-            config.event_projection_maps
+            config.event_projection_maps,
         )
         self._graph_bridge_builder = GraphBridgeBuilder.from_config(config)
         self._bridge_manager: BridgeManager = self._graph_bridge_builder.build_manager()
@@ -220,7 +220,7 @@ class LangChainAcpAgent(AcpAgent):
                     updated_at=session.updated_at.isoformat(),
                 )
                 for session in sessions
-            ]
+            ],
         )
 
     async def set_session_mode(
@@ -283,7 +283,7 @@ class LangChainAcpAgent(AcpAgent):
         else:
             session.config_values[config_id] = value
             provider_options = await self._await_maybe(
-                self._bridge_manager.set_config_option(session, config_id, value)
+                self._bridge_manager.set_config_option(session, config_id, value),
             )
             if provider_options is not None:
                 self._sync_bridge_metadata(session)
@@ -291,7 +291,7 @@ class LangChainAcpAgent(AcpAgent):
                 session.updated_at = utc_now()
                 self._store.save(session)
                 return SetSessionConfigOptionResponse(
-                    config_options=await self._config_options(session)
+                    config_options=await self._config_options(session),
                 )
         self._sync_bridge_metadata(session)
         await self._drain_bridge_updates(client=self._client, session=session)
@@ -307,7 +307,7 @@ class LangChainAcpAgent(AcpAgent):
         **kwargs: Any,
     ) -> PromptResponse:
         del kwargs
-        current_task = cast(asyncio.Task[Any], asyncio.current_task())
+        current_task = cast("asyncio.Task[Any]", asyncio.current_task())
         self._active_prompt_tasks[session_id] = current_task
         try:
             return await self._execute_prompt(
@@ -348,7 +348,10 @@ class LangChainAcpAgent(AcpAgent):
             return slash_response
         await self._drain_bridge_updates(client=client, session=session)
         await self._emit_user_prompt(
-            client=client, session=session, prompt=prompt, message_id=message_id
+            client=client,
+            session=session,
+            prompt=prompt,
+            message_id=message_id,
         )
         active_tool_calls: dict[str, dict[str, Any]] = {}
         tool_call_accumulator: dict[int, dict[str, str | int | None]] = {}
@@ -370,8 +373,8 @@ class LangChainAcpAgent(AcpAgent):
                             {
                                 "role": "user",
                                 "content": prompt_to_langchain_content(prompt),
-                            }
-                        ]
+                            },
+                        ],
                     }
 
                 should_resume = False
@@ -478,7 +481,6 @@ class LangChainAcpAgent(AcpAgent):
 
     async def authenticate(self, method_id: str, **kwargs: Any) -> None:
         del method_id, kwargs
-        return None
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         del params
@@ -534,8 +536,8 @@ class LangChainAcpAgent(AcpAgent):
                     raw_prompt=prompt_text,
                     session=session,
                     graph=graph,
-                )
-            )
+                ),
+            ),
         )
         if result is None or not result.handled:
             return None
@@ -669,7 +671,7 @@ class LangChainAcpAgent(AcpAgent):
         custom_commands = None
         if self._config.slash_command_provider is not None:
             custom_commands = await self._await_maybe(
-                self._config.slash_command_provider.available_commands(session, graph)
+                self._config.slash_command_provider.available_commands(session, graph),
             )
         return build_available_commands(
             mode_state=mode_state,
@@ -772,12 +774,12 @@ class LangChainAcpAgent(AcpAgent):
             if isinstance(tool_name, str):
                 state["name"] = tool_name
             if isinstance(args_fragment, str):
-                state["args"] = f"{cast(str, state['args'])}{args_fragment}"
-            resolved_id = cast(str | None, state["id"])
-            resolved_name = cast(str | None, state["name"])
+                state["args"] = f"{cast('str', state['args'])}{args_fragment}"
+            resolved_id = cast("str | None", state["id"])
+            resolved_name = cast("str | None", state["name"])
             if resolved_id is None or resolved_name is None or resolved_id in active_tool_calls:
                 continue
-            raw_input = self._try_parse_json_object(cast(str, state["args"]))
+            raw_input = self._try_parse_json_object(cast("str", state["args"]))
             if raw_input is None:
                 continue
             update = build_tool_start_update(
@@ -821,9 +823,7 @@ class LangChainAcpAgent(AcpAgent):
             tool_name = (
                 pending_name
                 if isinstance(pending_name, str) and pending_name
-                else message_name
-                if isinstance(message_name, str) and message_name
-                else "tool"
+                else (message_name if isinstance(message_name, str) and message_name else "tool")
             )
             pending_args = pending_state["args"] if pending_state is not None else ""
             raw_input = (
@@ -901,7 +901,7 @@ class LangChainAcpAgent(AcpAgent):
             )
         await self._emit_projected_events(client=client, session=session, payload=payload)
         for update in payload.values():
-            plan_entries = self._bridge_manager.extract_plan_entries(cast(JsonValue, update))
+            plan_entries = self._bridge_manager.extract_plan_entries(cast("JsonValue", update))
             if plan_entries is not None:
                 await self._emit_plan_update(client=client, session=session, entries=plan_entries)
         return None
@@ -915,11 +915,11 @@ class LangChainAcpAgent(AcpAgent):
     ) -> None:
         if self._event_projection_map is None:
             return
-        candidates: list[JsonValue] = [cast(JsonValue, payload)]
+        candidates: list[JsonValue] = [cast("JsonValue", payload)]
         seen_ids: set[int] = {id(payload)}
         for value in payload.values():
             if isinstance(value, dict) and id(value) not in seen_ids:
-                candidates.append(cast(JsonValue, value))
+                candidates.append(cast("JsonValue", value))
                 seen_ids.add(id(value))
         for candidate in candidates:
             projected_updates = self._event_projection_map.project_event_payload(candidate)
@@ -950,8 +950,8 @@ class LangChainAcpAgent(AcpAgent):
                 resolution = await self._approval_bridge.resolve_action_requests(
                     client=client,
                     session=session,
-                    action_requests=cast(list[dict[str, Any]], action_requests),
-                    review_configs=cast(list[dict[str, Any]], review_configs),
+                    action_requests=cast("list[dict[str, Any]]", action_requests),
+                    review_configs=cast("list[dict[str, Any]]", review_configs),
                     classifier=self._tool_classifier,
                     projection_map=self._projection_map,
                 )
@@ -959,8 +959,8 @@ class LangChainAcpAgent(AcpAgent):
                 resolution = await self._approval_bridge.resolve_action_requests(
                     client=client,
                     session=session,
-                    action_requests=cast(list[dict[str, Any]], action_requests),
-                    review_configs=cast(list[dict[str, Any]], review_configs),
+                    action_requests=cast("list[dict[str, Any]]", action_requests),
+                    review_configs=cast("list[dict[str, Any]]", review_configs),
                     classifier=self._tool_classifier,
                 )
             if resolution.cancelled:
@@ -1075,7 +1075,7 @@ class LangChainAcpAgent(AcpAgent):
                             SessionConfigSelectOption(name=mode.name, value=mode.id)
                             for mode in mode_state.modes
                         ],
-                    )
+                    ),
                 )
         model_state = await self._resolved_model_selection_state(session)
         if model_state is not None and model_state.enable_config_option:
@@ -1091,7 +1091,7 @@ class LangChainAcpAgent(AcpAgent):
                             SessionConfigSelectOption(name=model.name, value=model.model_id)
                             for model in model_state.available_models
                         ],
-                    )
+                    ),
                 )
         bridge_options = await self._await_maybe(self._bridge_manager.get_config_options(session))
         if bridge_options is not None:
@@ -1158,7 +1158,7 @@ class LangChainAcpAgent(AcpAgent):
             return []
         return [
             cast(
-                dict[str, JsonValue],
+                "dict[str, JsonValue]",
                 server.model_dump(mode="json", by_alias=True, exclude_none=True),
             )
             for server in mcp_servers
@@ -1191,7 +1191,8 @@ class LangChainAcpAgent(AcpAgent):
         return builder.compile(checkpointer=MemorySaver(), name=getattr(graph, "name", None))
 
     async def _resolved_model_selection_state(
-        self, session: AcpSessionContext
+        self,
+        session: AcpSessionContext,
     ) -> ModelSelectionState | None:
         return await self._await_maybe(self._bridge_manager.get_model_state(session))
 
@@ -1211,7 +1212,9 @@ class LangChainAcpAgent(AcpAgent):
         return mode_state.current_mode_id
 
     async def _set_model(
-        self, session: AcpSessionContext, model_id: str
+        self,
+        session: AcpSessionContext,
+        model_id: str,
     ) -> ModelSelectionState | None:
         return await self._await_maybe(self._bridge_manager.set_model(session, model_id))
 

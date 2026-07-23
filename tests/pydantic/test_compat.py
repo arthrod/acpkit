@@ -64,18 +64,18 @@ def test_root_capability_and_override_helpers_handle_missing_and_present_private
     capability = CombinedCapability(capabilities=[])
     override = ContextVar[object]("override")
 
-    cast(Any, agent)._root_capability = capability
-    cast(Any, agent)._override_root_capability = override
+    cast("Any", agent)._root_capability = capability
+    cast("Any", agent)._override_root_capability = override
 
     override_value = build_capability_override_value(capability)
 
     assert root_capability(agent) is capability
     assert root_capability_override(agent) is override
     assert type(override_value).__name__ == "_CapabilityOverrideValue"
-    assert cast(Any, override_value).value is capability
+    assert cast("Any", override_value).value is capability
 
-    cast(Any, agent)._root_capability = "wrong"
-    cast(Any, agent)._override_root_capability = "wrong"
+    cast("Any", agent)._root_capability = "wrong"
+    cast("Any", agent)._override_root_capability = "wrong"
     assert root_capability(agent) is None
     assert root_capability_override(agent) is None
 
@@ -85,9 +85,9 @@ def test_hook_registry_and_entry_helpers_normalize_supported_shapes() -> None:
     valid_entry = _DataclassEntry(
         func="callable",
         timeout=1,
-        tools=cast(Any, frozenset({"b", "a", 1})),
+        tools=cast("Any", frozenset({"b", "a", 1})),
     )
-    cast(Any, hooks)._registry = {
+    cast("Any", hooks)._registry = {
         "before_run": [valid_entry],
         1: [valid_entry],
         "bad": "wrong",
@@ -102,7 +102,7 @@ def test_hook_registry_and_entry_helpers_normalize_supported_shapes() -> None:
     assert entry_timeout(object()) is None
     assert entry_tool_filters(object()) == ()
 
-    cast(Any, hooks)._registry = "wrong"
+    cast("Any", hooks)._registry = "wrong"
     assert hook_registry(hooks) is None
 
 

@@ -196,7 +196,7 @@ def test_langchain_example_workspace_helpers_cover_seeded_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace_graph = _load_example_module(monkeypatch, "examples.langchain.workspace_graph")
-    root = tmp_path / ".workspace-graph"
+    root = tmp_path / "agent_demos" / "workspace-graph"
     monkeypatch.setattr(workspace_graph, "WORKSPACE_ROOT", root)
 
     workspace_graph._ensure_workspace()
@@ -235,7 +235,7 @@ def test_langchain_example_workspace_graph_factory_uses_session_root(
     graph = workspace_graph.graph_from_session(session)
 
     assert graph is not None
-    seeded_root = session_root / ".workspace-graph"
+    seeded_root = session_root / "agent_demos" / "workspace-graph"
     assert (seeded_root / "README.md").exists()
 
 
@@ -270,7 +270,10 @@ def test_langchain_example_workspace_graph_factory_uses_session_model_and_mode(
     )
     graph = workspace_graph.graph_from_session(session)
 
-    assert graph == {"model": "workspace-model", "name": f"workspace-edit-{tmp_path.name}"}
+    assert graph == {
+        "model": "workspace-model",
+        "name": f"workspace-edit-{tmp_path.name}",
+    }
     assert captured["model_name"] == "gpt-5.4"
     assert "smallest viable file update" in captured["instructions"]
 
@@ -288,7 +291,7 @@ def test_langchain_example_workspace_bound_tools_cover_private_closures(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     workspace_graph = _load_example_module(monkeypatch, "examples.langchain.workspace_graph")
-    root = tmp_path / ".workspace-graph"
+    root = tmp_path / "agent_demos" / "workspace-graph"
     root.mkdir(parents=True, exist_ok=True)
     tools = {tool.__name__: tool for tool in workspace_graph._bind_workspace_tools(root)}
 
@@ -351,7 +354,7 @@ def test_deepagents_example_workspace_helpers_cover_seeded_paths(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deepagents_graph = _load_example_module(monkeypatch, "examples.langchain.deepagents_graph")
-    root = tmp_path / ".deepagents-graph"
+    root = tmp_path / "agent_demos" / "deepagents-graph"
     monkeypatch.setattr(deepagents_graph, "WORKSPACE_ROOT", root)
 
     deepagents_graph._ensure_workspace()
@@ -370,7 +373,7 @@ def test_deepagents_example_workspace_helpers_cover_seeded_paths(
         == (root / "itinerary.md").resolve()
     )
     assert (
-        deepagents_graph._resolve_workspace_path(".deepagents-graph/itinerary.md", root=root)
+        deepagents_graph._resolve_workspace_path("deepagents-graph/itinerary.md", root=root)
         == (root / "itinerary.md").resolve()
     )
     assert (
@@ -399,12 +402,12 @@ def test_deepagents_example_helper_edges_cover_remaining_branches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deepagents_graph = _load_example_module(monkeypatch, "examples.langchain.deepagents_graph")
-    root = tmp_path / ".deepagents-graph"
+    root = tmp_path / "agent_demos" / "deepagents-graph"
     monkeypatch.setattr(deepagents_graph, "WORKSPACE_ROOT", root)
 
     assert "direct file edits" in deepagents_graph.codex_instructions(mode_id="edit")
 
-    outside_root = tmp_path / "outside"
+    outside_root = root.parent / "outside"
     outside_root.mkdir(parents=True, exist_ok=True)
     outside_child = outside_root / "escape.md"
     resolved = deepagents_graph._resolve_workspace_path(str(outside_child.resolve()), root=root)
@@ -444,7 +447,7 @@ def test_deepagents_example_graph_factory_builds_graph_from_lazy_import(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deepagents_graph = _load_example_module(monkeypatch, "examples.langchain.deepagents_graph")
-    root = tmp_path / ".deepagents-graph"
+    root = tmp_path / "agent_demos" / "deepagents-graph"
     monkeypatch.setattr(deepagents_graph, "WORKSPACE_ROOT", root)
     monkeypatch.setattr(deepagents_graph, "_deepagents_available", lambda: True)
 
@@ -457,7 +460,7 @@ def test_deepagents_example_graph_factory_builds_graph_from_lazy_import(
     monkeypatch.setitem(
         sys.modules,
         "deepagents",
-        cast(Any, SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
+        cast("Any", SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
     )
 
     session = AcpSessionContext(
@@ -470,8 +473,8 @@ def test_deepagents_example_graph_factory_builds_graph_from_lazy_import(
 
     assert graph is not None
     assert captured["interrupt_on"] == {"write_file": True}
-    assert captured["name"] == "deepagents-ask-.deepagents-graph"
-    tool_names = {tool.__name__ for tool in cast(list[Any], captured["tools"])}
+    assert captured["name"] == "deepagents-ask-deepagents-graph"
+    tool_names = {tool.__name__ for tool in cast("list[Any]", captured["tools"])}
     assert {
         "list_workspace_files",
         "read_file",
@@ -499,7 +502,7 @@ def test_deepagents_example_graph_factory_builds_graph_when_dependency_is_mocked
     monkeypatch.setitem(
         sys.modules,
         "deepagents",
-        cast(Any, SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
+        cast("Any", SimpleNamespace(create_deep_agent=fake_create_deep_agent)),
     )
 
     session = AcpSessionContext(
@@ -512,7 +515,7 @@ def test_deepagents_example_graph_factory_builds_graph_when_dependency_is_mocked
     )
 
     assert deepagents_graph.graph_from_session(session) is fake_graph
-    tool_names = {tool.__name__ for tool in cast(list[Any], captured["tools"])}
+    tool_names = {tool.__name__ for tool in cast("list[Any]", captured["tools"])}
     assert {
         "list_workspace_files",
         "read_file",
@@ -532,7 +535,7 @@ def test_deepagents_example_bound_tools_use_session_workspace(
     deepagents_graph = _load_example_module(monkeypatch, "examples.langchain.deepagents_graph")
     session_root = tmp_path / "remote-workspace"
     session_root.mkdir(parents=True, exist_ok=True)
-    bound_root = session_root / ".deepagents-graph"
+    bound_root = session_root / "agent_demos" / "deepagents-graph"
     tools = {tool.__name__: tool for tool in deepagents_graph._bind_workspace_tools(bound_root)}
 
     assert tools["list_workspace_files"]() == "brief.md\nnotes.md"
@@ -549,7 +552,7 @@ def test_deepagents_example_seed_session_and_module_run_as_main(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     deepagents_graph = _load_example_module(monkeypatch, "examples.langchain.deepagents_graph")
-    root = tmp_path / ".deepagents-graph"
+    root = tmp_path / "agent_demos" / "deepagents-graph"
     monkeypatch.setattr(deepagents_graph, "WORKSPACE_ROOT", root)
 
     session = deepagents_graph._seed_session()

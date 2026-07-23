@@ -29,8 +29,8 @@ __all__ = (
     "TargetResolutionError",
     "UnsupportedAgentError",
     "launch_command",
-    "load_target",
     "launch_target",
+    "load_target",
     "run_remote_addr",
     "run_target",
     "serve_target",
@@ -62,7 +62,7 @@ class MissingAdapterError(AcpKitError):
     def for_adapter(cls, adapter: AdapterDefinition) -> MissingAdapterError:
         return cls(
             f"The resolved target requires the `{adapter.extra_name}` adapter. "
-            f"Install it with: `{adapter.install_command()}`."
+            f"Install it with: `{adapter.install_command()}`.",
         )
 
     @classmethod
@@ -86,11 +86,11 @@ def parse_target_ref(target: str) -> TargetRef:
     module_name, separator, attribute_path = target.partition(":")
     if not module_name:
         raise TargetResolutionError(
-            "Target must include a module name, for example `my_app` or `my_app:agent`."
+            "Target must include a module name, for example `my_app` or `my_app:agent`.",
         )
     if separator != "" and not attribute_path:
         raise TargetResolutionError(
-            "Target attribute cannot be empty. Use `my_app` or `my_app:agent`."
+            "Target attribute cannot be empty. Use `my_app` or `my_app:agent`.",
         )
     return TargetRef(
         module_name=module_name,
@@ -165,7 +165,7 @@ def launch_command(command: str) -> int:
     except FileNotFoundError as exc:
         raise AcpKitError(
             "`uvx` is required to launch Toad ACP sessions. "
-            'Install it with: `uv pip install "acpkit[launch]"`.'
+            'Install it with: `uv pip install "acpkit[launch]"`.',
         ) from exc
     return completed.returncode
 
@@ -254,7 +254,7 @@ def _import_target_module(
         import_error = str(exc).strip()
         detail = f" Import error: {import_error}" if import_error else ""
         raise TargetResolutionError(
-            f"Could not import module `{reference.module_name}` from target `{target}`.{detail}"
+            f"Could not import module `{reference.module_name}` from target `{target}`.{detail}",
         ) from exc
 
 
@@ -266,7 +266,7 @@ def _resolve_latest_supported_target(module: ModuleType, target: str) -> Any:
     if latest_target is None:
         raise UnsupportedAgentError(
             f"Target `{target}` did not resolve to a supported agent and the module defines no "
-            "known agent instance."
+            "known agent instance.",
         )
     return latest_target
 
@@ -295,7 +295,7 @@ def _resolve_target_from_module(module: ModuleType, reference: TargetRef, target
             value = getattr(value, attribute_name)
         except AttributeError as exc:
             raise TargetResolutionError(
-                f"Target `{target}` is missing attribute `{attribute_name}`."
+                f"Target `{target}` is missing attribute `{attribute_name}`.",
             ) from exc
     return value
 

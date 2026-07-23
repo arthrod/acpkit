@@ -79,7 +79,7 @@ class _FakeClient:
                 "session_id": session_id,
                 "tool_call": tool_call,
                 "kwargs": kwargs,
-            }
+            },
         )
         return "ok"
 
@@ -99,7 +99,7 @@ class _FakeRemoteMethods:
 
     async def initialize(self, protocol_version: int, **kwargs: Any) -> InitializeResponse:
         self.calls.append(
-            ("initialize", {"protocol_version": protocol_version, **kwargs})
+            ("initialize", {"protocol_version": protocol_version, **kwargs}),
         )  # pragma: no cover
         return InitializeResponse(protocol_version=protocol_version)  # pragma: no cover
 
@@ -109,23 +109,23 @@ class _FakeRemoteMethods:
 
     async def load_session(self, **kwargs: Any) -> LoadSessionResponse | None:
         self.calls.append(("load_session", kwargs))
-        return cast(LoadSessionResponse, {"ok": True})
+        return cast("LoadSessionResponse", {"ok": True})
 
     async def list_sessions(self, **kwargs: Any) -> ListSessionsResponse:
         self.calls.append(("list_sessions", kwargs))
-        return cast(ListSessionsResponse, {"sessions": []})
+        return cast("ListSessionsResponse", {"sessions": []})
 
     async def set_session_mode(self, **kwargs: Any) -> SetSessionModeResponse | None:
         self.calls.append(("set_session_mode", kwargs))
-        return cast(SetSessionModeResponse, {"mode": kwargs["mode_id"]})
+        return cast("SetSessionModeResponse", {"mode": kwargs["mode_id"]})
 
     async def set_session_model(self, **kwargs: Any) -> SetSessionModelResponse | None:
         self.calls.append(("set_session_model", kwargs))
-        return cast(SetSessionModelResponse, {"model": kwargs["model_id"]})
+        return cast("SetSessionModelResponse", {"model": kwargs["model_id"]})
 
     async def set_config_option(self, **kwargs: Any) -> SetSessionConfigOptionResponse | None:
         self.calls.append(("set_config_option", kwargs))
-        return cast(SetSessionConfigOptionResponse, {"config": kwargs["config_id"]})
+        return cast("SetSessionConfigOptionResponse", {"config": kwargs["config_id"]})
 
     async def authenticate(self, **kwargs: Any) -> AuthenticateResponse | None:
         self.calls.append(("authenticate", kwargs))
@@ -137,11 +137,11 @@ class _FakeRemoteMethods:
 
     async def fork_session(self, **kwargs: Any) -> ForkSessionResponse:
         self.calls.append(("fork_session", kwargs))
-        return cast(ForkSessionResponse, {"session_id": kwargs["session_id"]})
+        return cast("ForkSessionResponse", {"session_id": kwargs["session_id"]})
 
     async def resume_session(self, **kwargs: Any) -> ResumeSessionResponse:
         self.calls.append(("resume_session", kwargs))
-        return cast(ResumeSessionResponse, {"session_id": kwargs["session_id"]})
+        return cast("ResumeSessionResponse", {"session_id": kwargs["session_id"]})
 
     async def close_session(self, **kwargs: Any) -> CloseSessionResponse | None:
         self.calls.append(("close_session", kwargs))
@@ -271,7 +271,7 @@ async def test_helper_fakes_cover_unreached_stub_paths() -> None:
     assert await methods.list_sessions(cursor="c-1") == {"sessions": []}
     assert await methods.set_session_mode(session_id="s-1", mode_id="ask") == {"mode": "ask"}
     assert await methods.set_session_model(session_id="s-1", model_id="model-a") == {
-        "model": "model-a"
+        "model": "model-a",
     }
     assert await methods.set_config_option(session_id="s-1", config_id="flag") == {"config": "flag"}
     assert isinstance(await methods.authenticate(method_id="demo"), AuthenticateResponse)
@@ -339,8 +339,8 @@ async def test_client_helper_paths_cover_metadata_edge_cases(
                 b'"auth_required":1,"supported_auth_modes":"bearer","max_size":"12","max_queue":"4",'
                 b'"compression":5,"health_path":"/healthz","metadata_path":"/acp",'
                 b'"websocket_path":"/acp/ws","supported_agent_families":"none","remote_cwd":123}'
-            )
-        )
+            ),
+        ),
     )
     broken_request = _FakeHttpConnection(
         response=_FakeHttpResponse(),
@@ -354,7 +354,7 @@ async def test_client_helper_paths_cover_metadata_edge_cases(
             missing_keys,
             good_payload,
             broken_request,
-        ]
+        ],
     )
 
     monkeypatch.setattr(
@@ -419,9 +419,9 @@ async def test_client_remote_connection_close_and_metadata_fetch_thread_path(
             closed.append("streams")
 
     remote = RemoteClientConnection(
-        connection=cast(Any, _FakeConnection()),
-        websocket=cast(Any, object()),
-        streams=cast(Any, _FakeStreams()),
+        connection=cast("Any", _FakeConnection()),
+        websocket=cast("Any", object()),
+        streams=cast("Any", _FakeStreams()),
     )
     await remote.close()
     assert closed == ["connection", "streams"]
@@ -462,9 +462,9 @@ async def test_remote_connection_closes_streams_when_connection_close_fails() ->
             closed.append("streams")
 
     remote = RemoteClientConnection(
-        connection=cast(Any, _FailingConnection()),
-        websocket=cast(Any, object()),
-        streams=cast(Any, _FakeStreams()),
+        connection=cast("Any", _FailingConnection()),
+        websocket=cast("Any", object()),
+        streams=cast("Any", _FakeStreams()),
     )
 
     with pytest.raises(RuntimeError, match="connection close failed"):
@@ -500,7 +500,7 @@ async def test_connect_remote_agent_closes_websocket_when_stream_setup_fails(
 
     with pytest.raises(RuntimeError, match="stream setup failed"):
         await client_module.connect_remote_agent(
-            cast(Any, object()),
+            cast("Any", object()),
             "ws://example.com/acp/ws",
         )
 
@@ -539,7 +539,7 @@ async def test_connect_remote_agent_closes_streams_when_acp_setup_fails(
 
     with pytest.raises(RuntimeError, match="ACP setup failed"):
         await client_module.connect_remote_agent(
-            cast(Any, object()),
+            cast("Any", object()),
             "ws://example.com/acp/ws",
         )
 
@@ -588,7 +588,7 @@ async def test_connect_remote_agent_cleans_up_when_metadata_fetch_fails(
 
     with pytest.raises(RuntimeError, match="metadata failed"):
         await client_module.connect_remote_agent(
-            cast(Any, object()),
+            cast("Any", object()),
             "ws://example.com/acp/ws",
         )
 
@@ -605,29 +605,29 @@ async def test_command_helper_paths_cover_process_relay_edges(
     fake_stdin = _FakeStdin()
     with pytest.raises(TypeError, match="binary WebSocket frames"):
         await command_module._relay_websocket_to_stdin(
-            cast(Any, _FakeCommandWebSocket(messages=[b"binary"])),
-            cast(Any, fake_stdin),
+            cast("Any", _FakeCommandWebSocket(messages=[b"binary"])),
+            cast("Any", fake_stdin),
         )
     assert fake_stdin.closed is True
 
     stdout_websocket = _FakeCommandWebSocket(messages=[])
     await command_module._relay_stdout_to_websocket(
-        cast(Any, _FakeStdout(lines=[b"first\n", b"second", b""])),
-        cast(Any, stdout_websocket),
+        cast("Any", _FakeStdout(lines=[b"first\n", b"second", b""])),
+        cast("Any", stdout_websocket),
     )
     assert stdout_websocket.sent == ["first", "second"]
 
     already_closed = _FakeStdin()
     already_closed.close()
-    await command_module._close_stdin(cast(Any, already_closed))
+    await command_module._close_stdin(cast("Any", already_closed))
     assert already_closed.closed is True
 
     broken_pipe = _FakeStdin(wait_closed_error=BrokenPipeError())
-    await command_module._close_stdin(cast(Any, broken_pipe))
+    await command_module._close_stdin(cast("Any", broken_pipe))
     assert broken_pipe.closed is True
 
     connection_reset = _FakeStdin(wait_closed_error=ConnectionResetError())
-    await command_module._close_stdin(cast(Any, connection_reset))
+    await command_module._close_stdin(cast("Any", connection_reset))
     assert connection_reset.closed is True
 
 
@@ -664,7 +664,7 @@ async def test_command_process_creation_and_raise_if_needed_paths(
         raise exc
 
     for exc in (
-        cast(BaseException, ConnectionClosedOK(None, None)),
+        cast("BaseException", ConnectionClosedOK(None, None)),
         BrokenPipeError(),
         ConnectionResetError(),
         ProcessLookupError(),
@@ -672,7 +672,7 @@ async def test_command_process_creation_and_raise_if_needed_paths(
         task = asyncio.create_task(_raises(exc))
         with contextlib.suppress(type(exc)):
             await task
-        command_module._raise_if_needed(cast(asyncio.Task[object], task))
+        command_module._raise_if_needed(cast("asyncio.Task[object]", task))
 
     cancelled = asyncio.create_task(asyncio.sleep(1))
     await asyncio.sleep(0)
@@ -680,7 +680,7 @@ async def test_command_process_creation_and_raise_if_needed_paths(
     with contextlib.suppress(asyncio.CancelledError):
         await cancelled
     with pytest.raises(asyncio.CancelledError):
-        command_module._raise_if_needed(cast(asyncio.Task[object], cancelled))
+        command_module._raise_if_needed(cast("asyncio.Task[object]", cancelled))
 
 
 @pytest.mark.asyncio
@@ -703,7 +703,6 @@ async def test_command_connection_covers_first_completed_branches(
 
     async def done_immediately(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
-        return None
 
     async def done_later(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
@@ -719,7 +718,7 @@ async def test_command_connection_covers_first_completed_branches(
     monkeypatch.setattr(command_module, "_relay_websocket_to_stdin", done_later)
     monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", done_later)
     await command_module.run_remote_command_connection(
-        cast(Any, object()),
+        cast("Any", object()),
         command_options=command_module.CommandOptions(command=("echo", "hi")),
     )
     assert close_calls
@@ -736,7 +735,7 @@ async def test_command_connection_covers_first_completed_branches(
     monkeypatch.setattr(command_module, "_relay_websocket_to_stdin", done_immediately)
     monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", done_later)
     await command_module.run_remote_command_connection(
-        cast(Any, object()),
+        cast("Any", object()),
         command_options=command_module.CommandOptions(command=("echo", "hi")),
     )
     assert delayed_exit.terminate_calls >= 1
@@ -762,7 +761,7 @@ async def test_command_connection_covers_first_completed_branches(
     monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", slow_relay)
     with pytest.raises(ValueError, match="boom"):
         await command_module.run_remote_command_connection(
-            cast(Any, object()),
+            cast("Any", object()),
             command_options=command_module.CommandOptions(
                 command=("echo", "hi"),
                 terminate_timeout=0.001,
@@ -778,7 +777,7 @@ async def test_command_connection_covers_first_completed_branches(
 async def test_command_process_terminate_timeout_kills() -> None:
     process = _FakeCommandProcess(wait_delay=0.02)
 
-    await command_module._terminate_process(cast(Any, process), timeout=0.001)
+    await command_module._terminate_process(cast("Any", process), timeout=0.001)
 
     assert process.terminate_calls == 1
     assert process.kill_calls == 1
@@ -789,7 +788,7 @@ async def test_command_process_terminate_timeout_kills() -> None:
 async def test_command_process_terminate_returns_when_already_exited() -> None:
     process = _FakeCommandProcess(returncode=0)
 
-    await command_module._terminate_process(cast(Any, process), timeout=0.001)
+    await command_module._terminate_process(cast("Any", process), timeout=0.001)
 
     assert process.terminate_calls == 0
     assert process.kill_calls == 0
@@ -809,7 +808,7 @@ async def test_command_process_terminate_returns_when_timeout_sets_returncode() 
 
     process = _ExitingOnCancelledProcess()
 
-    await command_module._terminate_process(cast(Any, process), timeout=0.001)
+    await command_module._terminate_process(cast("Any", process), timeout=0.001)
 
     assert process.terminate_calls == 1
     assert process.kill_calls == 0
@@ -820,7 +819,7 @@ async def test_command_process_terminate_returns_when_timeout_sets_returncode() 
 async def test_command_process_terminate_kills_when_cancelled() -> None:
     process = _FakeCommandProcess(wait_delay=0.01)
     task = asyncio.create_task(
-        command_module._terminate_process(cast(Any, process), timeout=1),
+        command_module._terminate_process(cast("Any", process), timeout=1),
     )
 
     await asyncio.sleep(0)
@@ -846,7 +845,7 @@ async def test_command_process_terminate_cancelled_after_process_exit() -> None:
 
     process = _ExitedOnCancelledProcess()
     task = asyncio.create_task(
-        command_module._terminate_process(cast(Any, process), timeout=1),
+        command_module._terminate_process(cast("Any", process), timeout=1),
     )
 
     await asyncio.sleep(0)
@@ -865,7 +864,6 @@ async def test_command_connection_covers_all_done_path(
 ) -> None:
     async def all_done(*args: Any, **kwargs: Any) -> None:
         del args, kwargs
-        return None
 
     process = _FakeCommandProcess(wait_delay=0.0)
 
@@ -878,7 +876,7 @@ async def test_command_connection_covers_all_done_path(
     monkeypatch.setattr(command_module, "_relay_stdout_to_websocket", all_done)
 
     await command_module.run_remote_command_connection(
-        cast(Any, _FakeCommandWebSocket(messages=[])),
+        cast("Any", _FakeCommandWebSocket(messages=[])),
         command_options=command_module.CommandOptions(command=("echo", "hi")),
     )
 
@@ -903,7 +901,7 @@ async def test_proxy_agent_helper_paths_cover_delegate_and_metadata_edges(
 
     client = _FakeClient()
     latency_client = proxy_agent_module._LatencyClient(
-        delegate=cast(Any, client),
+        delegate=cast("Any", client),
         tracker=tracker,
         emit_latency_meta=False,
     )
@@ -918,7 +916,7 @@ async def test_proxy_agent_helper_paths_cover_delegate_and_metadata_edges(
 
     assert proxy_agent_module._merge_field_meta({"source": "x"}, None) == {"source": "x"}
     assert proxy_agent_module._merge_field_meta({}, {"acpremote": {"value": 1}}) == {
-        "field_meta": {"acpremote": {"value": 1}}
+        "field_meta": {"acpremote": {"value": 1}},
     }
     assert proxy_agent_module._merge_field_meta(
         {"field_meta": "not-a-dict"},
@@ -986,17 +984,17 @@ async def test_proxy_agent_helper_paths_cover_delegate_and_metadata_edges(
         async def close(self) -> None:
             closers.append("closed")  # pragma: no cover
 
-    proxy._client = cast(Any, object())
-    proxy._remote = cast(RemoteClientConnection, _ClosableRemote())
+    proxy._client = cast("Any", object())
+    proxy._remote = cast("RemoteClientConnection", _ClosableRemote())
     monkeypatch.setattr(asyncio, "get_running_loop", lambda: (_ for _ in ()).throw(RuntimeError()))
-    proxy.on_connect(cast(Any, object()))
+    proxy.on_connect(cast("Any", object()))
     assert proxy._remote is None
     await proxy.close()
     assert closers == ["closed"]
 
-    proxy._client = cast(Any, object())
-    proxy._remote = cast(RemoteClientConnection, _ClosableRemote())
-    proxy.on_connect(cast(Any, object()))
+    proxy._client = cast("Any", object())
+    proxy._remote = cast("RemoteClientConnection", _ClosableRemote())
+    proxy.on_connect(cast("Any", object()))
     assert proxy._remote is None
     await proxy.close()
     assert closers == ["closed", "closed"]
@@ -1012,7 +1010,7 @@ async def test_proxy_agent_methods_cover_forwarding_and_connection_recheck(
         return None  # pragma: no cover
 
     remote = cast(
-        RemoteClientConnection,
+        "RemoteClientConnection",
         SimpleNamespace(
             connection=methods,
             metadata=ServerMetadata(
@@ -1037,7 +1035,7 @@ async def test_proxy_agent_methods_cover_forwarding_and_connection_recheck(
         url="ws://example.invalid/acp/ws",
         options=TransportOptions(),
     )
-    proxy._client = cast(Any, object())
+    proxy._client = cast("Any", object())
     proxy._remote = remote
     proxy._remote_cwd = "/srv/remote"
 
@@ -1083,14 +1081,14 @@ async def test_proxy_agent_methods_cover_forwarding_and_connection_recheck(
             del exc_type, exc, tb
             return False
 
-    proxy._connect_lock = cast(Any, _PreloadedLock(proxy))
+    proxy._connect_lock = cast("Any", _PreloadedLock(proxy))
     assert await proxy._remote_connection() is remote
 
     prompt_proxy = proxy_agent_module.RemoteProxyAgent(url="ws://example.invalid/acp/ws")
-    prompt_proxy._client = cast(Any, object())
+    prompt_proxy._client = cast("Any", object())
     prompt_proxy._remote = remote
     prompt_proxy._latency_tracker = cast(
-        Any,
+        "Any",
         SimpleNamespace(
             start_prompt=lambda session_id: None,
             finish_prompt=lambda session_id: None,
@@ -1116,7 +1114,7 @@ async def test_stream_helper_paths_cover_protocol_and_sender_edge_cases() -> Non
     loop = asyncio.get_running_loop()
     protocol = stream_module._WriterProtocol(loop=loop)
     await protocol._drain_helper()
-    waiter = protocol._get_close_waiter(cast(asyncio.StreamWriter, object()))
+    waiter = protocol._get_close_waiter(cast("asyncio.StreamWriter", object()))
     protocol.connection_lost(None)
     await waiter
 
@@ -1126,7 +1124,7 @@ async def test_stream_helper_paths_cover_protocol_and_sender_edge_cases() -> Non
 
     websocket = _FakeStreamWebSocket()
     transport = stream_module._WebSocketTransport(
-        websocket=cast(Any, websocket),
+        websocket=cast("Any", websocket),
         loop=loop,
         protocol=protocol,
     )
@@ -1139,7 +1137,7 @@ async def test_stream_helper_paths_cover_protocol_and_sender_edge_cases() -> Non
     second_future: asyncio.Future[None] = loop.create_future()
     transport._pending.put_nowait(stream_module._PendingWrite(payload="first", future=first_future))
     transport._pending.put_nowait(
-        stream_module._PendingWrite(payload="second", future=second_future)
+        stream_module._PendingWrite(payload="second", future=second_future),
     )
     transport._pending.put_nowait(None)
     await transport._sender_loop()
@@ -1149,7 +1147,7 @@ async def test_stream_helper_paths_cover_protocol_and_sender_edge_cases() -> Non
     error_websocket = _FakeStreamWebSocket(send_error=ConnectionResetError("boom"))
     error_protocol = stream_module._WriterProtocol(loop=loop)
     error_transport = stream_module._WebSocketTransport(
-        websocket=cast(Any, error_websocket),
+        websocket=cast("Any", error_websocket),
         loop=loop,
         protocol=error_protocol,
     )
@@ -1160,10 +1158,10 @@ async def test_stream_helper_paths_cover_protocol_and_sender_edge_cases() -> Non
     failed_future: asyncio.Future[None] = loop.create_future()
     pending_future: asyncio.Future[None] = loop.create_future()
     error_transport._pending.put_nowait(
-        stream_module._PendingWrite(payload="fail", future=failed_future)
+        stream_module._PendingWrite(payload="fail", future=failed_future),
     )
     error_transport._pending.put_nowait(
-        stream_module._PendingWrite(payload="pending", future=pending_future)
+        stream_module._PendingWrite(payload="pending", future=pending_future),
     )
     error_transport._pending.put_nowait(None)
     await error_transport._sender_loop()
@@ -1174,7 +1172,7 @@ async def test_stream_helper_paths_cover_protocol_and_sender_edge_cases() -> Non
     cancelled_websocket = _FakeStreamWebSocket(send_error=asyncio.CancelledError())
     cancelled_protocol = stream_module._WriterProtocol(loop=loop)
     cancelled_transport = stream_module._WebSocketTransport(
-        websocket=cast(Any, cancelled_websocket),
+        websocket=cast("Any", cancelled_websocket),
         loop=loop,
         protocol=cancelled_protocol,
     )
@@ -1183,7 +1181,7 @@ async def test_stream_helper_paths_cover_protocol_and_sender_edge_cases() -> Non
         await cancelled_transport._sender_task
     cancelled_future: asyncio.Future[None] = loop.create_future()
     cancelled_transport._pending.put_nowait(
-        stream_module._PendingWrite(payload="cancel", future=cancelled_future)
+        stream_module._PendingWrite(payload="cancel", future=cancelled_future),
     )
     with pytest.raises(asyncio.CancelledError):
         await cancelled_transport._sender_loop()

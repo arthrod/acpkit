@@ -52,11 +52,11 @@ __all__ = (
     "PromptBlock",
     "PromptInput",
     "PromptRunOutcome",
-    "build_user_updates",
     "build_cancelled_history",
+    "build_user_updates",
     "contains_deferred_tool_requests",
-    "dump_message_history",
     "derive_title",
+    "dump_message_history",
     "load_message_history",
     "prompt_to_input",
     "prompt_to_text",
@@ -143,10 +143,10 @@ def sanitize_message_history(
                     _render_unprocessed_tool_call_text(
                         unresolved_tool_calls,
                         error_text=error_text,
-                    )
-                )
-            ]
-        )
+                    ),
+                ),
+            ],
+        ),
     )
     return sanitized_messages
 
@@ -208,11 +208,11 @@ def build_error_history(
                                 "",
                                 "Traceback:",
                                 traceback_text.rstrip(),
-                            )
-                        )
-                    )
-                ]
-            )
+                            ),
+                        ),
+                    ),
+                ],
+            ),
         )
     return dump_message_history(messages)
 
@@ -308,12 +308,12 @@ def _embedded_resource_to_user_content(
     resource = block.resource
     if isinstance(resource, TextResourceContents):
         return _format_text_resource_context(resource.uri, resource.text)
-    blob_resource = cast(BlobResourceContents, resource)
+    blob_resource = cast("BlobResourceContents", resource)
     return BinaryContent.narrow_type(
         BinaryContent(
             data=base64.b64decode(blob_resource.blob),
             media_type=blob_resource.mime_type or "application/octet-stream",
-        )
+        ),
     )
 
 
@@ -333,7 +333,7 @@ def _format_text_resource_context(uri: str, text: str) -> str:
             f'<context ref="{uri}">',
             text,
             "</context>",
-        )
+        ),
     )
 
 
@@ -343,7 +343,7 @@ def _resource_name_from_uri(uri: str) -> str | None:
         name = path.split("/")[-1]
         return name or path
     if uri.startswith("zed://"):
-        name = uri.split("/")[-1]
+        name = uri.rsplit("/", maxsplit=1)[-1]
         return name or uri
     return None
 
@@ -372,7 +372,7 @@ def _render_cancelled_run_text(details_text: str) -> str:
             "",
             "Run details:",
             details_text.rstrip(),
-        )
+        ),
     )
 
 

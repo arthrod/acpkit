@@ -141,3 +141,12 @@ Today the repo ships production-grade adapters for both Pydantic AI and the Lang
 - [About ACP Kit](https://vcoderun.github.io/acpkit/about/)
   Source: `docs/about/index.md`
   Summary: Design goals, intended audience, package scope, and project status.
+
+### Release Notes
+
+- [ACP Kit 1.1.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.1.0/)
+  Source: `docs/releases/acpkit-1.1.0.md`
+  Summary: ACP-backed Pydantic AI provider bridge, example output paths, and v1.1 compatibility notes.
+- [ACP Kit 1.0.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.0.0/)
+  Source: `docs/releases/acpkit-1.0.0.md`
+  Summary: First stable synchronized workspace release and v1 compatibility contract.

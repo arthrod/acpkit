@@ -63,7 +63,7 @@ class CompatibilityManifest:
                 f"{_render_cell(support.status)} | "
                 f"{_render_cell(support.owner)} | "
                 f"{_render_cell(support.mapping)} | "
-                f"{_render_cell(support.rationale)} |"
+                f"{_render_cell(support.rationale)} |",
             )
         return "\n".join(lines)
 
@@ -73,19 +73,19 @@ class CompatibilityManifest:
             raise ValueError("Compatibility manifest surface names must not be empty.")
         if normalized != surface_name:
             raise ValueError(
-                f"Compatibility manifest surface `{surface_name}` must not have surrounding whitespace."
+                f"Compatibility manifest surface `{surface_name}` must not have surrounding whitespace.",
             )
 
     def _validate_support(self, surface_name: str, support: SurfaceSupport) -> None:
         if support.status in {"implemented", "partial"} and support.owner is None:
             raise ValueError(
                 f"Compatibility manifest surface `{surface_name}` must declare an owner "
-                "when status is implemented or partial."
+                "when status is implemented or partial.",
             )
         if support.status == "implemented" and _is_blank(support.mapping):
             raise ValueError(
                 f"Compatibility manifest surface `{surface_name}` must declare a mapping "
-                "when status is implemented."
+                "when status is implemented.",
             )
         if support.status in {
             "partial",
@@ -94,12 +94,12 @@ class CompatibilityManifest:
         } and _is_blank(support.rationale):
             raise ValueError(
                 f"Compatibility manifest surface `{surface_name}` must declare a rationale "
-                f"when status is {support.status}."
+                f"when status is {support.status}.",
             )
         if support.owner == "mixed" and _is_blank(support.rationale):
             raise ValueError(
                 f"Compatibility manifest surface `{surface_name}` must explain how mixed "
-                "ownership works."
+                "ownership works.",
             )
 
 

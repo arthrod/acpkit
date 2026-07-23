@@ -82,7 +82,7 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
                     updated_at=session.updated_at.isoformat(),
                 )
                 for session in sessions
-            ]
+            ],
         )
 
     async def fork_session(
@@ -591,7 +591,7 @@ def _default_available_models(
                 model_id=normalized_model_id,
                 name=normalized_model_id,
                 override=normalized_model_id if override is None else override,
-            )
+            ),
         )
 
     add_model(current_model_id, override=current_model_value)
