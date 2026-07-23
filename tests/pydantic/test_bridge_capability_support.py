@@ -304,6 +304,8 @@ def test_harness_code_mode_bridge_builds_capability_and_metadata(
 
 
 def test_harness_v07_bridges_build_real_capabilities() -> None:
+    pytest.importorskip("pydantic_ai_harness")
+
     from pydantic_ai_harness.code_mode import CodeMode
     from pydantic_ai_harness.filesystem import FileSystem
     from pydantic_ai_harness.shell import Shell
