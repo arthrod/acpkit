@@ -2327,3 +2327,212 @@ async def test_empty_turn_raises_acp_specific_error_when_opted_in() -> None:
             None,
             ModelRequestParameters(),
         )
+
+
+# ---------------------------------------------------------------------------
+# Additional coverage: auth edge cases, session bootstrap, and empty turns
+# ---------------------------------------------------------------------------
+
+
+async def test_acp_provider_does_not_retry_authenticate_after_it_already_ran() -> None:
+    """A second ``auth_required`` after authenticating must propagate, not loop."""
+    agent = AuthRequiredACPAgent(
+        auth_methods=[AuthMethodAgent(id="login", name="Login", description="Log in")],
+        fail_times=2,
+    )
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    with pytest.raises(RequestError) as exc_info:
+        await provider.ensure_session()
+
+    assert exc_info.value.code == RequestError.auth_required().code
+    assert agent.new_session_calls == 2
+    assert agent.authenticated_with == ["login"]
+
+
+async def test_acp_provider_non_auth_request_error_propagates_without_authenticating() -> None:
+    class OtherErrorACPAgent(EchoACPAgent):
+        async def new_session(
+            self,
+            cwd: str,
+            mcp_servers: list[Any] | None = None,
+            **kwargs: Any,
+        ) -> NewSessionResponse:
+            del cwd, mcp_servers, kwargs
+            raise RequestError.internal_error()
+
+    provider = AcpProvider(acp_agent=OtherErrorACPAgent(), cwd="/workspace")
+
+    with pytest.raises(RequestError) as exc_info:
+        await provider.ensure_session()
+
+    assert exc_info.value.code == RequestError.internal_error().code
+
+
+async def test_acp_provider_uses_first_advertised_auth_method_when_multiple_exist() -> None:
+    agent = AuthRequiredACPAgent(
+        auth_methods=[
+            AuthMethodAgent(id="oauth", name="OAuth", description="OAuth login"),
+            AuthMethodAgent(id="apikey", name="API Key", description="API key login"),
+        ],
+    )
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    await provider.ensure_session()
+
+    assert agent.authenticated_with == ["oauth"]
+
+
+async def test_acp_provider_supports_synchronous_authenticate() -> None:
+    class SyncAuthenticateACPAgent(AuthRequiredACPAgent):
+        def authenticate(self, method_id: str, **kwargs: Any) -> None:  # type: ignore[override]
+            del kwargs
+            self.authenticated_with.append(method_id)
+
+    agent = SyncAuthenticateACPAgent(
+        auth_methods=[AuthMethodAgent(id="login", name="Login", description="Log in")],
+    )
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    session_id = await provider.ensure_session()
+
+    assert session_id == "session-1"
+    assert agent.authenticated_with == ["login"]
+
+
+async def test_acp_provider_auth_required_without_any_method_error_omits_advertised_clause() -> (
+    None
+):
+    agent = AuthRequiredACPAgent(auth_methods=[])
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    with pytest.raises(UserError) as exc_info:
+        await provider.ensure_session()
+
+    assert "(advertised:" not in str(exc_info.value)
+
+
+async def test_acp_provider_auth_required_with_unusable_advertised_methods_raises_userror() -> (
+    None
+):
+    class AuthMethodsWithoutIdACPAgent(EchoACPAgent):
+        async def initialize(
+            self,
+            protocol_version: int,
+            client_capabilities: ClientCapabilities | None = None,
+            client_info: Implementation | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            del client_capabilities, client_info, kwargs
+            self.initialized_protocols.append(protocol_version)
+            return SimpleNamespace(auth_methods=[SimpleNamespace(name="mystery")])
+
+        async def new_session(
+            self,
+            cwd: str,
+            mcp_servers: list[Any] | None = None,
+            **kwargs: Any,
+        ) -> NewSessionResponse:
+            del cwd, mcp_servers, kwargs
+            raise RequestError.auth_required()
+
+        async def authenticate(self, method_id: str, **kwargs: Any) -> None:
+            del method_id, kwargs
+
+    provider = AcpProvider(acp_agent=AuthMethodsWithoutIdACPAgent(), cwd="/workspace")
+
+    with pytest.raises(UserError, match="advertised no usable authentication"):
+        await provider.ensure_session()
+
+
+async def test_acp_provider_ensure_session_forwards_model_name() -> None:
+    agent = EchoACPAgent()
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+
+    await provider.ensure_session(model_name="agent")
+
+    assert agent.session_models == [("session-1", "agent")]
+
+
+async def test_acp_provider_set_session_mode_supports_synchronous_agent_method() -> None:
+    mode_calls: list[tuple[str, str]] = []
+
+    class SyncModeACPAgent(EchoACPAgent):
+        def set_session_mode(self, session_id: str, mode_id: str, **kwargs: Any) -> None:
+            del kwargs
+            mode_calls.append((session_id, mode_id))
+
+    provider = AcpProvider(acp_agent=SyncModeACPAgent(), cwd="/workspace")
+
+    await provider.set_session_mode("default")
+
+    assert mode_calls == [("session-1", "default")]
+
+
+async def test_acp_provider_set_session_mode_reuses_session_created_by_prior_prompt() -> None:
+    class ModeACPAgent(EchoACPAgent):
+        def __init__(self) -> None:
+            super().__init__()
+            self.mode_calls: list[tuple[str, str]] = []
+
+        async def set_session_mode(
+            self,
+            session_id: str,
+            mode_id: str,
+            **kwargs: Any,
+        ) -> None:
+            del kwargs
+            self.mode_calls.append((session_id, mode_id))
+
+    agent = ModeACPAgent()
+    provider = AcpProvider(acp_agent=agent, cwd="/workspace")
+    model = provider.model()
+
+    await model.request(
+        [ModelRequest(parts=[UserPromptPart("hello")])],
+        None,
+        ModelRequestParameters(),
+    )
+    await provider.set_session_mode("default")
+
+    assert agent.mode_calls == [(provider.session_id, "default")]
+    assert agent.session_cwds == ["/workspace"]
+
+
+def test_acp_provider_raise_on_empty_turn_property_reflects_constructor_arg() -> None:
+    default_provider = AcpProvider(acp_agent=EchoACPAgent(), cwd="/workspace")
+    assert default_provider.raise_on_empty_turn is False
+
+    opted_in_provider = AcpProvider(
+        acp_agent=EchoACPAgent(),
+        cwd="/workspace",
+        raise_on_empty_turn=True,
+    )
+    assert opted_in_provider.raise_on_empty_turn is True
+
+
+async def test_empty_turn_raises_with_stop_reason_in_message_when_available() -> None:
+    class RefusalACPAgent(NoHandshakeACPAgent):
+        async def prompt(
+            self,
+            prompt: list[Any],
+            session_id: str,
+            message_id: str | None = None,
+            **kwargs: Any,
+        ) -> PromptResponse:
+            del prompt, session_id, message_id, kwargs
+            return PromptResponse(stop_reason="refusal")
+
+    provider = AcpProvider(
+        acp_agent=RefusalACPAgent(),  # type: ignore[arg-type]
+        cwd="/workspace",
+        raise_on_empty_turn=True,
+    )
+    model = provider.model()
+
+    with pytest.raises(UnexpectedModelBehavior, match=r"stop reason: refusal"):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("hello")])],
+            None,
+            ModelRequestParameters(),
+        )
