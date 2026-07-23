@@ -140,8 +140,10 @@ async def test_codex_responses_model_forces_streaming_on_request(
         response: FakeRawResponse,
         model_settings: dict[str, Any],
         model_request_parameters: ModelRequestParameters,
+        *,
+        expected_model_name: str | None = None,
     ) -> FakeProcessedResponse:
-        del response, model_settings, model_request_parameters
+        del response, model_settings, model_request_parameters, expected_model_name
         return FakeProcessedResponse()
 
     monkeypatch.setattr(model, "_responses_create", fake_responses_create)

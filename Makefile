@@ -2,7 +2,7 @@ BLUE := \033[1;34m
 GREEN := \033[1;32m
 RESET := \033[0m
 PYTHON_VERSIONS := 3.11.13 3.12.10 3.13.9
-PYDANTIC_AI_VERSIONS := 2.0.0 2.1.0 2.2.0 2.3.0 2.4.0 2.5.0 2.6.0 2.7.0 2.8.0 2.9.1
+PYDANTIC_AI_VERSIONS := 2.9.0 2.9.1 2.10.0 2.11.0 2.12.0 2.13.0 2.14.0 2.14.1 2.15.0 2.16.0
 LANGCHAIN_VERSION := 1.3.11
 LANGGRAPH_VERSION := 1.2.7
 DEEPAGENTS_VERSION := 0.6.12
@@ -60,8 +60,8 @@ check-matrix:
 check-pydantic-ai-matrix:
 	@for version in $(PYDANTIC_AI_VERSIONS); do \
 		printf "$(BLUE)==>$(RESET) Checking Pydantic AI $$version compatibility...\n"; \
-		PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --extra dev --with "pydantic-ai-slim==$$version" pytest -p pytest_asyncio.plugin tests/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py -q || exit $$?; \
-		uv run --extra dev --with "pydantic-ai-slim==$$version" ty check packages/adapters/pydantic-acp/src tests/pydantic examples/pydantic tests/test_acpkit_cli.py tests/test_native_pydantic_agent.py || exit $$?; \
+		PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml --with "pydantic-ai-slim==$$version" pytest -p pytest_asyncio.plugin tests/pydantic tests/test_native_pydantic_agent.py -q || exit $$?; \
+		uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml --with ty --with "pydantic-ai-slim==$$version" ty check packages/adapters/pydantic-acp/src tests/pydantic examples/pydantic tests/test_native_pydantic_agent.py || exit $$?; \
 	done
 	@printf "$(GREEN)✔ Pydantic AI compatibility matrix complete.$(RESET)\n"
 

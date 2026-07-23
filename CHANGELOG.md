@@ -3,6 +3,18 @@
 ACP Kit uses synchronized versions for `acpkit`, `pydantic-acp`, `langchain-acp`,
 `codex-auth-helper`, and `acpremote`.
 
+## [Unreleased]
+
+## [1.5.0] - 2026-07-24
+
+### Changed
+
+- `pydantic-acp` now supports `pydantic-ai-slim>=2.9.0,<=2.16.0`. The runtime
+  and type-check matrix covers every supported Pydantic AI minor from 2.9.0
+  through 2.16.0; pre-2.9.0 matrix entries are no longer exercised.
+- Development and CI now use `pydantic-ai-harness[code-mode]==0.10.0`.
+- GitHub Actions workflows use `actions/setup-python@v7`.
+
 ## [1.4.0] - 2026-07-15
 
 ### Changed

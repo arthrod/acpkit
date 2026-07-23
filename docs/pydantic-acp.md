@@ -347,8 +347,8 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.9.1`. Pydantic AI V1 is
-outside the supported range.
+`pydantic-acp` supports `pydantic-ai-slim>=2.9.0,<=2.16.0`. Pydantic AI V1 and
+Pydantic AI 2.x releases before 2.9.0 are outside the supported range.
 
 Each supported minor is checked against the same adapter runtime suite and
 Pydantic-specific type-check scope. Run the matrix locally with:
@@ -377,8 +377,8 @@ agent: Agent[None, str] = Agent(
 ```
 
 The adapter consumes `run_stream_events()` as an async context manager across
-the supported range. Pydantic AI 2.4.0 starts that run lazily when event
-iteration begins; callers do not need a version branch.
+the supported range. Event iteration starts the run lazily; callers do not need
+a version branch.
 
 ACP Kit also no longer imports Pydantic AI private history-processor modules
 directly. History processor support is expressed through ACP Kit's own callable
@@ -388,6 +388,6 @@ aliases and wrapped as `ProcessHistory` capabilities inside
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- Pydantic AI 2.0.0 through 2.9.1 share one public adapter contract
+- Pydantic AI 2.9.0 through 2.16.0 share one public adapter contract
 - future Pydantic AI upgrades remain explicit compatibility work
 - integration points stay isolated behind ACP Kit bridge and runtime seams
