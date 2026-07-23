@@ -436,8 +436,6 @@ Pydantic AI 2.x releases before 2.9.0 are outside the supported range.
 
 The ACP client provider bridge depends on the Pydantic AI v2 `Provider` and `Model` contracts. Upgrades across major Pydantic AI versions should be deliberate because the adapter exposes both server-side ACP translation and client-side ACP provider integration.
 
-The ACP client provider bridge depends on the Pydantic AI v2 `Provider` and `Model` contracts. Upgrades across major Pydantic AI versions should be deliberate because the adapter exposes both server-side ACP translation and client-side ACP provider integration.
-
 Every supported minor is exercised by the repository's runtime and type-check
 compatibility matrix. The adapter keeps upstream compatibility behind ACP Kit's
 bridge and runtime seams instead of scattering version checks through callers.
