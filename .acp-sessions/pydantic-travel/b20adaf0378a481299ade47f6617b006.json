@@ -1,0 +1,160 @@
+{
+  "config_values": {},
+  "created_at": "2026-07-08T00:09:23.792264+00:00",
+  "cwd": "/private/var/folders/7w/dvl66_d13wx2v88nv5rcwltc0000gn/T/pytest-of-arthrod/pytest-185/test_native_pydantic_agent_rea0",
+  "mcp_servers": [],
+  "message_history_json": "[{\"parts\":[{\"content\":\"You are the ACP Kit travel example. Use the trip-file tools for grounded answers. When image or audio prompt blocks appear, the host may swap the active model override.\",\"timestamp\":\"2026-07-08T00:09:23.804892Z\",\"dynamic_ref\":null,\"part_kind\":\"system-prompt\"},{\"content\":\"read trip file itinerary.md\",\"timestamp\":\"2026-07-08T00:09:23.804897Z\",\"part_kind\":\"user-prompt\"}],\"timestamp\":\"2026-07-08T00:09:23.805521Z\",\"instructions\":null,\"kind\":\"request\",\"run_id\":\"019f3f0e-d25a-758d-88ee-e5bed4c61c77\",\"conversation_id\":\"b20adaf0378a481299ade47f6617b006\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"tool_name\":\"read_trip_file\",\"args\":{\"path\":\"itinerary.md\",\"max_chars\":4000},\"tool_call_id\":\"pyd_ai_39fad267515548e98c27203a7dfab700\",\"tool_kind\":null,\"id\":null,\"provider_name\":null,\"provider_details\":null,\"part_kind\":\"tool-call\"}],\"usage\":{\"input_tokens\":85,\"cache_write_tokens\":0,\"cache_read_tokens\":0,\"output_tokens\":7,\"input_audio_tokens\":0,\"cache_audio_read_tokens\":0,\"output_audio_tokens\":0,\"details\":{}},\"model_name\":\"travel-demo-model\",\"timestamp\":\"2026-07-08T00:09:23.812275Z\",\"kind\":\"response\",\"provider_name\":null,\"provider_url\":null,\"provider_details\":null,\"provider_response_id\":null,\"finish_reason\":null,\"run_id\":\"019f3f0e-d25a-758d-88ee-e5bed4c61c77\",\"conversation_id\":\"b20adaf0378a481299ade47f6617b006\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"tool_name\":\"read_trip_file\",\"content\":\"# Travel Brief\\n\\n- city: Lisbon\\n- trip goal: design-heavy long weekend\\n- constraints: walkable neighborhoods, low-friction transit\\n\",\"tool_call_id\":\"pyd_ai_39fad267515548e98c27203a7dfab700\",\"tool_kind\":null,\"metadata\":null,\"timestamp\":\"2026-07-08T00:09:23.819063Z\",\"outcome\":\"success\",\"part_kind\":\"tool-return\"}],\"timestamp\":\"2026-07-08T00:09:23.820055Z\",\"instructions\":null,\"kind\":\"request\",\"run_id\":\"019f3f0e-d25a-758d-88ee-e5bed4c61c77\",\"conversation_id\":\"b20adaf0378a481299ade47f6617b006\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"content\":\"read_trip_file: # Travel Brief\\n\\n- city: Lisbon\\n- trip goal: design-heavy long weekend\\n- constraints: walkable neighborhoods, low-friction transit\\n\",\"id\":null,\"provider_name\":null,\"provider_details\":null,\"part_kind\":\"text\"}],\"usage\":{\"input_tokens\":103,\"cache_write_tokens\":0,\"cache_read_tokens\":0,\"output_tokens\":26,\"input_audio_tokens\":0,\"cache_audio_read_tokens\":0,\"output_audio_tokens\":0,\"details\":{}},\"model_name\":\"travel-demo-model\",\"timestamp\":\"2026-07-08T00:09:23.823689Z\",\"kind\":\"response\",\"provider_name\":null,\"provider_url\":null,\"provider_details\":null,\"provider_response_id\":null,\"finish_reason\":null,\"run_id\":\"019f3f0e-d25a-758d-88ee-e5bed4c61c77\",\"conversation_id\":\"b20adaf0378a481299ade47f6617b006\",\"metadata\":null,\"state\":\"complete\"}]",
+  "metadata": {},
+  "plan_entries": [],
+  "plan_markdown": null,
+  "session_id": "b20adaf0378a481299ade47f6617b006",
+  "session_model_id": null,
+  "title": "read trip file itinerary.md",
+  "transcript": [
+    {
+      "kind": "user_message_chunk",
+      "payload": {
+        "content": {
+          "text": "read trip file itinerary.md",
+          "type": "text"
+        },
+        "messageId": "4c5b32db7a874baa9fd0d135ed04ac2d",
+        "sessionUpdate": "user_message_chunk"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "fetch",
+        "rawInput": {
+          "event": "before_model_request",
+          "hook": "observe_before_model_request"
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:ff2be24c66a04e98bf66951cb689c7bd:1"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "kind": "fetch",
+        "rawOutput": "messages=1",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:ff2be24c66a04e98bf66951cb689c7bd:1"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "execute",
+        "rawInput": {
+          "event": "before_tool_execute",
+          "hook": "observe_read_tool",
+          "tool_name": "read_trip_file",
+          "tools": [
+            "read_trip_file"
+          ]
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "Hook Before Execute [read_trip_file] (observe_read_tool)",
+        "toolCallId": "hook:ff2be24c66a04e98bf66951cb689c7bd:3"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "kind": "execute",
+        "rawOutput": "dict",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "Hook Before Execute [read_trip_file] (observe_read_tool)",
+        "toolCallId": "hook:ff2be24c66a04e98bf66951cb689c7bd:3"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "fetch",
+        "rawInput": {
+          "event": "before_model_request",
+          "hook": "observe_before_model_request"
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:ff2be24c66a04e98bf66951cb689c7bd:4"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "kind": "fetch",
+        "rawOutput": "messages=3",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:ff2be24c66a04e98bf66951cb689c7bd:4"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "read",
+        "locations": [
+          {
+            "path": "itinerary.md"
+          }
+        ],
+        "rawInput": {
+          "max_chars": 4000,
+          "path": "itinerary.md"
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "read_trip_file",
+        "toolCallId": "pyd_ai_39fad267515548e98c27203a7dfab700"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "content": [
+          {
+            "newText": "# Travel Brief\n\n- city: Lisbon\n- trip goal: design-heavy long weekend\n- constraints: walkable neighborhoods, low-friction transit\n",
+            "oldText": "",
+            "path": "itinerary.md",
+            "type": "diff"
+          }
+        ],
+        "kind": "read",
+        "locations": [
+          {
+            "path": "itinerary.md"
+          }
+        ],
+        "rawOutput": "# Travel Brief\n\n- city: Lisbon\n- trip goal: design-heavy long weekend\n- constraints: walkable neighborhoods, low-friction transit\n",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "read_trip_file",
+        "toolCallId": "pyd_ai_39fad267515548e98c27203a7dfab700"
+      }
+    },
+    {
+      "kind": "agent_message_chunk",
+      "payload": {
+        "content": {
+          "text": "read_trip_file: # Travel Brief\n\n- city: Lisbon\n- trip goal: design-heavy long weekend\n- constraints: walkable neighborhoods, low-friction transit\n",
+          "type": "text"
+        },
+        "messageId": "67fd4d84316c4a7592cf6595e8bc42a7",
+        "sessionUpdate": "agent_message_chunk"
+      }
+    }
+  ],
+  "updated_at": "2026-07-08T00:09:23.825897+00:00"
+}

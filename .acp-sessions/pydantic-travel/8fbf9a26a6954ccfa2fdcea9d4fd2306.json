@@ -1,0 +1,197 @@
+{
+  "config_values": {},
+  "created_at": "2026-07-08T00:07:03.491752+00:00",
+  "cwd": "/private/var/folders/7w/dvl66_d13wx2v88nv5rcwltc0000gn/T/pytest-of-arthrod/pytest-180/test_native_pydantic_agent_wri0",
+  "mcp_servers": [],
+  "message_history_json": "[{\"parts\":[{\"content\":\"You are the ACP Kit travel example. Use the trip-file tools for grounded answers. When image or audio prompt blocks appear, the host may swap the active model override.\",\"timestamp\":\"2026-07-08T00:07:03.496003Z\",\"dynamic_ref\":null,\"part_kind\":\"system-prompt\"},{\"content\":\"write trip file scratch.txt: hello from the native demo\",\"timestamp\":\"2026-07-08T00:07:03.496007Z\",\"part_kind\":\"user-prompt\"}],\"timestamp\":\"2026-07-08T00:07:03.496178Z\",\"instructions\":null,\"kind\":\"request\",\"run_id\":\"019f3f0c-ae47-74eb-9c94-5401cb262a86\",\"conversation_id\":\"8fbf9a26a6954ccfa2fdcea9d4fd2306\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"tool_name\":\"write_trip_file\",\"args\":{\"path\":\"scratch.txt\",\"content\":\"hello from the native demo\"},\"tool_call_id\":\"pyd_ai_a46803079e404ee78591ee30a8867bf9\",\"tool_kind\":null,\"id\":null,\"provider_name\":null,\"provider_details\":null,\"part_kind\":\"tool-call\"}],\"usage\":{\"input_tokens\":90,\"cache_write_tokens\":0,\"cache_read_tokens\":0,\"output_tokens\":12,\"input_audio_tokens\":0,\"cache_audio_read_tokens\":0,\"output_audio_tokens\":0,\"details\":{}},\"model_name\":\"travel-demo-model\",\"timestamp\":\"2026-07-08T00:07:03.496825Z\",\"kind\":\"response\",\"provider_name\":null,\"provider_url\":null,\"provider_details\":null,\"provider_response_id\":null,\"finish_reason\":null,\"run_id\":\"019f3f0c-ae47-74eb-9c94-5401cb262a86\",\"conversation_id\":\"8fbf9a26a6954ccfa2fdcea9d4fd2306\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"tool_name\":\"write_trip_file\",\"content\":\"Wrote `scratch.txt`.\",\"tool_call_id\":\"pyd_ai_a46803079e404ee78591ee30a8867bf9\",\"tool_kind\":null,\"metadata\":null,\"timestamp\":\"2026-07-08T00:07:03.501023Z\",\"outcome\":\"success\",\"part_kind\":\"tool-return\"}],\"timestamp\":\"2026-07-08T00:07:03.501214Z\",\"instructions\":null,\"kind\":\"request\",\"run_id\":\"019f3f0c-ae4a-733a-9246-8a8c991e38fd\",\"conversation_id\":\"8fbf9a26a6954ccfa2fdcea9d4fd2306\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"content\":\"write_trip_file: Wrote `scratch.txt`.\",\"id\":null,\"provider_name\":null,\"provider_details\":null,\"part_kind\":\"text\"}],\"usage\":{\"input_tokens\":94,\"cache_write_tokens\":0,\"cache_read_tokens\":0,\"output_tokens\":17,\"input_audio_tokens\":0,\"cache_audio_read_tokens\":0,\"output_audio_tokens\":0,\"details\":{}},\"model_name\":\"travel-demo-model\",\"timestamp\":\"2026-07-08T00:07:03.501670Z\",\"kind\":\"response\",\"provider_name\":null,\"provider_url\":null,\"provider_details\":null,\"provider_response_id\":null,\"finish_reason\":null,\"run_id\":\"019f3f0c-ae4a-733a-9246-8a8c991e38fd\",\"conversation_id\":\"8fbf9a26a6954ccfa2fdcea9d4fd2306\",\"metadata\":null,\"state\":\"complete\"}]",
+  "metadata": {},
+  "plan_entries": [],
+  "plan_markdown": null,
+  "session_id": "8fbf9a26a6954ccfa2fdcea9d4fd2306",
+  "session_model_id": null,
+  "title": "write trip file scratch.txt: hello from the native demo",
+  "transcript": [
+    {
+      "kind": "user_message_chunk",
+      "payload": {
+        "content": {
+          "text": "write trip file scratch.txt: hello from the native demo",
+          "type": "text"
+        },
+        "messageId": "cbf952e89bae4828bc594220071fa8bd",
+        "sessionUpdate": "user_message_chunk"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "fetch",
+        "rawInput": {
+          "event": "before_model_request",
+          "hook": "observe_before_model_request"
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:e3f72cd4fb8e4fff94bb7144a4883d62:1"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "kind": "fetch",
+        "rawOutput": "messages=1",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:e3f72cd4fb8e4fff94bb7144a4883d62:1"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "content": [
+          {
+            "newText": "hello from the native demo",
+            "oldText": "",
+            "path": "scratch.txt",
+            "type": "diff"
+          }
+        ],
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "scratch.txt"
+          }
+        ],
+        "rawInput": {
+          "content": "hello from the native demo",
+          "path": "scratch.txt"
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "write_trip_file",
+        "toolCallId": "pyd_ai_a46803079e404ee78591ee30a8867bf9"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "execute",
+        "rawInput": {
+          "event": "before_tool_execute",
+          "hook": "observe_write_tool",
+          "tool_name": "write_trip_file",
+          "tools": [
+            "write_trip_file"
+          ]
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "Hook Before Execute [write_trip_file] (observe_write_tool)",
+        "toolCallId": "hook:2308a829a30a414b84d43d9f41ad8fb0:1"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "kind": "execute",
+        "rawOutput": "dict",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "Hook Before Execute [write_trip_file] (observe_write_tool)",
+        "toolCallId": "hook:2308a829a30a414b84d43d9f41ad8fb0:1"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "execute",
+        "rawInput": {
+          "event": "after_tool_execute",
+          "hook": "observe_write_result",
+          "tool_name": "write_trip_file",
+          "tools": [
+            "write_trip_file"
+          ]
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "Hook After Execute [write_trip_file] (observe_write_result)",
+        "toolCallId": "hook:2308a829a30a414b84d43d9f41ad8fb0:2"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "kind": "execute",
+        "rawOutput": "Wrote `scratch.txt`.",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "Hook After Execute [write_trip_file] (observe_write_result)",
+        "toolCallId": "hook:2308a829a30a414b84d43d9f41ad8fb0:2"
+      }
+    },
+    {
+      "kind": "tool_call",
+      "payload": {
+        "kind": "fetch",
+        "rawInput": {
+          "event": "before_model_request",
+          "hook": "observe_before_model_request"
+        },
+        "sessionUpdate": "tool_call",
+        "status": "in_progress",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:2308a829a30a414b84d43d9f41ad8fb0:3"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "kind": "fetch",
+        "rawOutput": "messages=3",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "Hook Before Model (observe_before_model_request)",
+        "toolCallId": "hook:2308a829a30a414b84d43d9f41ad8fb0:3"
+      }
+    },
+    {
+      "kind": "tool_call_update",
+      "payload": {
+        "content": [
+          {
+            "newText": "hello from the native demo",
+            "oldText": "",
+            "path": "scratch.txt",
+            "type": "diff"
+          }
+        ],
+        "kind": "edit",
+        "locations": [
+          {
+            "path": "scratch.txt"
+          }
+        ],
+        "rawOutput": "Wrote `scratch.txt`.",
+        "sessionUpdate": "tool_call_update",
+        "status": "completed",
+        "title": "write_trip_file",
+        "toolCallId": "pyd_ai_a46803079e404ee78591ee30a8867bf9"
+      }
+    },
+    {
+      "kind": "agent_message_chunk",
+      "payload": {
+        "content": {
+          "text": "write_trip_file: Wrote `scratch.txt`.",
+          "type": "text"
+        },
+        "messageId": "b70353a9e1d54c3e8afe03373f2f9a4c",
+        "sessionUpdate": "agent_message_chunk"
+      }
+    }
+  ],
+  "updated_at": "2026-07-08T00:07:03.502488+00:00"
+}

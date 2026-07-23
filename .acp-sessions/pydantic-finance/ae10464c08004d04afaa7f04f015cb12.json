@@ -1,0 +1,87 @@
+{
+  "config_values": {
+    "mode": "ask"
+  },
+  "created_at": "2026-07-07T23:20:15.324527+00:00",
+  "cwd": "/private/var/folders/7w/dvl66_d13wx2v88nv5rcwltc0000gn/T/pytest-of-arthrod/pytest-161/test_finance_example_tools_and0",
+  "mcp_servers": [],
+  "message_history_json": "[{\"parts\":[{\"content\":\"Describe the finance surface.\",\"timestamp\":\"2026-07-07T23:20:15.330672Z\",\"part_kind\":\"user-prompt\"}],\"timestamp\":\"2026-07-07T23:20:15.330897Z\",\"instructions\":\"You are the ACP Kit finance example. Use the finance workspace tools for grounded answers. When plan mode is active, return a real ACP task plan. Only update notes when the mutating tool is visible and ACP approvals allow it.\",\"kind\":\"request\",\"run_id\":\"019f3ee1-d4e1-778a-bb39-6eb7cb62a241\",\"conversation_id\":\"ae10464c08004d04afaa7f04f015cb12\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"content\":\"Finance agent ready.\",\"id\":null,\"provider_name\":null,\"provider_details\":null,\"part_kind\":\"text\"}],\"usage\":{\"input_tokens\":55,\"cache_write_tokens\":0,\"cache_read_tokens\":0,\"output_tokens\":4,\"input_audio_tokens\":0,\"cache_audio_read_tokens\":0,\"output_audio_tokens\":0,\"details\":{}},\"model_name\":\"finance-example-model\",\"timestamp\":\"2026-07-07T23:20:15.331545Z\",\"kind\":\"response\",\"provider_name\":null,\"provider_url\":null,\"provider_details\":null,\"provider_response_id\":null,\"finish_reason\":null,\"run_id\":\"019f3ee1-d4e1-778a-bb39-6eb7cb62a241\",\"conversation_id\":\"ae10464c08004d04afaa7f04f015cb12\",\"metadata\":null,\"state\":\"complete\"}]",
+  "metadata": {
+    "pydantic_acp": {
+      "prepare_tools": {
+        "current_mode_id": "ask",
+        "current_plan_generation_type": "structured",
+        "modes": [
+          {
+            "description": "Inspect watchlists and notes without mutations.",
+            "id": "ask",
+            "name": "Ask",
+            "plan_mode": false,
+            "plan_tools": false
+          },
+          {
+            "description": "Return a structured ACP plan for research or portfolio work.",
+            "id": "plan",
+            "name": "Plan",
+            "plan_mode": true,
+            "plan_tools": false
+          },
+          {
+            "description": "Allow approval-gated note updates after research is complete.",
+            "id": "trade",
+            "name": "Trade",
+            "plan_mode": false,
+            "plan_tools": true
+          }
+        ],
+        "supported_plan_generation_types": [
+          "tools",
+          "structured"
+        ]
+      },
+      "thinking": {
+        "config_id": "thinking",
+        "current_value": "default",
+        "supported_values": [
+          "default",
+          "off",
+          "minimal",
+          "low",
+          "medium",
+          "high",
+          "xhigh"
+        ]
+      }
+    }
+  },
+  "plan_entries": [],
+  "plan_markdown": null,
+  "session_id": "ae10464c08004d04afaa7f04f015cb12",
+  "session_model_id": null,
+  "title": "Describe the finance surface.",
+  "transcript": [
+    {
+      "kind": "user_message_chunk",
+      "payload": {
+        "content": {
+          "text": "Describe the finance surface.",
+          "type": "text"
+        },
+        "messageId": "423dcd4944e341a29bd99e4fe30c96ce",
+        "sessionUpdate": "user_message_chunk"
+      }
+    },
+    {
+      "kind": "agent_message_chunk",
+      "payload": {
+        "content": {
+          "text": "Finance agent ready.",
+          "type": "text"
+        },
+        "messageId": "bcb2bca98ed24716a23b5354b1c1556d",
+        "sessionUpdate": "agent_message_chunk"
+      }
+    }
+  ],
+  "updated_at": "2026-07-07T23:20:15.332398+00:00"
+}

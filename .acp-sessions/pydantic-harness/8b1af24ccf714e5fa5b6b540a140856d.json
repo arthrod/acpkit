@@ -1,0 +1,113 @@
+{
+  "config_values": {},
+  "created_at": "2026-07-07T23:19:01.945165+00:00",
+  "cwd": "/private/var/folders/7w/dvl66_d13wx2v88nv5rcwltc0000gn/T/pytest-of-arthrod/pytest-156/test_harness_example_acp_agent0",
+  "mcp_servers": [],
+  "message_history_json": "[{\"parts\":[{\"content\":\"Use the harness surface.\",\"timestamp\":\"2026-07-07T23:19:01.954963Z\",\"part_kind\":\"user-prompt\"}],\"timestamp\":\"2026-07-07T23:19:01.955074Z\",\"instructions\":\"You are an ACP Kit harness agent. Use the pydantic-ai-harness filesystem and shell tools for concrete workspace work. Keep all filesystem and shell work inside the seeded harness workspace. Prefer inspecting existing files before editing or running commands, and summarize tool results plainly.\",\"kind\":\"request\",\"run_id\":\"019f3ee0-b642-7704-89e1-03bbc420fe3f\",\"conversation_id\":\"8b1af24ccf714e5fa5b6b540a140856d\",\"metadata\":null,\"state\":\"complete\"},{\"parts\":[{\"content\":\"Harness agent ready.\",\"id\":null,\"provider_name\":null,\"provider_details\":null,\"part_kind\":\"text\"}],\"usage\":{\"input_tokens\":55,\"cache_write_tokens\":0,\"cache_read_tokens\":0,\"output_tokens\":4,\"input_audio_tokens\":0,\"cache_audio_read_tokens\":0,\"output_audio_tokens\":0,\"details\":{}},\"model_name\":\"test\",\"timestamp\":\"2026-07-07T23:19:01.955432Z\",\"kind\":\"response\",\"provider_name\":\"test\",\"provider_url\":null,\"provider_details\":null,\"provider_response_id\":null,\"finish_reason\":null,\"run_id\":\"019f3ee0-b642-7704-89e1-03bbc420fe3f\",\"conversation_id\":\"8b1af24ccf714e5fa5b6b540a140856d\",\"metadata\":null,\"state\":\"complete\"}]",
+  "metadata": {
+    "pydantic_acp": {
+      "harness_filesystem": {
+        "allowed_patterns": [
+          "**/*"
+        ],
+        "denied_patterns": [],
+        "max_find_results": 50,
+        "max_read_lines": 400,
+        "max_search_results": 50,
+        "protected_patterns": [
+          "*.key",
+          "*.pem",
+          ".env",
+          ".env.*",
+          ".git/*"
+        ],
+        "root_dir": "/Users/arthrod/temp/T/acpkit/examples/pydantic/.harness-agent",
+        "tool_names": [
+          "create_directory",
+          "edit_file",
+          "list_directory",
+          "read_file",
+          "search_files",
+          "write_file"
+        ]
+      },
+      "harness_shell": {
+        "allow_interactive": false,
+        "allowed_commands": [],
+        "cwd": "/Users/arthrod/temp/T/acpkit/examples/pydantic/.harness-agent",
+        "default_timeout": 5.0,
+        "denied_commands": [
+          "cp",
+          "curl",
+          "git",
+          "mv",
+          "rm",
+          "wget"
+        ],
+        "denied_env_patterns": [],
+        "denied_operators": [],
+        "env_keys": [],
+        "max_output_chars": 8000,
+        "persist_cwd": false,
+        "tool_names": [
+          "check_command",
+          "run_command",
+          "start_command",
+          "stop_command"
+        ]
+      }
+    }
+  },
+  "plan_entries": [],
+  "plan_markdown": null,
+  "session_id": "8b1af24ccf714e5fa5b6b540a140856d",
+  "session_model_id": null,
+  "title": "Use the harness surface.",
+  "transcript": [
+    {
+      "kind": "user_message_chunk",
+      "payload": {
+        "content": {
+          "text": "Use the harness surface.",
+          "type": "text"
+        },
+        "messageId": "334523efea4d4951a3fa80839b2c5a22",
+        "sessionUpdate": "user_message_chunk"
+      }
+    },
+    {
+      "kind": "agent_message_chunk",
+      "payload": {
+        "content": {
+          "text": "Harness ",
+          "type": "text"
+        },
+        "messageId": "156a9cf028b94b4096f7519efb414c4d",
+        "sessionUpdate": "agent_message_chunk"
+      }
+    },
+    {
+      "kind": "agent_message_chunk",
+      "payload": {
+        "content": {
+          "text": "agent ",
+          "type": "text"
+        },
+        "messageId": "156a9cf028b94b4096f7519efb414c4d",
+        "sessionUpdate": "agent_message_chunk"
+      }
+    },
+    {
+      "kind": "agent_message_chunk",
+      "payload": {
+        "content": {
+          "text": "ready.",
+          "type": "text"
+        },
+        "messageId": "156a9cf028b94b4096f7519efb414c4d",
+        "sessionUpdate": "agent_message_chunk"
+      }
+    }
+  ],
+  "updated_at": "2026-07-07T23:19:01.956742+00:00"
+}
