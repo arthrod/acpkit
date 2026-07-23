@@ -76,6 +76,9 @@ from .types import AgentPromptBlock
 
 HistoryMode: TypeAlias = Literal["latest_user", "full"]
 _DEFAULT_MODEL_NAME = "agent"
+_AUTH_REQUIRED_DIAGNOSTIC = (
+    "The ACP agent requires authentication (session/new returned auth_required / -32000)"
+)
 
 AcpPromptRenderer: TypeAlias = Callable[
     [Sequence[ModelMessage], ModelRequestParameters],
@@ -750,26 +753,25 @@ class AcpProvider(Provider[AcpAgent]):
         creation exactly once after a successful ``authenticate`` call.
         """
         try:
-            return await self._client.new_session(
-                cwd=self._cwd,
-                mcp_servers=list(self._mcp_servers),
-            )
+            return await self._call_new_session()
         except RequestError as exc:
             if exc.code != RequestError.auth_required().code or self._authenticated:
                 raise
             await self._authenticate()
-            return await self._client.new_session(
-                cwd=self._cwd,
-                mcp_servers=list(self._mcp_servers),
-            )
+            return await self._call_new_session()
+
+    async def _call_new_session(self) -> Any:
+        return await self._client.new_session(
+            cwd=self._cwd,
+            mcp_servers=list(self._mcp_servers),
+        )
 
     async def _authenticate(self) -> None:
         """Run the ACP ``authenticate`` flow using an advertised auth method."""
         authenticate = getattr(self._client, "authenticate", None)
         if authenticate is None:
             raise UserError(
-                "The ACP agent requires authentication (session/new returned "
-                "auth_required / -32000) but the wrapped agent does not expose an "
+                f"{_AUTH_REQUIRED_DIAGNOSTIC} but the wrapped agent does not expose an "
                 "'authenticate' method, so the session cannot be established."
             )
         method_id = self._auth_method_id or next(
@@ -781,8 +783,7 @@ class AcpProvider(Provider[AcpAgent]):
                 str(getattr(method, "id", method)) for method in self._auth_methods
             )
             raise UserError(
-                "The ACP agent requires authentication (session/new returned "
-                "auth_required / -32000) but advertised no usable authentication "
+                f"{_AUTH_REQUIRED_DIAGNOSTIC} but advertised no usable authentication "
                 f"method to satisfy it{f' (advertised: {advertised})' if advertised else ''}. "
                 "Pass auth_method_id=... to AcpProvider, or authenticate the agent "
                 "out of band."
