@@ -60,8 +60,8 @@ check-matrix:
 check-pydantic-ai-matrix:
 	@for version in $(PYDANTIC_AI_VERSIONS); do \
 		printf "$(BLUE)==>$(RESET) Checking Pydantic AI $$version compatibility...\n"; \
-		PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml --with "pydantic-ai-slim==$$version" pytest -p pytest_asyncio.plugin tests/pydantic tests/test_native_pydantic_agent.py -q || exit $$?; \
-		uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml --with ty --with "pydantic-ai-slim==$$version" ty check packages/adapters/pydantic-acp/src tests/pydantic examples/pydantic tests/test_native_pydantic_agent.py || exit $$?; \
+		PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml --with openai --with "pydantic-ai-slim==$$version" pytest -p pytest_asyncio.plugin tests/pydantic tests/test_native_pydantic_agent.py -q || exit $$?; \
+		uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml --with ty --with openai --with "pydantic-ai-slim==$$version" ty check packages/adapters/pydantic-acp/src tests/pydantic examples/pydantic tests/test_native_pydantic_agent.py || exit $$?; \
 	done
 	@printf "$(GREEN)✔ Pydantic AI compatibility matrix complete.$(RESET)\n"
 
