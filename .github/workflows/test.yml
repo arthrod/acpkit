@@ -25,9 +25,7 @@ jobs:
       run: uv python install ${{ matrix.python-version }}
 
     - name: Install dependencies
-      run: |
-        uv venv
-        uv pip install -e ".[dev]"
+      run: uv sync --extra dev --frozen
 
     - name: Check Formatting (make check-formatted)
       run: |
@@ -63,7 +61,7 @@ jobs:
 
     - name: Test Pydantic AI ${{ matrix.pydantic-ai-version }}
       run: |
-        uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml \
+        PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --package pydantic-acp --with pytest --with pytest-asyncio --with pyyaml \
           --with "pydantic-ai-slim==${{ matrix.pydantic-ai-version }}" \
           pytest -p pytest_asyncio.plugin tests/pydantic tests/test_native_pydantic_agent.py -q
 

@@ -5,6 +5,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 from packaging.requirements import Requirement
 from packaging.version import Version
@@ -57,6 +58,11 @@ def _specifier_bounds(requirement: Requirement) -> tuple[Version, Version]:
     assert lower is not None, f"missing lower bound in {requirement}"
     assert upper is not None, f"missing upper bound in {requirement}"
     return lower, upper
+
+
+def test_requirement_named_rejects_unknown_dependency() -> None:
+    with pytest.raises(AssertionError, match=r"expected dependency 'missing'"):
+        _requirement_named(["pydantic-ai-slim>=2.9.0"], "missing")
 
 
 def _makefile_pydantic_ai_versions() -> list[str]:
