@@ -5,8 +5,16 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Literal, TypeAlias, assert_never
 
+from acp.exceptions import RequestError
 from acp.schema import (
     AgentMessageChunk,
+    ClientCapabilities,
+    CreateElicitationResponse,
+    ElicitationFormRequestMode,
+    ElicitationFormSessionMode,
+    ElicitationMode,
+    ElicitationUrlRequestMode,
+    ElicitationUrlSessionMode,
     SessionInfoUpdate,
     ToolCallProgress,
     ToolCallStart,
@@ -85,16 +93,69 @@ class AcpSessionContext:
     cwd: Path
     created_at: datetime
     updated_at: datetime
+    additional_directories: tuple[Path, ...] = ()
     title: str | None = None
     session_model_id: str | None = None
     message_history_json: str | None = None
     plan_markdown: str | None = None
     plan_entries: list[dict[str, JsonValue]] = field(default_factory=list)
+    active_plan_id: str | None = None
     config_values: dict[str, str | bool] = field(default_factory=dict)
     mcp_servers: list[dict[str, JsonValue]] = field(default_factory=list)
     metadata: dict[str, JsonValue] = field(default_factory=dict)
     transcript: list[StoredSessionUpdate] = field(default_factory=list)
     client: AcpClient | None = field(default=None, repr=False, compare=False)
+    client_capabilities: ClientCapabilities | None = field(default=None, repr=False, compare=False)
+
+    def supports_config_options(self) -> bool:
+        """Return whether the connected client accepts session config options."""
+        capabilities = self.client_capabilities
+        if capabilities is None:
+            return True
+        return capabilities.session is not None and capabilities.session.config_options is not None
+
+    def supports_boolean_config_options(self) -> bool:
+        """Return whether the connected client accepts boolean config options."""
+        capabilities = self.client_capabilities
+        if capabilities is None:
+            return True
+        session_capabilities = capabilities.session
+        return (
+            session_capabilities is not None
+            and session_capabilities.config_options is not None
+            and session_capabilities.config_options.boolean is not None
+        )
+
+    def supports_plan_content_updates(self) -> bool:
+        """Return whether the client supports unstable plan delta updates."""
+        capabilities = self.client_capabilities
+        return capabilities is None or capabilities.plan is not None
+
+    def supports_elicitation(self, mode: ElicitationMode) -> bool:
+        capabilities = self.client_capabilities
+        if capabilities is None or capabilities.elicitation is None:
+            return False
+        if isinstance(mode, ElicitationFormSessionMode | ElicitationFormRequestMode):
+            return capabilities.elicitation.form is not None
+        if isinstance(mode, ElicitationUrlSessionMode | ElicitationUrlRequestMode):
+            return capabilities.elicitation.url is not None
+        return False
+
+    async def create_elicitation(
+        self,
+        message: str,
+        mode: ElicitationMode,
+    ) -> CreateElicitationResponse:
+        if not self.supports_elicitation(mode):
+            raise RequestError.invalid_request({"reason": "unsupported_elicitation_mode"})
+        if self.client is None:
+            raise RequestError.invalid_request({"reason": "client_not_connected"})
+        return await self.client.create_elicitation(message=message, mode=mode)
+
+    async def complete_elicitation(self, elicitation_id: str) -> None:
+        if self.client is None:
+            raise RequestError.invalid_request({"reason": "client_not_connected"})
+        await self.client.complete_elicitation(elicitation_id=elicitation_id)
 
 
 def _coerce_json_object(value: Any) -> dict[str, JsonValue]:

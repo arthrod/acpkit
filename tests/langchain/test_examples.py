@@ -368,6 +368,8 @@ def test_deepagents_example_workspace_helpers_cover_seeded_paths(
     assert deepagents_graph.list_workspace_files() == "brief.md\nnotes.md"
     assert deepagents_graph.config.available_models
     assert deepagents_graph.config.available_modes
+    assert deepagents_graph.config.plan_id == "deepagents-workspace-plan"
+    assert deepagents_graph.config.plan_update_mode == "content"
     assert (
         deepagents_graph._resolve_workspace_path("itinerary.md", root=root)
         == (root / "itinerary.md").resolve()

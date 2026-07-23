@@ -255,6 +255,12 @@ DOC_PAGES: tuple[DocPage, ...] = (
     ),
     DocPage(
         section="Release Notes",
+        title="ACP Kit 1.4.0",
+        summary="ACP Python SDK 0.11 migration across adapters and remote transport.",
+        path="docs/releases/acpkit-1.4.0.md",
+    ),
+    DocPage(
+        section="Release Notes",
         title="ACP Kit 1.1.0",
         summary="ACP-backed Pydantic AI provider bridge, example output paths, and v1.1 compatibility notes.",
         path="docs/releases/acpkit-1.1.0.md",

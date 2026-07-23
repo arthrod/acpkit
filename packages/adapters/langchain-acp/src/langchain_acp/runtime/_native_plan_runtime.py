@@ -5,7 +5,6 @@ from typing import TYPE_CHECKING, cast
 
 from acp.exceptions import RequestError
 from acp.schema import (
-    AgentPlanUpdate,
     PlanEntry,
     SessionConfigOptionSelect,
     SessionConfigSelectOption,
@@ -113,11 +112,12 @@ class _NativePlanRuntime:
         entries = self.get_native_plan_entries(session)
         if entries is None:
             return
-        update = AgentPlanUpdate(session_update="plan", entries=entries)
-        client = self._owner._client
-        if client is None:
-            return
-        await self._owner._emit_update(client=client, session=session, update=update)
+        await self._owner._emit_plan_update(
+            client=self._owner._client,
+            session=session,
+            entries=entries,
+            persist_native=False,
+        )
 
     async def persist_native_plan_state(
         self,

@@ -46,14 +46,14 @@ async def test_pydantic_support_recording_clients_cover_helpers_and_error_paths(
     tool_call = cast("Any", object())
 
     with pytest.raises(AssertionError, match="unexpected permission request"):
-        await client.request_permission([option], "session-1", tool_call)
+        await client.request_permission("session-1", tool_call, [option])
 
     client.queue_permission_selected("allow_once")
-    selected = await client.request_permission([option], "session-1", tool_call)
+    selected = await client.request_permission("session-1", tool_call, [option])
     assert isinstance(selected, RequestPermissionResponse)
 
     client.queue_permission_cancelled()
-    cancelled = await client.request_permission([option], "session-1", tool_call)
+    cancelled = await client.request_permission("session-1", tool_call, [option])
     assert isinstance(cancelled, RequestPermissionResponse)
 
     update = AgentMessageChunk(
@@ -66,11 +66,11 @@ async def test_pydantic_support_recording_clients_cover_helpers_and_error_paths(
     assert agent_message_texts(client) == ["hello"]
 
     with pytest.raises(AssertionError, match="filesystem flow"):
-        await client.write_text_file("body", "/tmp/demo", "session-1")
+        await client.write_text_file(session_id="session-1", path="/tmp/demo", content="body")
     with pytest.raises(AssertionError, match="filesystem flow"):
-        await client.read_text_file("/tmp/demo", "session-1")
+        await client.read_text_file(session_id="session-1", path="/tmp/demo")
     with pytest.raises(AssertionError, match="terminal flow"):
-        await client.create_terminal("echo hi", "session-1")
+        await client.create_terminal(session_id="session-1", command="echo hi")
     with pytest.raises(AssertionError, match="terminal flow"):
         await client.terminal_output("session-1", "terminal-1")
     with pytest.raises(AssertionError, match="terminal flow"):
@@ -83,18 +83,24 @@ async def test_pydantic_support_recording_clients_cover_helpers_and_error_paths(
         await client.ext_method("demo.echo", {"value": 1})
     with pytest.raises(AssertionError, match="unexpected extension notification"):
         await client.ext_notification("demo.note", {"value": 2})
+    with pytest.raises(AssertionError, match="elicitation flow"):
+        await client.create_elicitation("Confirm", cast("Any", object()))
+    with pytest.raises(AssertionError, match="elicitation flow"):
+        await client.complete_elicitation("elicitation-1")
     assert client.on_connect(cast("Any", object())) is None
 
     fs_client = FilesystemRecordingClient()
     assert (
-        await fs_client.write_text_file("body", "/tmp/demo", "session-1")
+        await fs_client.write_text_file(session_id="session-1", path="/tmp/demo", content="body")
         == fs_client.write_response
     )
-    read_response = await fs_client.read_text_file("/tmp/demo", "session-1", limit=5, line=2)
+    read_response = await fs_client.read_text_file(
+        session_id="session-1", path="/tmp/demo", limit=5, line=2
+    )
     assert read_response.content == "file:/tmp/demo:2:5"
 
     terminal_client = TerminalRecordingClient()
-    created = await terminal_client.create_terminal("echo hi", "session-1")
+    created = await terminal_client.create_terminal(session_id="session-1", command="echo hi")
     assert created.terminal_id == "terminal-1"
     assert (
         await terminal_client.terminal_output("session-1", "terminal-1")
@@ -113,8 +119,8 @@ async def test_pydantic_support_recording_clients_cover_helpers_and_error_paths(
     )
 
     host_client = HostRecordingClient()
-    await host_client.write_text_file("body", "/tmp/demo", "session-1")
-    await host_client.create_terminal("echo hi", "session-1")
+    await host_client.write_text_file(session_id="session-1", path="/tmp/demo", content="body")
+    await host_client.create_terminal(session_id="session-1", command="echo hi")
     assert host_client.write_calls == [("session-1", "/tmp/demo", "body")]
     assert host_client.create_calls[0][1] == "echo hi"
 

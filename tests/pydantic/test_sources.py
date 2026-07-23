@@ -308,8 +308,8 @@ def test_fork_session_clones_transcript_and_model_override(tmp_path: Path) -> No
         ),
     )
 
-    assert resume_response.models is not None
-    assert resume_response.models.current_model_id == "model-b"
+    assert resume_response.config_options is not None
+    assert resume_response.config_options[0].current_value == "model-b"
     replayed_update_types = [
         type(update)
         for _, update in client.updates
@@ -376,8 +376,6 @@ def test_provider_backed_fork_preserves_session_state(tmp_path: Path) -> None:
         ),
     )
 
-    assert forked.models is not None
-    assert forked.models.current_model_id == "provider-model-b"
     assert forked.modes is not None
     assert forked.modes.current_mode_id == "review"
     assert forked.config_options is not None
@@ -386,8 +384,8 @@ def test_provider_backed_fork_preserves_session_state(tmp_path: Path) -> None:
         "mode",
         "stream_enabled",
     ]
-    assert resume_response.models is not None
-    assert resume_response.models.current_model_id == "provider-model-b"
+    assert resume_response.config_options is not None
+    assert resume_response.config_options[0].current_value == "provider-model-b"
     assert resume_response.modes is not None
     assert resume_response.modes.current_mode_id == "review"
     resumed_plan_updates = [

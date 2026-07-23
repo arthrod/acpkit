@@ -106,10 +106,10 @@ If the ACP session should affect graph construction, use `graph_factory=`:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, run_acp
+from langchain_acp import AcpSessionContext, CompiledAgentGraph, run_acp
 
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     mode_name = session.session_mode_id or "default"
     return create_agent(
@@ -130,13 +130,13 @@ This is the LangChain-side equivalent of `agent_factory=` in `pydantic-acp`.
 The core config seam is still `AdapterConfig`:
 
 ```python
-from acp.schema import ModelInfo, SessionMode
-from langchain_acp import AdapterConfig
+from acp.schema import SessionMode
+from langchain_acp import AdapterConfig, AdapterModel
 
 config = AdapterConfig(
     available_models=[
-        ModelInfo(model_id="fast", name="Fast"),
-        ModelInfo(model_id="smart", name="Smart"),
+        AdapterModel(model_id="fast", name="Fast"),
+        AdapterModel(model_id="smart", name="Smart"),
     ],
     available_modes=[
         SessionMode(id="ask", name="Ask"),

@@ -72,5 +72,6 @@ class ClientFilesystemBackend:
         self.access_policy.enforce_path(
             path,
             session_cwd=self.session.cwd,
+            additional_directories=self.session.additional_directories,
             workspace_root=self.workspace_root,
         )

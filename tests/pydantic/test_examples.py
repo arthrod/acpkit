@@ -22,7 +22,7 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.models.test import TestModel
 
-from examples.pydantic import finance_agent, mock_harness_agent, travel_agent
+from examples.pydantic import finance_agent, mock_harness_agent, session_mcp_agent, travel_agent
 
 from .support import (
     UTC,
@@ -100,17 +100,41 @@ def test_example_main_functions_dispatch_run_acp(
     monkeypatch.setattr(finance_agent, "run_acp", fake_run_acp)
     monkeypatch.setattr(mock_harness_agent, "_ensure_workspace", lambda: None)
     monkeypatch.setattr(mock_harness_agent, "run_acp", fake_run_acp)
+    monkeypatch.setattr(session_mcp_agent, "run_acp", fake_run_acp)
     monkeypatch.setattr(travel_agent, "run_acp", fake_run_acp)
 
     finance_agent.main()
     mock_harness_agent.main()
+    session_mcp_agent.main()
     travel_agent.main()
 
     assert captured == [
         (finance_agent.agent, None, finance_agent.config),
         (None, mock_harness_agent.agent_factory, mock_harness_agent.config),
+        (None, session_mcp_agent.agent_factory, session_mcp_agent.config),
         (travel_agent.agent, None, travel_agent.config),
     ]
+
+
+def test_session_mcp_example_selects_configured_model_and_builds_agent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("ACP_SESSION_MCP_MODEL", raising=False)
+    assert isinstance(session_mcp_agent._model(), TestModel)
+
+    monkeypatch.setenv("ACP_SESSION_MCP_MODEL", "groq:qwen/qwen3-32b")
+    assert session_mcp_agent._model() == "groq:qwen/qwen3-32b"
+    monkeypatch.delenv("ACP_SESSION_MCP_MODEL")
+
+    session = AcpSessionContext(
+        session_id="session-mcp-example",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    agent = session_mcp_agent.agent_factory(session)
+
+    assert agent.name == "session-mcp-agent"
 
 
 def test_finance_example_helpers_cover_workspace_and_plan_paths(tmp_path: Path) -> None:
@@ -405,6 +429,8 @@ def test_finance_example_uses_env_override_and_raw_module_surfaces(
         "ThinkingBridge",
         "PrepareToolsBridge",
     ]
+    assert finance_agent.config.plan_id == "finance-research-plan"
+    assert finance_agent.config.plan_update_mode == "content"
 
 
 def test_finance_example_tools_and_adapter_cover_runtime_paths(

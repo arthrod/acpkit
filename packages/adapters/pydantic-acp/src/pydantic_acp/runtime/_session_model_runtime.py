@@ -49,7 +49,7 @@ class _SessionModelRuntime(Generic[AgentDepsT, OutputDataT]):
     ) -> str | None:
         mode_state = await self._runtime._get_mode_state(session, agent)
         if mode_state is not None and command_name in {mode.id for mode in mode_state.modes}:
-            if await self._runtime.set_session_mode(command_name, session.session_id) is None:
+            if await self._runtime.set_session_mode(session.session_id, command_name) is None:
                 return f"Mode `{command_name}` is unavailable"
             return render_mode_message(command_name)
         if command_name == "model":

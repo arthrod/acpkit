@@ -11,7 +11,7 @@ uv run python .agents/skills/acpremote/examples/serve_command.py
 By default this example exposes:
 
 ```bash
-acpkit run examples.langchain.workspace_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
 ```
 
 over:

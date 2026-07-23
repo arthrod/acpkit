@@ -246,7 +246,7 @@ async def test_phase1_round_trip_supports_initialize_prompt_and_session_update()
         session = await remote.connection.new_session(cwd="/tmp")
         assert session.session_id == "phase1-session"
         prompt_response = await remote.connection.prompt(
-            [text_block("hello over websocket")],
+            prompt=[text_block("hello over websocket")],
             session_id=session.session_id,
         )
         assert prompt_response.stop_reason == "end_turn"

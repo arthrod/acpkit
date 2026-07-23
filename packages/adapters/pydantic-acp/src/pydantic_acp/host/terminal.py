@@ -125,5 +125,6 @@ class ClientTerminalBackend:
             args=args,
             cwd=cwd,
             session_cwd=self.session.cwd,
+            additional_directories=self.session.additional_directories,
             workspace_root=self.workspace_root,
         )

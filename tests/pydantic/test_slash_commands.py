@@ -88,9 +88,10 @@ def test_new_session_exposes_current_model_without_explicit_model_selection(
 
     response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
-    assert response.models is not None
-    assert response.models.current_model_id == "openai:gpt-5-mini"
-    available_model_ids = [model.model_id for model in response.models.available_models]
+    assert response.config_options is not None
+    model_option = response.config_options[0]
+    assert model_option.current_value == "openai:gpt-5-mini"
+    available_model_ids = [option.value for option in model_option.options]
     assert "openai:gpt-5-mini" in available_model_ids
     assert "codex:gpt-5.4-mini" in available_model_ids
     assert "codex:gpt-5-mini" not in available_model_ids
@@ -171,7 +172,7 @@ def test_build_available_commands_skips_optional_commands_when_state_is_missing(
             current_mode_id="plan",
             available_modes=[SessionMode(id="plan", name="Plan")],
         ),
-        model_state=None,
+        model_selection_enabled=False,
         config_options=None,
     )
 
@@ -184,7 +185,7 @@ def test_build_available_commands_skips_optional_commands_when_state_is_missing(
 
     thinking_commands = build_available_commands(
         mode_state=None,
-        model_state=None,
+        model_selection_enabled=False,
         config_options=[
             SessionConfigOptionBoolean(
                 id="thinking",

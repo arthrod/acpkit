@@ -47,7 +47,6 @@ That is the preferred shape when:
 from dataclasses import dataclass, field
 
 from acp.schema import (
-    ModelInfo,
     PlanEntry,
     SessionConfigSelectOption,
     SessionConfigOptionSelect,
@@ -55,6 +54,7 @@ from acp.schema import (
 )
 from langchain_acp import (
     AcpSessionContext,
+    AdapterModel,
     ConfigOption,
     ModelSelectionState,
     ModeState,
@@ -77,8 +77,8 @@ class ModelsProvider:
         config = self.state.config_for(session)
         return ModelSelectionState(
             available_models=[
-                ModelInfo(model_id="fast", name="Fast"),
-                ModelInfo(model_id="deep", name="Deep"),
+                AdapterModel(model_id="fast", name="Fast"),
+                AdapterModel(model_id="deep", name="Deep"),
             ],
             current_model_id=config.get("model_id", "fast"),
         )

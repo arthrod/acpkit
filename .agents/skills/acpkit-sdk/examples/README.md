@@ -7,15 +7,15 @@ These are skill-local operator recipes for the root `acpkit` package.
 Pydantic AI:
 
 ```bash
-acpkit run examples.pydantic.finance_agent:agent
-acpkit run examples.pydantic.travel_agent:agent
+acpkit run examples.pydantic.finance_agent:acp_agent
+acpkit run examples.pydantic.travel_agent:acp_agent
 ```
 
 LangChain / LangGraph:
 
 ```bash
-acpkit run examples.langchain.workspace_graph:graph
-acpkit run examples.langchain.deepagents_graph:graph
+acpkit run examples.langchain.workspace_graph:acp_agent
+acpkit run examples.langchain.deepagents_graph:acp_agent
 ```
 
 ## Serve A Remote ACP Host
@@ -23,13 +23,13 @@ acpkit run examples.langchain.deepagents_graph:graph
 Pydantic AI:
 
 ```bash
-acpkit serve examples.pydantic.finance_agent:agent --host 0.0.0.0 --port 8080
+acpkit serve examples.pydantic.finance_agent:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 LangChain / LangGraph:
 
 ```bash
-acpkit serve examples.langchain.workspace_graph:graph --host 0.0.0.0 --port 8080
+acpkit serve examples.langchain.workspace_graph:acp_agent --host 0.0.0.0 --port 8080
 ```
 
 Mirror the remote host back into a local ACP boundary:
@@ -41,9 +41,11 @@ acpkit run --addr ws://127.0.0.1:8080/acp/ws
 ## Launch Through Toad
 
 ```bash
-acpkit launch examples.pydantic.finance_agent:agent
-acpkit launch examples.langchain.workspace_graph:graph
+acpkit launch examples.pydantic.finance_agent:acp_agent
+acpkit launch examples.langchain.workspace_graph:acp_agent
 ```
+
+Maintained examples write generated workspaces and local session state under `agent_demos/`.
 
 If a script already starts ACP by itself:
 

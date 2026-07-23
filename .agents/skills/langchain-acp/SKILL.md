@@ -261,13 +261,16 @@ Use the [workspace graph example](https://github.com/vcoderun/acpkit/blob/main/e
 - module-level `graph`
 - session-aware `graph_from_session(...)`
 - filesystem projection
-- `acpkit run ...` and `acpkit serve ...` integration
+- configured `acp_agent` export for `acpkit run ...` and `acpkit serve ...` integration
+- generated files under `agent_demos/workspace-graph/`
 
 Use the [DeepAgents graph example](https://github.com/vcoderun/acpkit/blob/main/examples/langchain/deepagents_graph.py) for:
 
 - DeepAgents compatibility
 - `DeepAgentsCompatibilityBridge`
 - `DeepAgentsProjectionMap`
+- configured `acp_agent` export that preserves bridges, projections, modes, plans, and session
+  persistence
 
 Skill-local example index:
 
@@ -297,6 +300,26 @@ Stay in this skill when the main issue is:
 
 ## Guardrails
 
+### ACP 0.11 Protocol Rules
+
+- Depend on `agent-client-protocol==0.11.0`; use `AdapterModel`, never the
+  removed SDK `ModelInfo` surface.
+- Map model and mode changes to `session/set_config_option`; do not add a
+  wire-level `session/set_model` implementation. The adapter-only convenience
+  helper may exist for internal compatibility.
+- Bind negotiated `ClientCapabilities` to every new, loaded, forked, and
+  resumed session before building graph or config surfaces.
+- Emit config options only when `session.configOptions` is advertised, and
+  only emit boolean options when `session.configOptions.boolean` is present.
+- `plan_update_mode="content"` requires an advertised `plan` capability;
+  fall back to complete `AgentPlanUpdate` otherwise.
+- Preserve `additional_directories` in session lifecycle state and expose
+  typed elicitation through `AcpSessionContext` rather than untyped RPC calls.
+  Pass one of `ElicitationFormSessionMode`, `ElicitationFormRequestMode`,
+  `ElicitationUrlSessionMode`, or `ElicitationUrlRequestMode` directly.
+- Store `AcpMcpServer` session definitions but do not claim ACP MCP transport
+  support without a public SDK router.
+
 - Do not describe LangChain support as secondary to Pydantic.
 - Do not reuse Pydantic-only host-policy language when the bug is really about graph or tool seams.
 - Do not claim a projection preset exists for an unstable tool family unless it is implemented.
@@ -311,5 +334,7 @@ Stay in this skill when the main issue is:
 - Projection maps must match the graph's real tool names, argument schemas, and result shapes.
 - Export a configured `acp_agent = create_acp_agent(...)` for CLI and remote hosting so graph
   factories, providers, bridges, and projections are not replaced by defaults.
+- Maintained examples write generated workspaces and local sessions under `agent_demos/`; keep that
+  as the only default runtime output root.
 - Run `make check-langchain-stack` after framework upgrades and validate real
   `create_deep_agent(...)` construction rather than compatibility fakes alone.

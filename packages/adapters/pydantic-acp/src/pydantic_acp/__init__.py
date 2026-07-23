@@ -49,6 +49,7 @@ from .bridges import (
     PrepareOutputToolsMode,
     PrepareToolsBridge,
     PrepareToolsMode,
+    SessionMcpBridge,
     SetToolMetadataBridge,
     ThinkingBridge,
     ThreadExecutorBridge,
@@ -65,7 +66,8 @@ from .client import (
     AcpProvider,
     AcpUpdateRecord,
 )
-from .config import AdapterConfig
+from .config import AdapterConfig, PlanUpdateMode
+from .factory import create_acp_model
 from .hook_projection import HookEvent, HookProjectionMap
 from .host import (
     ClientFilesystemBackend,
@@ -240,6 +242,7 @@ __all__ = (
     "PlanEntry",
     "PlanGenerationType",
     "PlanProvider",
+    "PlanUpdateMode",
     "PrefixToolsBridge",
     "PrepareOutputToolsBridge",
     "PrepareOutputToolsMode",
@@ -258,6 +261,7 @@ __all__ = (
     "SessionModesProvider",
     "SessionStore",
     "SetToolMetadataBridge",
+    "SessionMcpBridge",
     "SlashCommandHandler",
     "SlashCommandProvider",
     "SlashCommandRequest",
@@ -282,6 +286,7 @@ __all__ = (
     "caution_for_path",
     "compose_projection_maps",
     "create_acp_agent",
+    "create_acp_model",
     "format_code_block",
     "format_diff_preview",
     "format_terminal_status",

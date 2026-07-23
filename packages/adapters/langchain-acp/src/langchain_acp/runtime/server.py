@@ -2,14 +2,13 @@ from __future__ import annotations as _annotations
 
 import asyncio
 from dataclasses import replace
-from typing import Any
 
 from acp import run_agent
-from acp.interfaces import Agent as AcpAgent
 
 from ..config import DEFAULT_AGENT_NAME, AdapterConfig
 from ..event_projection import EventProjectionMap
 from ..graph_source import (
+    CompiledAgentGraph,
     FactoryGraphSource,
     GraphFactory,
     GraphSource,
@@ -22,14 +21,14 @@ __all__ = ("create_acp_agent", "run_acp")
 
 
 def create_acp_agent(
-    graph: Any | None = None,
+    graph: CompiledAgentGraph | None = None,
     *,
     graph_factory: GraphFactory | None = None,
     graph_source: GraphSource | None = None,
     config: AdapterConfig | None = None,
     event_projection_maps: list[EventProjectionMap] | None = None,
     projection_maps: list[ProjectionMap] | None = None,
-) -> AcpAgent:
+) -> LangChainAcpAgent:
     resolved_source = _resolve_graph_source(
         graph=graph,
         graph_factory=graph_factory,
@@ -45,7 +44,7 @@ def create_acp_agent(
 
 
 def run_acp(
-    graph: Any | None = None,
+    graph: CompiledAgentGraph | None = None,
     *,
     graph_factory: GraphFactory | None = None,
     graph_source: GraphSource | None = None,
@@ -66,7 +65,7 @@ def run_acp(
 
 def _resolve_graph_source(
     *,
-    graph: Any | None,
+    graph: CompiledAgentGraph | None,
     graph_factory: GraphFactory | None,
     graph_source: GraphSource | None,
 ) -> GraphSource:

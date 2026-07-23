@@ -19,7 +19,6 @@ from acp.schema import (
     PromptResponse,
     ResumeSessionResponse,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
 )
 from acpremote import client as client_module
@@ -65,12 +64,14 @@ class _FakeClient:
     permission_calls: list[dict[str, Any]] = field(default_factory=list)
     updates: list[dict[str, Any]] = field(default_factory=list)
     notifications: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    elicitation_calls: list[tuple[str, Any]] = field(default_factory=list)
+    completed_elicitation_ids: list[str] = field(default_factory=list)
 
     async def request_permission(
         self,
-        options: list[Any],
         session_id: str,
         tool_call: Any,
+        options: list[Any],
         **kwargs: Any,
     ) -> str:
         self.permission_calls.append(
@@ -91,6 +92,15 @@ class _FakeClient:
 
     async def ext_notification(self, method: str, params: dict[str, Any]) -> None:
         self.notifications.append((method, params))
+
+    async def create_elicitation(self, message: str, mode: Any, **kwargs: Any) -> dict[str, Any]:
+        del kwargs
+        self.elicitation_calls.append((message, mode))
+        return {"action": "accept"}
+
+    async def complete_elicitation(self, elicitation_id: str, **kwargs: Any) -> None:
+        del kwargs
+        self.completed_elicitation_ids.append(elicitation_id)
 
 
 @dataclass(slots=True)
@@ -118,10 +128,6 @@ class _FakeRemoteMethods:
     async def set_session_mode(self, **kwargs: Any) -> SetSessionModeResponse | None:
         self.calls.append(("set_session_mode", kwargs))
         return cast("SetSessionModeResponse", {"mode": kwargs["mode_id"]})
-
-    async def set_session_model(self, **kwargs: Any) -> SetSessionModelResponse | None:
-        self.calls.append(("set_session_model", kwargs))
-        return cast("SetSessionModelResponse", {"model": kwargs["model_id"]})
 
     async def set_config_option(self, **kwargs: Any) -> SetSessionConfigOptionResponse | None:
         self.calls.append(("set_config_option", kwargs))
@@ -270,9 +276,6 @@ async def test_helper_fakes_cover_unreached_stub_paths() -> None:
     assert await methods.load_session(session_id="s-1") == {"ok": True}
     assert await methods.list_sessions(cursor="c-1") == {"sessions": []}
     assert await methods.set_session_mode(session_id="s-1", mode_id="ask") == {"mode": "ask"}
-    assert await methods.set_session_model(session_id="s-1", model_id="model-a") == {
-        "model": "model-a",
-    }
     assert await methods.set_config_option(session_id="s-1", config_id="flag") == {"config": "flag"}
     assert isinstance(await methods.authenticate(method_id="demo"), AuthenticateResponse)
     assert await methods.fork_session(session_id="s-1") == {"session_id": "s-1"}
@@ -906,13 +909,19 @@ async def test_proxy_agent_helper_paths_cover_delegate_and_metadata_edges(
         emit_latency_meta=False,
     )
     assert latency_client._meta("missing") is None
-    assert await latency_client.request_permission([], "session-1", object()) == "ok"
+    assert await latency_client.request_permission("session-1", object(), []) == "ok"
     await latency_client.session_update("session-1", {"ok": True})
     assert await latency_client.ext_method("demo.echo", {"value": 1}) == {
         "method": "demo.echo",
         "params": {"value": 1},
     }
     await latency_client.ext_notification("demo.note", {"value": 2})
+    assert await latency_client.create_elicitation("Confirm", {"mode": "form"}) == {
+        "action": "accept"
+    }
+    await latency_client.complete_elicitation("elicitation-1")
+    assert client.elicitation_calls == [("Confirm", {"mode": "form"})]
+    assert client.completed_elicitation_ids == ["elicitation-1"]
 
     assert proxy_agent_module._merge_field_meta({"source": "x"}, None) == {"source": "x"}
     assert proxy_agent_module._merge_field_meta({}, {"acpremote": {"value": 1}}) == {
@@ -1041,8 +1050,8 @@ async def test_proxy_agent_methods_cover_forwarding_and_connection_recheck(
 
     await proxy.load_session(cwd="/tmp", session_id="sess")
     await proxy.set_session_mode(mode_id="fast", session_id="sess")
-    await proxy.set_session_model(model_id="gpt-5.4", session_id="sess")
     await proxy.set_config_option(config_id="thinking", session_id="sess", value=True)
+    await proxy.set_session_model(model_id="remote-model", session_id="sess")
     await proxy.authenticate(method_id="bearer")
     response = await proxy.prompt(prompt=[], session_id="sess")
     assert response.stop_reason == "end_turn"
@@ -1061,8 +1070,12 @@ async def test_proxy_agent_methods_cover_forwarding_and_connection_recheck(
     assert forwarded["fork_session"]["cwd"] == "/srv/remote"
     assert forwarded["resume_session"]["cwd"] == "/srv/remote"
     assert forwarded["set_session_mode"]["mode_id"] == "fast"
-    assert forwarded["set_session_model"]["model_id"] == "gpt-5.4"
-    assert forwarded["set_config_option"]["value"] is True
+    assert forwarded["set_config_option"]["config_id"] == "model"
+    assert forwarded["set_config_option"]["value"] == "remote-model"
+    assert (
+        "set_config_option",
+        {"config_id": "thinking", "session_id": "sess", "value": True},
+    ) in methods.calls
     assert forwarded["authenticate"]["method_id"] == "bearer"
     assert forwarded["close_session"]["session_id"] == "sess"
     assert forwarded["cancel"]["session_id"] == "sess"

@@ -109,6 +109,10 @@ High-value public seams:
 
 - `run_acp(agent=...)`
 - `create_acp_agent(...)`
+- `create_acp_model(...)`
+- `AcpProvider`
+- `AcpModel`
+- `AcpHostBridge`
 - `AdapterConfig(...)`
 - `MemorySessionStore`
 - `FileSessionStore`
@@ -120,6 +124,7 @@ High-value public seams:
 - `PrepareToolsMode`
 - `PrepareOutputToolsBridge`
 - `PrepareOutputToolsMode`
+- `SessionMcpBridge`
 - `ThinkingBridge`
 - `HookBridge`
 - `SlashCommandProvider`
@@ -136,8 +141,8 @@ Package entrypoint:
 
 ## Current Pydantic AI Compatibility
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Do not restore
-Pydantic AI V1 compatibility or widen the upper bound without running the
+`pydantic-acp` supports `pydantic-ai-slim>=2.9.0,<=2.16.0`. Do not restore
+Pydantic AI V1 or pre-2.9.0 compatibility, or widen the upper bound without running the
 runtime and type-check matrix:
 
 ```bash
@@ -156,6 +161,11 @@ When working on this surface, remember:
 - `run_stream_events()` is consumed as an async context manager throughout the supported range; 2.4.0 starts the run lazily on first event iteration
 - keep the direct async-iterable fallback only for tests and compatibility fakes
 - `OpenAICompactionBridge` must not pass deprecated `instructions=` into upstream `OpenAICompaction`
+- Harness filesystem, shell, and CodeMode bridges are regression-tested against
+  `pydantic-ai-harness[code-mode]==0.10.0` through its public imports; do not
+  duplicate unrelated Harness capabilities such as Memory or Guardrails in ACP Kit.
+- Harness 0.10.0 requires `pydantic-ai-slim>=2.14.1`; use core adapter tests for
+  2.9.0 through 2.14.0 and run Harness capability tests on a compatible version.
 
 ## Module Guide
 
@@ -245,6 +255,7 @@ High-value bridges include:
 - `WebFetchBridge`
 - `ImageGenerationBridge`
 - `McpCapabilityBridge`
+- `SessionMcpBridge`
 - `ToolsetBridge`
 - `PrefixToolsBridge`
 - `ExternalHookEventBridge`
@@ -318,6 +329,44 @@ run_acp(agent=agent)
 
 Use `create_acp_agent(...)` when another runner or transport layer should own startup.
 
+### ACP-backed Pydantic AI provider
+
+Use `create_acp_model(acp_agent=...)` when the runtime you have is already an ACP agent and the
+host application needs to consume it through normal Pydantic AI v2 model APIs.
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(acp_agent=remote_acp_agent, cwd="/workspace")
+agent = Agent(model)
+```
+
+`create_acp_model(...)` leaves ACP model selection to the wrapped ACP agent's session default. Pass
+`model_name=...` only when that ACP agent exposes a selectable `"model"`
+`session/set_config_option` option. Do not use
+this as a replacement for `create_acp_agent(...)`; it is the inverse bridge.
+
+Use `create_acp_model(acp_command=...)` for local child processes that already speak ACP JSON-RPC
+over stdin/stdout, such as external ACP agent servers:
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(
+    acp_command=("npx", "@zed-industries/codex-acp"),
+    cwd="/workspace",
+)
+agent = Agent(model)
+```
+
+Do not pass arbitrary CLI commands here; the process must be an ACP server. Each command-backed
+model owns one child ACP process and should be reused for repeated subagent calls.
+
+Use `AcpProvider(acp_agent=...)` directly only when provider ownership, host delegation, or lower
+level lifecycle control matters.
+
 ### Session-aware construction
 
 Use `agent_factory=` when session state should change the built agent.
@@ -337,6 +386,8 @@ Maintained public examples:
 - [Pydantic public examples](https://raw.githubusercontent.com/vcoderun/acpkit/main/examples/pydantic/README.md)
 - [Finance agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py)
 - [Travel agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py)
+- [Harness agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py)
+- [Session MCP agent example](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/session_mcp_agent.py)
 
 Use `finance_agent.py` for:
 
@@ -350,6 +401,18 @@ Use `travel_agent.py` for:
 - hook projection
 - prompt-model overrides
 - media prompt behavior
+
+Use `mock_harness_agent.py` for:
+
+- `pydantic-ai-harness` filesystem and shell capability bridges
+- optional CodeMode capability wiring through `--codemode`
+- bounded workspace behavior under `agent_demos/harness-agent/`
+
+Use `session_mcp_agent.py` for:
+
+- client-owned `session/new.mcpServers`
+- `SessionMcpBridge` converting session payloads into Pydantic AI `MCPToolset` capabilities
+- env/header values kept available for connection while metadata exposes only names
 
 Skill-local example index:
 
@@ -381,6 +444,27 @@ Stay in this skill when the main issue is:
 
 ## Guardrails
 
+### ACP 0.11 Protocol Rules
+
+- Depend on `agent-client-protocol==0.11.0`; do not reintroduce `ModelInfo` or
+  wire-level `session/set_model` calls.
+- Model selection travels through `session/set_config_option` with
+  `config_id="model"`. `AcpProvider.model()` leaves the remote default intact;
+  an explicit provider model requires the remote agent to expose that select
+  option.
+- Preserve `additional_directories` in every lifecycle method. They extend the
+  session scope for host-backed file and terminal operations, but never bypass
+  a configured `workspace_root`.
+- Use `AcpSessionContext.create_elicitation(...)` only with an exact
+  `ElicitationFormSessionMode`, `ElicitationFormRequestMode`,
+  `ElicitationUrlSessionMode`, or `ElicitationUrlRequestMode` that the client
+  advertised.
+- Keep full `AgentPlanUpdate` as the compatibility baseline. Use
+  `AdapterConfig(plan_update_mode="content")` only when the client advertises
+  `plan`; the runtime must fall back to full updates otherwise.
+- Accept and persist `AcpMcpServer` session payloads, but do not advertise ACP
+  MCP transport capability until the SDK exposes a public router.
+
 - Do not describe `pydantic-acp` as transport.
 - Do not promise ACP state the active `pydantic_ai.Agent` cannot honor.
 - Do not route LangChain or DeepAgents questions through this skill.
@@ -405,5 +489,7 @@ Stay in this skill when the main issue is:
   filtering.
 - Export a configured `acp_agent = create_acp_agent(...)` when root CLI or remote hosting must
   preserve custom bridges, projections, providers, and persistence.
+- Maintained examples write generated workspaces and local sessions under `agent_demos/`; do not
+  reintroduce per-example hidden directories as default runtime output.
 - Validate supported Pydantic AI versions with `make check-pydantic-ai-matrix`; dependency
   resolution alone is not compatibility evidence.

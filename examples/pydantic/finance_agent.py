@@ -3,15 +3,17 @@ from __future__ import annotations as _annotations
 import os
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Final
+from typing import Final
 
 from pydantic_acp import (
+    AcpSessionContext,
     AdapterConfig,
     FileSessionStore,
     FileSystemProjectionMap,
     NativeApprovalBridge,
     PrepareToolsBridge,
     PrepareToolsMode,
+    RuntimeAgent,
     ThinkingBridge,
     create_acp_agent,
     run_acp,
@@ -144,8 +146,8 @@ def _trade_tools(
 class FinancePlanPersistenceProvider(NativePlanPersistenceProvider):
     def persist_plan_state(
         self,
-        session: Any,
-        agent: Any,
+        session: AcpSessionContext,
+        agent: RuntimeAgent,
         entries: Sequence[PlanEntry],
         plan_markdown: str | None,
     ) -> None:
@@ -252,6 +254,8 @@ config = AdapterConfig(
     ],
     approval_bridge=NativeApprovalBridge(),
     native_plan_persistence_provider=FinancePlanPersistenceProvider(),
+    plan_id="finance-research-plan",
+    plan_update_mode="content",
     projection_maps=[
         FileSystemProjectionMap(
             default_read_tool=_READ_NOTE_TOOL,

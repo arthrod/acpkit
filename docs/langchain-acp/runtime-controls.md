@@ -64,10 +64,10 @@ providers and graph factories:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AdapterConfig, run_acp
+from langchain_acp import AcpSessionContext, AdapterConfig, CompiledAgentGraph, run_acp
 
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_id = session.session_model_id or "openai:gpt-5-mini"
     mode_id = session.session_mode_id or "default"
     return create_agent(
@@ -106,13 +106,13 @@ Use these when control state belongs in the bridge layer instead of directly in
 ## Example
 
 ```python
-from acp.schema import ModelInfo, SessionMode
-from langchain_acp import AdapterConfig
+from acp.schema import SessionMode
+from langchain_acp import AdapterConfig, AdapterModel
 
 config = AdapterConfig(
     available_models=[
-        ModelInfo(model_id="fast", name="Fast"),
-        ModelInfo(model_id="deep", name="Deep"),
+        AdapterModel(model_id="fast", name="Fast"),
+        AdapterModel(model_id="deep", name="Deep"),
     ],
     available_modes=[
         SessionMode(id="ask", name="Ask"),

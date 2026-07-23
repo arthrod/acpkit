@@ -2,7 +2,7 @@ from __future__ import annotations as _annotations
 
 import asyncio
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from inspect import isawaitable
 from pathlib import Path
 from typing import Any, cast
@@ -12,10 +12,14 @@ from acp.exceptions import RequestError
 from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
 from acp.schema import (
+    AcpMcpServer,
     AgentCapabilities,
     AgentMessageChunk,
+    AgentPlanContentUpdate,
+    AgentPlanRemovedUpdate,
     AgentPlanUpdate,
     AvailableCommandsUpdate,
+    ClientCapabilities,
     CloseSessionResponse,
     ConfigOptionUpdate,
     CurrentModeUpdate,
@@ -29,22 +33,23 @@ from acp.schema import (
     McpServerStdio,
     NewSessionResponse,
     PlanEntry,
+    PlanUpdateItems,
     PromptCapabilities,
     PromptResponse,
     ResumeSessionResponse,
+    SessionAdditionalDirectoriesCapabilities,
     SessionCapabilities,
     SessionCloseCapabilities,
+    SessionConfigOptionBoolean,
     SessionConfigOptionSelect,
     SessionConfigSelectOption,
     SessionForkCapabilities,
     SessionInfo,
     SessionInfoUpdate,
     SessionListCapabilities,
-    SessionModelState,
     SessionModeState,
     SessionResumeCapabilities,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
     SseMcpServer,
     TextContentBlock,
@@ -110,17 +115,19 @@ class LangChainAcpAgent(AcpAgent):
         self._bridge_manager: BridgeManager = self._graph_bridge_builder.build_manager()
         self._tool_classifier: ToolClassifier = self._bridge_manager.tool_classifier
         self._client: AcpClient | None = None
+        self._client_capabilities: ClientCapabilities | None = None
         self._cancelled_sessions: set[str] = set()
         self._active_prompt_tasks: dict[str, asyncio.Task[Any]] = {}
 
     async def initialize(
         self,
         protocol_version: int,
-        client_capabilities: Any | None = None,
+        client_capabilities: ClientCapabilities | None = None,
         client_info: Implementation | None = None,
         **kwargs: Any,
     ) -> InitializeResponse:
-        del client_capabilities, client_info, kwargs
+        del client_info, kwargs
+        self._client_capabilities = client_capabilities
         return InitializeResponse(
             protocol_version=protocol_version,
             agent_info=Implementation(
@@ -137,6 +144,7 @@ class LangChainAcpAgent(AcpAgent):
                     image=self._config.prompt_capabilities.image,
                 ),
                 session_capabilities=SessionCapabilities(
+                    additional_directories=SessionAdditionalDirectoriesCapabilities(),
                     close=SessionCloseCapabilities(),
                     fork=SessionForkCapabilities(),
                     list=SessionListCapabilities(),
@@ -149,20 +157,27 @@ class LangChainAcpAgent(AcpAgent):
     async def new_session(
         self,
         cwd: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        additional_directories: list[str] | None = None,
+        mcp_servers: Sequence[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
         **kwargs: Any,
     ) -> NewSessionResponse:
         del kwargs
         session_id = str(uuid4())
         created_at = utc_now()
-        session = AcpSessionContext(
-            session_id=session_id,
-            cwd=Path(cwd),
-            created_at=created_at,
-            updated_at=created_at,
-            session_model_id=self._default_model_id(),
-            session_mode_id=self._default_mode_id(),
-            mcp_servers=self._serialize_mcp_servers(mcp_servers),
+        session = self._bind_session_client(
+            AcpSessionContext(
+                session_id=session_id,
+                cwd=Path(cwd),
+                created_at=created_at,
+                updated_at=created_at,
+                additional_directories=self._normalize_additional_directories(
+                    additional_directories,
+                ),
+                session_model_id=self._default_model_id(),
+                session_mode_id=self._default_mode_id(),
+                mcp_servers=self._serialize_mcp_servers(mcp_servers),
+            ),
         )
         session.session_model_id = await self._initial_model_id(session)
         session.session_mode_id = await self._initial_mode_id(session)
@@ -172,7 +187,6 @@ class LangChainAcpAgent(AcpAgent):
         return NewSessionResponse(
             session_id=session_id,
             config_options=await self._config_options(session),
-            models=await self._model_state(session),
             modes=await self._mode_state(session),
         )
 
@@ -180,14 +194,20 @@ class LangChainAcpAgent(AcpAgent):
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        mcp_servers: Sequence[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
+        additional_directories: list[str] | None = None,
         **kwargs: Any,
     ) -> LoadSessionResponse | None:
         del kwargs
         session = self._store.get(session_id)
         if session is None:
             return None
+        session = self._bind_session_client(session)
         session.cwd = Path(cwd)
+        session.additional_directories = self._normalize_additional_directories(
+            additional_directories,
+        )
         self._update_session_mcp_servers(session, mcp_servers)
         self._sync_bridge_metadata(session)
         await self._replay_transcript(session)
@@ -197,14 +217,13 @@ class LangChainAcpAgent(AcpAgent):
         self._store.save(session)
         return LoadSessionResponse(
             config_options=await self._config_options(session),
-            models=await self._model_state(session),
             modes=await self._mode_state(session),
         )
 
     async def list_sessions(
         self,
-        cursor: str | None = None,
         cwd: str | None = None,
+        cursor: str | None = None,
         **kwargs: Any,
     ) -> ListSessionsResponse:
         del cursor, kwargs
@@ -215,6 +234,9 @@ class LangChainAcpAgent(AcpAgent):
             sessions=[
                 SessionInfo(
                     cwd=str(session.cwd),
+                    additional_directories=[
+                        str(directory) for directory in session.additional_directories
+                    ],
                     session_id=session.session_id,
                     title=session.title,
                     updated_at=session.updated_at.isoformat(),
@@ -225,8 +247,8 @@ class LangChainAcpAgent(AcpAgent):
 
     async def set_session_mode(
         self,
-        mode_id: str,
         session_id: str,
+        mode_id: str,
         **kwargs: Any,
     ) -> SetSessionModeResponse | None:
         del kwargs
@@ -239,23 +261,6 @@ class LangChainAcpAgent(AcpAgent):
         session.updated_at = utc_now()
         self._store.save(session)
         return SetSessionModeResponse()
-
-    async def set_session_model(
-        self,
-        model_id: str,
-        session_id: str,
-        **kwargs: Any,
-    ) -> SetSessionModelResponse | None:
-        del kwargs
-        session = self._require_session(session_id)
-        resolved_model = await self._set_model(session, model_id)
-        if resolved_model is None:
-            raise RequestError.invalid_request({"modelId": model_id})
-        self._sync_bridge_metadata(session)
-        await self._drain_bridge_updates(client=self._client, session=session)
-        session.updated_at = utc_now()
-        self._store.save(session)
-        return SetSessionModelResponse()
 
     async def set_config_option(
         self,
@@ -291,19 +296,28 @@ class LangChainAcpAgent(AcpAgent):
                 session.updated_at = utc_now()
                 self._store.save(session)
                 return SetSessionConfigOptionResponse(
-                    config_options=await self._config_options(session),
+                    config_options=await self._config_options(session) or [],
                 )
         self._sync_bridge_metadata(session)
         await self._drain_bridge_updates(client=self._client, session=session)
         session.updated_at = utc_now()
         self._store.save(session)
-        return SetSessionConfigOptionResponse(config_options=await self._config_options(session))
+        return SetSessionConfigOptionResponse(
+            config_options=await self._config_options(session) or [],
+        )
+
+    async def set_session_model(
+        self,
+        model_id: str,
+        session_id: str,
+    ) -> SetSessionConfigOptionResponse | None:
+        """Compatibility helper that maps model selection to ACP 0.11 config options."""
+        return await self.set_config_option("model", session_id, model_id)
 
     async def prompt(
         self,
-        prompt: list[AgentPromptBlock],
         session_id: str,
-        message_id: str | None = None,
+        prompt: list[AgentPromptBlock],
         **kwargs: Any,
     ) -> PromptResponse:
         del kwargs
@@ -313,14 +327,14 @@ class LangChainAcpAgent(AcpAgent):
             return await self._execute_prompt(
                 prompt=prompt,
                 session_id=session_id,
-                message_id=message_id,
+                message_id=uuid4().hex,
             )
         except asyncio.CancelledError:
             if session_id not in self._cancelled_sessions:
                 raise
             current_task.uncancel()
             self._cancelled_sessions.discard(session_id)
-            return PromptResponse(stop_reason="cancelled", user_message_id=message_id)
+            return PromptResponse(stop_reason="cancelled")
         finally:
             active_task = self._active_prompt_tasks.get(session_id)
             if active_task is current_task:
@@ -362,7 +376,7 @@ class LangChainAcpAgent(AcpAgent):
             while True:
                 if session.session_id in self._cancelled_sessions:
                     self._cancelled_sessions.discard(session.session_id)
-                    return PromptResponse(stop_reason="cancelled", user_message_id=message_id)
+                    return PromptResponse(stop_reason="cancelled")
 
                 stream_input: Command | dict[str, Any]
                 if decisions:
@@ -391,7 +405,7 @@ class LangChainAcpAgent(AcpAgent):
 
                     if session.session_id in self._cancelled_sessions:
                         self._cancelled_sessions.discard(session.session_id)
-                        return PromptResponse(stop_reason="cancelled", user_message_id=message_id)
+                        return PromptResponse(stop_reason="cancelled")
 
                     if stream_mode == "updates":
                         resumed_decisions = await self._handle_update_payload(
@@ -419,13 +433,15 @@ class LangChainAcpAgent(AcpAgent):
                 if should_resume:
                     continue
                 await self._drain_bridge_updates(client=client, session=session)
-                return PromptResponse(stop_reason="end_turn", user_message_id=message_id)
+                return PromptResponse(stop_reason="end_turn")
 
     async def fork_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: Sequence[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
         **kwargs: Any,
     ) -> ForkSessionResponse:
         del kwargs
@@ -433,6 +449,10 @@ class LangChainAcpAgent(AcpAgent):
         forked = self._store.fork(session_id, new_session_id=new_session_id, cwd=Path(cwd))
         if forked is None:
             raise RequestError.resource_not_found(f"session:{session_id}")
+        forked = self._bind_session_client(forked)
+        forked.additional_directories = self._normalize_additional_directories(
+            additional_directories,
+        )
         self._update_session_mcp_servers(forked, mcp_servers)
         self._sync_bridge_metadata(forked)
         self._store.save(forked)
@@ -440,20 +460,24 @@ class LangChainAcpAgent(AcpAgent):
         return ForkSessionResponse(
             session_id=new_session_id,
             config_options=await self._config_options(forked),
-            models=await self._model_state(forked),
             modes=await self._mode_state(forked),
         )
 
     async def resume_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: Sequence[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio]
+        | None = None,
         **kwargs: Any,
     ) -> ResumeSessionResponse:
         del kwargs
         session = self._require_session(session_id)
         session.cwd = Path(cwd)
+        session.additional_directories = self._normalize_additional_directories(
+            additional_directories,
+        )
         self._update_session_mcp_servers(session, mcp_servers)
         self._sync_bridge_metadata(session)
         await self._replay_transcript(session)
@@ -463,7 +487,6 @@ class LangChainAcpAgent(AcpAgent):
         self._store.save(session)
         return ResumeSessionResponse(
             config_options=await self._config_options(session),
-            models=await self._model_state(session),
             modes=await self._mode_state(session),
         )
 
@@ -523,7 +546,6 @@ class LangChainAcpAgent(AcpAgent):
             await self._emit_available_commands(session=session, graph=graph)
             return PromptResponse(
                 stop_reason="end_turn",
-                user_message_id=acknowledged_message_id,
             )
         slash_provider = self._config.slash_command_provider
         if slash_provider is None:
@@ -584,14 +606,7 @@ class LangChainAcpAgent(AcpAgent):
                         session_update="current_mode_update",
                     ),
                 )
-                await self._emit_update(
-                    client=self._require_client(),
-                    session=session,
-                    update=ConfigOptionUpdate(
-                        session_update="config_option_update",
-                        config_options=await self._config_options(session),
-                    ),
-                )
+                await self._emit_config_option_update(session)
                 return render_mode_message(current_mode_id)
         if command_name == MODEL_COMMAND_NAME:
             if argument is None:
@@ -599,14 +614,7 @@ class LangChainAcpAgent(AcpAgent):
             resolved_model = await self._set_model(session, argument)
             if resolved_model is None:
                 return "Model is unavailable or invalid"
-            await self._emit_update(
-                client=self._require_client(),
-                session=session,
-                update=ConfigOptionUpdate(
-                    session_update="config_option_update",
-                    config_options=await self._config_options(session),
-                ),
-            )
+            await self._emit_config_option_update(session)
             return render_model_message(resolved_model.current_model_id)
         if command_name == TOOLS_COMMAND_NAME:
             return render_tool_listing(list_graph_tools(graph))
@@ -636,7 +644,6 @@ class LangChainAcpAgent(AcpAgent):
             await self._emit_available_commands(session=session, graph=graph)
         return PromptResponse(
             stop_reason=result.stop_reason,
-            user_message_id=acknowledged_message_id,
         )
 
     async def _emit_available_commands(
@@ -667,7 +674,7 @@ class LangChainAcpAgent(AcpAgent):
         graph: Any,
     ) -> list[Any]:
         mode_state = await self._mode_state(session)
-        model_state = await self._model_state(session)
+        config_options = await self._config_options(session)
         custom_commands = None
         if self._config.slash_command_provider is not None:
             custom_commands = await self._await_maybe(
@@ -675,7 +682,7 @@ class LangChainAcpAgent(AcpAgent):
             )
         return build_available_commands(
             mode_state=mode_state,
-            model_state=model_state,
+            model_selection_enabled=any(option.id == "model" for option in config_options or []),
             custom_commands=custom_commands,
         )
 
@@ -971,21 +978,47 @@ class LangChainAcpAgent(AcpAgent):
     async def _emit_plan_update(
         self,
         *,
-        client: AcpClient,
+        client: AcpClient | None,
         session: AcpSessionContext,
-        entries: list[PlanEntry],
+        entries: list[PlanEntry] | None,
+        persist_native: bool = True,
     ) -> None:
-        if self._native_plan_runtime.supports_native_plan_state(session):
+        if client is None:
+            return
+        if persist_native and self._native_plan_runtime.supports_native_plan_state(session):
+            if entries is None:
+                return
             await self._native_plan_runtime.persist_native_plan_state(
                 session,
                 entries=entries,
                 plan_markdown=session.plan_markdown,
             )
             return
-        session.plan_entries = [
-            entry.model_dump(mode="json", exclude_none=True) for entry in entries
-        ]
-        update = AgentPlanUpdate(session_update="plan", entries=entries)
+        if entries is not None:
+            session.plan_entries = [
+                entry.model_dump(mode="json", exclude_none=True) for entry in entries
+            ]
+        use_content_updates = (
+            self._config.plan_update_mode == "content" and session.supports_plan_content_updates()
+        )
+        if not use_content_updates:
+            if entries is None:
+                return
+            update = AgentPlanUpdate(session_update="plan", entries=entries)
+        elif entries is None:
+            if session.active_plan_id is None:
+                return
+            update = AgentPlanRemovedUpdate(
+                session_update="plan_removed", id=session.active_plan_id
+            )
+            session.active_plan_id = None
+        else:
+            plan_id = self._config.plan_id
+            update = AgentPlanContentUpdate(
+                session_update="plan_update",
+                plan=PlanUpdateItems(id=plan_id, type="items", entries=entries),
+            )
+            session.active_plan_id = plan_id
         await self._emit_update(client=client, session=session, update=update)
 
     async def _emit_agent_text(
@@ -1059,7 +1092,9 @@ class LangChainAcpAgent(AcpAgent):
             return value
         return parsed
 
-    async def _config_options(self, session: AcpSessionContext) -> list[ConfigOption]:
+    async def _config_options(self, session: AcpSessionContext) -> list[ConfigOption] | None:
+        if not session.supports_config_options():
+            return None
         options: list[ConfigOption] = []
         mode_state = await self._resolved_mode_selection_state(session)
         if mode_state is not None and mode_state.enable_config_option:
@@ -1097,15 +1132,23 @@ class LangChainAcpAgent(AcpAgent):
         if bridge_options is not None:
             options.extend(bridge_options)
         options.extend(await self._native_plan_runtime.config_options(session))
+        if not session.supports_boolean_config_options():
+            options = [
+                option for option in options if not isinstance(option, SessionConfigOptionBoolean)
+            ]
         return options
 
-    async def _model_state(self, session: AcpSessionContext) -> SessionModelState | None:
-        model_state = await self._resolved_model_selection_state(session)
-        if model_state is None or model_state.current_model_id is None:
-            return None
-        return SessionModelState(
-            available_models=list(model_state.available_models),
-            current_model_id=model_state.current_model_id,
+    async def _emit_config_option_update(self, session: AcpSessionContext) -> None:
+        config_options = await self._config_options(session)
+        if config_options is None:
+            return
+        await self._emit_update(
+            client=self._require_client(),
+            session=session,
+            update=ConfigOptionUpdate(
+                session_update="config_option_update",
+                config_options=config_options,
+            ),
         )
 
     async def _mode_state(self, session: AcpSessionContext) -> SessionModeState | None:
@@ -1141,8 +1184,11 @@ class LangChainAcpAgent(AcpAgent):
         session = self._store.get(session_id)
         if session is None:
             raise RequestError.resource_not_found(f"session:{session_id}")
-        if self._client is not None:
-            session.client = self._client
+        return self._bind_session_client(session)
+
+    def _bind_session_client(self, session: AcpSessionContext) -> AcpSessionContext:
+        session.client = self._client
+        session.client_capabilities = self._client_capabilities
         return session
 
     def _require_client(self) -> AcpClient:
@@ -1152,7 +1198,7 @@ class LangChainAcpAgent(AcpAgent):
 
     def _serialize_mcp_servers(
         self,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None,
+        mcp_servers: Sequence[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio] | None,
     ) -> list[dict[str, JsonValue]]:
         if mcp_servers is None:
             return []
@@ -1167,11 +1213,23 @@ class LangChainAcpAgent(AcpAgent):
     def _update_session_mcp_servers(
         self,
         session: AcpSessionContext,
-        mcp_servers: list[HttpMcpServer | SseMcpServer | McpServerStdio] | None,
+        mcp_servers: Sequence[HttpMcpServer | SseMcpServer | AcpMcpServer | McpServerStdio] | None,
     ) -> None:
         if mcp_servers is None:
             return
         session.mcp_servers = self._serialize_mcp_servers(mcp_servers)
+
+    def _normalize_additional_directories(
+        self,
+        directories: list[str] | None,
+    ) -> tuple[Path, ...]:
+        normalized: list[Path] = []
+        for directory in directories or []:
+            path = Path(directory).expanduser()
+            if not path.is_absolute():
+                raise RequestError.invalid_params({"additionalDirectories": directories})
+            normalized.append(path.resolve(strict=False))
+        return tuple(normalized)
 
     def _derive_title(self, prompt: Iterable[AgentPromptBlock]) -> str | None:
         for block in prompt:
@@ -1195,6 +1253,10 @@ class LangChainAcpAgent(AcpAgent):
         session: AcpSessionContext,
     ) -> ModelSelectionState | None:
         return await self._await_maybe(self._bridge_manager.get_model_state(session))
+
+    async def _model_state(self, session: AcpSessionContext) -> ModelSelectionState | None:
+        """Compatibility alias for integrations that inspected model selection state directly."""
+        return await self._resolved_model_selection_state(session)
 
     async def _resolved_mode_selection_state(self, session: AcpSessionContext) -> ModeState | None:
         return await self._await_maybe(self._bridge_manager.get_mode_state(session))

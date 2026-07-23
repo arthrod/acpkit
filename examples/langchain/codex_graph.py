@@ -4,12 +4,13 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 
-from acp.schema import ModelInfo, SessionMode
+from acp.schema import SessionMode
 from codex_auth_helper import create_codex_chat_openai
 from langchain.agents import create_agent
 from langchain_acp import (
     AcpSessionContext,
     AdapterConfig,
+    AdapterModel,
     CompiledAgentGraph,
     FileSessionStore,
     create_acp_agent,
@@ -39,8 +40,8 @@ _SESSION_STORE_ROOT = (
     / "langchain-codex"
 )
 AVAILABLE_MODELS = (
-    ModelInfo(model_id="gpt-5.4-mini", name="GPT-5.4 Mini"),
-    ModelInfo(model_id=MODEL_NAME, name=f"Codex {MODEL_NAME}"),
+    AdapterModel(model_id="gpt-5.4-mini", name="GPT-5.4 Mini"),
+    AdapterModel(model_id=MODEL_NAME, name=f"Codex {MODEL_NAME}"),
 )
 AVAILABLE_MODES = (
     SessionMode(id="ask", name="Ask", description="General question answering mode."),

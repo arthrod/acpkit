@@ -57,7 +57,6 @@ from acp.schema import (
     SessionConfigOptionBoolean,
     SessionMode,
 )
-from pydantic_ai import Agent
 from pydantic_acp import (
     AcpSessionContext,
     AdapterConfig,
@@ -65,6 +64,7 @@ from pydantic_acp import (
     ConfigOption,
     ModelSelectionState,
     ModeState,
+    RuntimeAgent,
 )
 
 
@@ -83,7 +83,7 @@ class ModelsProvider:
     def get_model_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> ModelSelectionState:
         config = self.state.config_for(session)
         return ModelSelectionState(
@@ -107,7 +107,7 @@ class ModelsProvider:
     def set_model(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         model_id: str,
     ) -> ModelSelectionState:
         config = self.state.config_for(session)
@@ -122,7 +122,7 @@ class ModesProvider:
     def get_mode_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> ModeState:
         config = self.state.config_for(session)
         return ModeState(
@@ -136,7 +136,7 @@ class ModesProvider:
     def set_mode(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         mode_id: str,
     ) -> ModeState:
         config = self.state.config_for(session)
@@ -151,7 +151,7 @@ class ConfigProvider:
     def get_config_options(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> list[ConfigOption]:
         config = self.state.config_for(session)
         return [
@@ -168,7 +168,7 @@ class ConfigProvider:
     def set_config_option(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         config_id: str,
         value: str | bool,
     ) -> list[ConfigOption] | None:
@@ -186,7 +186,7 @@ class PlanProvider:
     def get_plan(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> list[PlanEntry]:
         config = self.state.config_for(session)
         return [
@@ -205,7 +205,7 @@ class ApprovalMetadataProvider:
     def get_approval_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> dict[str, str | bool]:
         config = self.state.config_for(session)
         return {

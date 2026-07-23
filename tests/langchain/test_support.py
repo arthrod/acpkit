@@ -84,14 +84,14 @@ async def test_langchain_recording_acp_client_support_helpers() -> None:
     tool_call = cast("Any", object())
 
     with pytest.raises(AssertionError, match="unexpected permission request"):
-        await client.request_permission([option], "session-1", tool_call)
+        await client.request_permission("session-1", tool_call, [option])
 
     client.queue_permission_selected("allow_once")
-    selected = await client.request_permission([option], "session-1", tool_call)
+    selected = await client.request_permission("session-1", tool_call, [option])
     assert isinstance(selected, RequestPermissionResponse)
 
     client.queue_permission_cancelled()
-    cancelled = await client.request_permission([option], "session-1", tool_call)
+    cancelled = await client.request_permission("session-1", tool_call, [option])
     assert isinstance(cancelled, RequestPermissionResponse)
 
     update = AgentMessageChunk(
@@ -111,10 +111,13 @@ async def test_langchain_recording_acp_client_support_helpers() -> None:
     client.updates.append(("session-1", object()))
     assert agent_message_texts(client) == ["hello", "world"]
 
-    assert await client.write_text_file("body", "/tmp/demo", "session-1") == client.write_response
-    read_response = await client.read_text_file("/tmp/demo", "session-1")
+    assert (
+        await client.write_text_file(session_id="session-1", path="/tmp/demo", content="body")
+        == client.write_response
+    )
+    read_response = await client.read_text_file(session_id="session-1", path="/tmp/demo")
     assert read_response.content == "file:/tmp/demo"
-    created = await client.create_terminal("echo hi", "session-1")
+    created = await client.create_terminal(session_id="session-1", command="echo hi")
     assert created.terminal_id == "terminal-1"
     assert (
         await client.terminal_output("session-1", "terminal-1") == client.terminal_output_response
@@ -127,5 +130,9 @@ async def test_langchain_recording_acp_client_support_helpers() -> None:
         await client.ext_method("demo.echo", {"value": 1})
     with pytest.raises(AssertionError, match="unexpected extension notification"):
         await client.ext_notification("demo.note", {"value": 2})
+    with pytest.raises(AssertionError, match="elicitation flow"):
+        await client.create_elicitation("Confirm", cast("Any", object()))
+    with pytest.raises(AssertionError, match="elicitation flow"):
+        await client.complete_elicitation("elicitation-1")
 
     assert client.on_connect(cast("Any", object())) is None

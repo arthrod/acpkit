@@ -10,8 +10,10 @@ from acp.schema import (
     AgentMessageChunk,
     AllowedOutcome,
     ContentToolCallContent,
+    CreateElicitationResponse,
     CreateTerminalResponse,
     DeniedOutcome,
+    ElicitationMode,
     EnvVariable,
     FileEditToolCallContent,
     KillTerminalResponse,
@@ -161,9 +163,9 @@ class RecordingACPClient:
 
     async def request_permission(
         self,
-        options: list[PermissionOption],
         session_id: str,
         tool_call: ToolCallUpdate,
+        options: list[PermissionOption],
         **kwargs: Any,
     ) -> RequestPermissionResponse:
         del kwargs
@@ -180,9 +182,9 @@ class RecordingACPClient:
 
     async def write_text_file(
         self,
-        content: str,
-        path: str,
         session_id: str,
+        path: str,
+        content: str,
         **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         del content, path, session_id, kwargs
@@ -190,10 +192,10 @@ class RecordingACPClient:
 
     async def read_text_file(
         self,
-        path: str,
         session_id: str,
-        limit: int | None = None,
+        path: str,
         line: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> ReadTextFileResponse:
         del session_id, limit, line, kwargs
@@ -201,11 +203,11 @@ class RecordingACPClient:
 
     async def create_terminal(
         self,
-        command: str,
         session_id: str,
+        command: str,
         args: list[str] | None = None,
-        cwd: str | None = None,
         env: list[EnvVariable] | None = None,
+        cwd: str | None = None,
         output_byte_limit: int | None = None,
         **kwargs: Any,
     ) -> CreateTerminalResponse:
@@ -247,6 +249,19 @@ class RecordingACPClient:
     ) -> KillTerminalResponse | None:
         del session_id, terminal_id, kwargs
         return self.kill_response
+
+    async def create_elicitation(
+        self,
+        message: str,
+        mode: ElicitationMode,
+        **kwargs: Any,
+    ) -> CreateElicitationResponse:
+        del message, mode, kwargs
+        raise AssertionError("elicitation flow is not part of this test")
+
+    async def complete_elicitation(self, elicitation_id: str, **kwargs: Any) -> None:
+        del elicitation_id, kwargs
+        raise AssertionError("elicitation flow is not part of this test")
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         raise AssertionError(f"unexpected extension method: {method!r} {params!r}")

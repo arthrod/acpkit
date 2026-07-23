@@ -2,10 +2,11 @@ from __future__ import annotations as _annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, Protocol, TypeAlias
+from typing import Protocol, TypeAlias
 
 from acp.schema import AvailableCommand, StopReason
 
+from .graph_source import CompiledAgentGraph
 from .session.state import AcpSessionContext, SessionTranscriptUpdate
 
 __all__ = (
@@ -24,7 +25,7 @@ class SlashCommandRequest:
     argument: str | None
     raw_prompt: str
     session: AcpSessionContext
-    graph: Any
+    graph: CompiledAgentGraph
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -40,7 +41,7 @@ class SlashCommandProvider(Protocol):
     def available_commands(
         self,
         session: AcpSessionContext,
-        graph: Any,
+        graph: CompiledAgentGraph,
     ) -> Sequence[AvailableCommand] | Awaitable[Sequence[AvailableCommand]]: ...
 
     def handle_command(
@@ -68,7 +69,7 @@ class StaticSlashCommandProvider:
     def available_commands(
         self,
         session: AcpSessionContext,
-        graph: Any,
+        graph: CompiledAgentGraph,
     ) -> Sequence[AvailableCommand]:
         del session, graph
         return [command.command for command in self.commands]

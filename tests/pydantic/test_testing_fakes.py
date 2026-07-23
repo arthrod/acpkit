@@ -39,13 +39,13 @@ def test_recording_acp_client_records_permission_file_and_terminal_calls() -> No
     async def exercise_client() -> None:
         client.queue_permission_selected("allow_once")
         selected = await client.request_permission(
-            permission_options,
+            options=permission_options,
             session_id="session-1",
             tool_call=tool_call,
         )
         client.queue_permission_cancelled()
         cancelled = await client.request_permission(
-            permission_options,
+            options=permission_options,
             session_id="session-1",
             tool_call=tool_call,
         )
@@ -56,7 +56,7 @@ def test_recording_acp_client_records_permission_file_and_terminal_calls() -> No
 
         with pytest.raises(AssertionError, match="unexpected permission request"):
             await client.request_permission(
-                permission_options,
+                options=permission_options,
                 session_id="session-1",
                 tool_call=tool_call,
             )
@@ -70,14 +70,16 @@ def test_recording_acp_client_records_permission_file_and_terminal_calls() -> No
             ),
         )
 
-        assert (await client.write_text_file("hello", "notes.txt", "session-1")) is None
         assert (
-            await client.read_text_file("notes.txt", "session-1", limit=10, line=2)
+            await client.write_text_file(session_id="session-1", path="notes.txt", content="hello")
+        ) is None
+        assert (
+            await client.read_text_file(session_id="session-1", path="notes.txt", limit=10, line=2)
         ).content == "file:notes.txt:2:10"
         assert (
             await client.create_terminal(
-                "python",
-                "session-1",
+                session_id="session-1",
+                command="python",
                 args=["-V"],
                 cwd="/tmp",
                 output_byte_limit=5,
@@ -92,6 +94,10 @@ def test_recording_acp_client_records_permission_file_and_terminal_calls() -> No
             await client.ext_method("ext/test", {})
         with pytest.raises(AssertionError, match="unexpected extension notification"):
             await client.ext_notification("ext/test", {})
+        with pytest.raises(AssertionError, match="elicitation flow"):
+            await client.create_elicitation("Confirm", cast("Any", object()))
+        with pytest.raises(AssertionError, match="elicitation flow"):
+            await client.complete_elicitation("elicitation-1")
 
     asyncio.run(exercise_client())
     client.on_connect(cast("Any", object()))

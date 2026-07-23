@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from acp.exceptions import RequestError
-from acp.schema import AgentPlanUpdate, PlanEntry
+from acp.schema import PlanEntry
 from pydantic_ai import Agent as PydanticAgent
 from pydantic_ai.tools import ToolDefinition
 
@@ -107,17 +107,11 @@ class _NativePlanRuntime(Generic[AgentDepsT, OutputDataT]):
         )
 
     async def emit_native_plan_update(self, session: AcpSessionContext) -> None:
-        client = self._owner._client
-        if client is None:
-            return
         entries = self.get_native_plan_entries(session)
         if entries is None:
             return
         self._native_plan_updates.add(session.session_id)
-        await client.session_update(
-            session_id=session.session_id,
-            update=AgentPlanUpdate(session_update="plan", entries=entries),
-        )
+        await self._owner._session_runtime._emit_plan_update(session, entries)
 
     def consume_native_plan_update(self, session: AcpSessionContext) -> bool:
         if session.session_id not in self._native_plan_updates:

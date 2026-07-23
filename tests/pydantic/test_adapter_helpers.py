@@ -8,7 +8,7 @@ from typing import Any, cast
 
 import pytest
 from acp.exceptions import RequestError
-from acp.schema import PromptResponse
+from acp.schema import EnvVariable, HttpHeader, PromptResponse
 from pydantic_acp.runtime import _native_plan_runtime as native_plan_runtime_module
 from pydantic_acp.runtime import _prompt_execution as prompt_execution_module
 from pydantic_acp.runtime._agent_state import (
@@ -233,7 +233,7 @@ def test_session_mode_and_config_updates_flow_through_providers(tmp_path: Path) 
     )
     mode_response = asyncio.run(mode_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     mode_session = _stored_session(mode_adapter, mode_response.session_id)
-    mode_state = asyncio.run(mode_adapter.set_session_mode("review", mode_response.session_id))
+    mode_state = asyncio.run(mode_adapter.set_session_mode(mode_response.session_id, "review"))
     assert mode_state is not None
     assert mode_session.config_values["mode"] == "review"
 
@@ -677,22 +677,40 @@ def test_sessions_normalize_cwd_and_serialize_mcp_servers(tmp_path: Path) -> Non
     adapter._update_session_mcp_servers(session, None)
     assert session.mcp_servers == []
 
-    stdio_server = McpServerStdio(name="stdio", command="python", args=["server.py"], env=[])
-    http_server = HttpMcpServer(name="http", url="https://example.com", headers=[], type="http")
-    sse_server = SseMcpServer(name="sse", url="https://example.com/sse", headers=[], type="sse")
+    stdio_server = McpServerStdio(
+        name="stdio",
+        command="python",
+        args=["server.py"],
+        env=[EnvVariable(name="TOKEN", value="secret")],
+    )
+    http_server = HttpMcpServer(
+        name="http",
+        url="https://example.com",
+        headers=[HttpHeader(name="Authorization", value="Bearer secret")],
+        type="http",
+    )
+    sse_server = SseMcpServer(
+        name="sse",
+        url="https://example.com/sse",
+        headers=[HttpHeader(name="X-Trace", value="trace-id")],
+        type="sse",
+    )
 
     assert adapter._serialize_mcp_server(stdio_server) == {
         "args": ["server.py"],
         "command": "python",
+        "env": {"TOKEN": "secret"},
         "name": "stdio",
         "transport": "stdio",
     }
     assert adapter._serialize_mcp_server(http_server) == {
+        "headers": {"Authorization": "Bearer secret"},
         "name": "http",
         "transport": "http",
         "url": "https://example.com",
     }
     assert adapter._serialize_mcp_server(sse_server) == {
+        "headers": {"X-Trace": "trace-id"},
         "name": "sse",
         "transport": "sse",
         "url": "https://example.com/sse",
@@ -788,6 +806,14 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
         ),
     )
     assert no_bridge_outcome.stop_reason == "end_turn"
+    assert (
+        adapter._prompt_runtime._execution._prepare_run_output_type(
+            agent,
+            session,
+            str,
+        )
+        is str
+    )
 
     bridge_adapter = _adapter(
         agent=agent,
@@ -799,6 +825,14 @@ def test_prompt_execution_handles_streaming_and_deferred_fallbacks(
     )
     bridge_response = asyncio.run(bridge_adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
     bridge_session = _stored_session(bridge_adapter, bridge_response.session_id)
+    assert (
+        bridge_adapter._prompt_runtime._execution._prepare_run_output_type(
+            agent,
+            bridge_session,
+            DeferredToolRequests,
+        )
+        is DeferredToolRequests
+    )
 
     async def calls_present_run(prompt_text: str | None, **kwargs: Any) -> Any:
         del prompt_text, kwargs
@@ -1019,7 +1053,6 @@ def test_cancel_stops_active_prompt_and_persists_terminal_history(
 
         assert cancelled.is_set() is True
         assert prompt_response.stop_reason == "cancelled"
-        assert prompt_response.user_message_id == "cancelled-user-message"
 
         stored_session = _stored_session(adapter, response.session_id)
         assert stored_session.message_history_json is not None
@@ -1717,7 +1750,6 @@ def test_prompt_runtime_and_session_surface_cover_remaining_helper_edges(
             session,
             SessionSurface(
                 config_options=None,
-                model_state=None,
                 mode_state=None,
                 plan_entries=None,
             ),
@@ -1769,17 +1801,16 @@ def test_adapter_prompt_handler_covers_prompt_response_and_no_current_task(
 
     async def fake_run_prompt(**kwargs: Any) -> PromptResponse:
         del kwargs
-        return PromptResponse(stop_reason="end_turn", usage=None, user_message_id="ignored")
+        return PromptResponse(stop_reason="end_turn", usage=None)
 
     handler._run_prompt = fake_run_prompt
     response = asyncio.run(
         handler.prompt(
-            [text_block("hello")],
             session_response.session_id,
-            message_id="prompt-msg",
+            [text_block("hello")],
         ),
     )
-    assert response.user_message_id == "prompt-msg"
+    assert response.stop_reason == "end_turn"
     assert cast("Any", adapter)._active_prompt_tasks == {}
 
     cancelled = asyncio.run(

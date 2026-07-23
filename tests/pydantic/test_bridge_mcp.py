@@ -1,7 +1,11 @@
 from __future__ import annotations as _annotations
 
+import builtins
 from types import SimpleNamespace
 from typing import Any, cast
+
+import pydantic_acp.bridges.mcp as mcp_module
+import pytest
 
 from .support import (
     UTC,
@@ -23,6 +27,7 @@ from .support import (
     SessionConfigSelectGroup,
     SessionConfigSelectOption,
     SessionInfoUpdate,
+    SessionMcpBridge,
     TestModel,
     create_acp_agent,
     datetime,
@@ -107,6 +112,157 @@ def test_mcp_bridge_handles_empty_and_prefix_scoped_behaviour() -> None:
     assert metadata["approval_policy_scope"] == "prefix"
     assert metadata["config_option_ids"] == ["mcp_enabled", "mcp_scope"]
     assert metadata["config"] == {"mcp_enabled": True, "mcp_scope": "docs"}
+
+
+def test_session_mcp_bridge_builds_toolset_from_session_servers() -> None:
+    session = AcpSessionContext(
+        session_id="session-mcp-toolset",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        mcp_servers=[
+            {
+                "headers": {"Authorization": "Bearer secret"},
+                "name": "repo",
+                "transport": "http",
+                "url": "https://repo.example/mcp",
+            },
+            {
+                "args": ["server.py"],
+                "command": "python",
+                "env": {"TOKEN": "secret"},
+                "name": "repo",
+                "transport": "stdio",
+            },
+        ],
+    )
+    bridge = SessionMcpBridge(
+        include_return_schema=True,
+        tool_name_prefixes=frozenset({"repo_"}),
+    )
+
+    capabilities = bridge.build_agent_capabilities(session)
+
+    assert len(capabilities) == 1
+    assert (
+        bridge.build_agent_capabilities(
+            AcpSessionContext(
+                session_id="empty",
+                cwd=Path("/tmp"),
+                created_at=datetime.now(UTC),
+                updated_at=datetime.now(UTC),
+            ),
+        )
+        == ()
+    )
+    assert bridge.get_tool_kind("repo_search") == "execute"
+    assert bridge.get_tool_kind("search") is None
+    assert bridge.get_mcp_capabilities() is not None
+    assert (
+        SessionMcpBridge(advertise_http=False, advertise_sse=False).get_mcp_capabilities() is None
+    )
+
+    capability = cast("Any", capabilities[0])
+    toolset = capability.local
+    client = toolset.client
+    config = client.transport.config
+    servers = config.mcpServers
+
+    assert set(servers) == {"repo", "repo-2"}
+    assert servers["repo"].url == "https://repo.example/mcp"
+    assert servers["repo"].headers == {"Authorization": "Bearer secret"}
+    assert servers["repo-2"].command == "python"
+    assert servers["repo-2"].args == ["server.py"]
+    assert servers["repo-2"].env == {"TOKEN": "secret"}
+
+    metadata = bridge.get_session_metadata(session, Agent(TestModel()))
+    assert metadata == {
+        "allowed_tools": None,
+        "cache_prompts": True,
+        "cache_resources": True,
+        "cache_tools": True,
+        "include_instructions": True,
+        "include_return_schema": True,
+        "server_count": 2,
+        "servers": [
+            {
+                "header_names": ["Authorization"],
+                "name": "repo",
+                "transport": "http",
+                "url": "https://repo.example/mcp",
+            },
+            {
+                "args": ["server.py"],
+                "command": "python",
+                "env_names": ["TOKEN"],
+                "name": "repo",
+                "transport": "stdio",
+            },
+        ],
+        "tool_error_behavior": "retry",
+        "tool_name_prefixes": ["repo_"],
+    }
+
+
+def test_session_mcp_bridge_rejects_invalid_server_shapes_and_reports_mcp_dependency(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = AcpSessionContext(
+        session_id="session-mcp-invalid",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+    )
+    bridge = SessionMcpBridge()
+    assert bridge.get_session_metadata(session, Agent(TestModel())) is None
+
+    original_import = builtins.__import__
+
+    def fail_mcp_import(name: str, *args: Any, **kwargs: Any) -> Any:
+        if name == "pydantic_ai.capabilities":
+            raise ImportError("MCP extra unavailable")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", fail_mcp_import)
+    assert fail_mcp_import("json").__name__ == "json"
+    populated_session = AcpSessionContext(
+        session_id="session-mcp-import-error",
+        cwd=Path("/tmp"),
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        mcp_servers=[{"name": "repo", "transport": "stdio", "command": "python"}],
+    )
+    with pytest.raises(ImportError, match="Pydantic AI MCP support"):
+        bridge.build_agent_capabilities(populated_session)
+
+    assert mcp_module._session_mcp_config([{"name": "invalid", "transport": "stdio"}]) is None
+    assert mcp_module._session_mcp_config(
+        [
+            {
+                "name": "headerless",
+                "transport": "http",
+                "url": "https://repo.example/mcp",
+            },
+        ],
+    ) == {
+        "mcpServers": {
+            "headerless": {
+                "transport": "http",
+                "url": "https://repo.example/mcp",
+            },
+        },
+    }
+    assert mcp_module._session_mcp_server_config({"transport": "stdio"}, "stdio") is None
+    assert mcp_module._session_mcp_server_config({"transport": "http"}, "http") is None
+    assert mcp_module._session_mcp_server_config({"transport": "acp"}, "acp") is None
+    assert mcp_module._session_mcp_metadata([{"name": "missing-transport"}]) == []
+    assert mcp_module._session_mcp_metadata([{"name": "unsupported", "transport": "acp"}]) == [
+        {"name": "unsupported", "transport": "acp"},
+    ]
+    assert mcp_module._unique_session_mcp_name("repo", {"repo": {}, "repo-2": {}}) == "repo-3"
+    assert mcp_module._json_string_value("") is None
+    assert mcp_module._json_string_sequence("not-a-list") == []
+    assert mcp_module._json_string_mapping("not-a-mapping") == {}
 
 
 def test_mcp_bridge_tool_scope_and_config_only_metadata() -> None:

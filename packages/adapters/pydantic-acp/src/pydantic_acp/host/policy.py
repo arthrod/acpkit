@@ -186,17 +186,18 @@ class HostAccessPolicy:
         path: str | Path,
         *,
         session_cwd: Path,
+        additional_directories: Sequence[Path] = (),
         workspace_root: Path | None = None,
     ) -> HostPathEvaluation:
         resolved_path, is_absolute_input = normalize_host_path(path, base_dir=session_cwd)
-        normalized_session_cwd = session_cwd.resolve(strict=False)
         normalized_workspace_root = (
             workspace_root.resolve(strict=False) if workspace_root is not None else None
         )
+        allowed_roots = _session_allowed_roots(session_cwd, additional_directories)
 
         risks: list[HostRisk] = []
         disposition: HostAccessDisposition = "allow"
-        outside_cwd = not path_is_within_root(resolved_path, normalized_session_cwd)
+        outside_cwd = not _path_is_within_any_root(resolved_path, allowed_roots)
         outside_workspace = normalized_workspace_root is not None and not path_is_within_root(
             resolved_path,
             normalized_workspace_root,
@@ -245,11 +246,13 @@ class HostAccessPolicy:
         path: str | Path,
         *,
         session_cwd: Path,
+        additional_directories: Sequence[Path] = (),
         workspace_root: Path | None = None,
     ) -> HostPathEvaluation:
         evaluation = self.evaluate_path(
             path,
             session_cwd=session_cwd,
+            additional_directories=additional_directories,
             workspace_root=workspace_root,
         )
         if evaluation.disposition == "deny":
@@ -263,12 +266,14 @@ class HostAccessPolicy:
         args: Sequence[str] | None = None,
         cwd: str | Path | None = None,
         session_cwd: Path,
+        additional_directories: Sequence[Path] = (),
         workspace_root: Path | None = None,
     ) -> HostCommandEvaluation:
         normalized_session_cwd = session_cwd.resolve(strict=False)
         normalized_workspace_root = (
             workspace_root.resolve(strict=False) if workspace_root is not None else None
         )
+        allowed_roots = _session_allowed_roots(session_cwd, additional_directories)
         resolved_cwd = resolve_command_cwd(cwd, session_cwd=normalized_session_cwd)
         referenced_paths = extract_command_path_candidates(
             command,
@@ -278,15 +283,13 @@ class HostAccessPolicy:
 
         risks: list[HostRisk] = []
         disposition: HostAccessDisposition = "allow"
-        outside_cwd = not path_is_within_root(resolved_cwd, normalized_session_cwd)
+        outside_cwd = not _path_is_within_any_root(resolved_cwd, allowed_roots)
         outside_workspace = normalized_workspace_root is not None and not path_is_within_root(
             resolved_cwd,
             normalized_workspace_root,
         )
         referenced_external_paths = tuple(
-            path
-            for path in referenced_paths
-            if not path_is_within_root(path, normalized_session_cwd)
+            path for path in referenced_paths if not _path_is_within_any_root(path, allowed_roots)
         )
         referenced_outside_workspace = tuple(
             path
@@ -355,6 +358,7 @@ class HostAccessPolicy:
         args: Sequence[str] | None = None,
         cwd: str | Path | None = None,
         session_cwd: Path,
+        additional_directories: Sequence[Path] = (),
         workspace_root: Path | None = None,
     ) -> HostCommandEvaluation:
         evaluation = self.evaluate_command(
@@ -362,11 +366,26 @@ class HostAccessPolicy:
             args=args,
             cwd=cwd,
             session_cwd=session_cwd,
+            additional_directories=additional_directories,
             workspace_root=workspace_root,
         )
         if evaluation.disposition == "deny":
             raise PermissionError(evaluation.message)
         return evaluation
+
+
+def _session_allowed_roots(
+    session_cwd: Path,
+    additional_directories: Sequence[Path],
+) -> tuple[Path, ...]:
+    return (
+        session_cwd.resolve(strict=False),
+        *(directory.resolve(strict=False) for directory in additional_directories),
+    )
+
+
+def _path_is_within_any_root(path: Path, roots: Sequence[Path]) -> bool:
+    return any(path_is_within_root(path, root) for root in roots)
 
 
 def _stronger_disposition(

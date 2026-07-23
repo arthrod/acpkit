@@ -3,10 +3,11 @@ from __future__ import annotations as _annotations
 from collections.abc import Sequence
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, get_args
+from typing import TYPE_CHECKING, Any, Generic, TypeAlias, TypeVar, cast, get_args
 
 from acp.exceptions import RequestError
 from acp.schema import (
+    AcpMcpServer,
     HttpMcpServer,
     ListSessionsResponse,
     McpServerStdio,
@@ -15,7 +16,6 @@ from acp.schema import (
     ResumeSessionResponse,
     SessionInfo,
     SetSessionConfigOptionResponse,
-    SetSessionModelResponse,
     SetSessionModeResponse,
     SseMcpServer,
 )
@@ -52,17 +52,23 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
     async def new_session(
         self,
         cwd: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
     ) -> NewSessionResponse:
-        return await self._lifecycle.new_session(cwd, mcp_servers)
+        return await self._lifecycle.new_session(cwd, additional_directories, mcp_servers)
 
     async def load_session(
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
+        additional_directories: list[str] | None = None,
     ) -> NewSessionResponse | None:
-        return await self._lifecycle.load_session(cwd, session_id, mcp_servers)
+        return await self._lifecycle.load_session(
+            cwd, session_id, mcp_servers, additional_directories
+        )
 
     async def list_sessions(
         self,
@@ -77,6 +83,9 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
             sessions=[
                 SessionInfo(
                     cwd=str(session.cwd),
+                    additional_directories=[
+                        str(directory) for directory in session.additional_directories
+                    ],
                     session_id=session.session_id,
                     title=session.title,
                     updated_at=session.updated_at.isoformat(),
@@ -87,19 +96,33 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
 
     async def fork_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
     ) -> NewSessionResponse:
-        return await self._lifecycle.fork_session(cwd, session_id, mcp_servers)
+        return await self._lifecycle.fork_session(
+            session_id,
+            cwd,
+            additional_directories,
+            mcp_servers,
+        )
 
     async def resume_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
     ) -> ResumeSessionResponse:
-        return await self._lifecycle.resume_session(cwd, session_id, mcp_servers)
+        return await self._lifecycle.resume_session(
+            session_id,
+            cwd,
+            additional_directories,
+            mcp_servers,
+        )
 
     async def close_session(self, session_id: str) -> bool:
         session = self._owner._config.session_store.get(session_id)
@@ -110,8 +133,8 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
 
     async def set_session_mode(
         self,
-        mode_id: str,
         session_id: str,
+        mode_id: str,
     ) -> SetSessionModeResponse | None:
         session = self._require_session(session_id)
         agent = await self._owner._agent_source.get_agent(session)
@@ -133,22 +156,22 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
         )
         return SetSessionModeResponse()
 
-    async def set_session_model(
+    async def _set_session_model(
         self,
         model_id: str,
         session_id: str,
-    ) -> SetSessionModelResponse | None:
+    ) -> bool:
         session = self._require_session(session_id)
         agent = await self._owner._agent_source.get_agent(session)
         self._configure_agent_runtime(session, agent)
         if self._owner._config.models_provider is not None:
             model_state = await self._set_provider_model_state(session, agent, model_id)
             if model_state is None:
-                return None
+                return False
         else:
             model_state = await self._get_model_selection_state(session, agent)
             if model_state is None:
-                return None
+                return False
             model_option = self._find_model_option(
                 model_id,
                 available_models=model_state.available_models,
@@ -177,7 +200,15 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
             emit_plan=True,
             emit_session_info=True,
         )
-        return SetSessionModelResponse()
+        return True
+
+    async def set_session_model(
+        self,
+        model_id: str,
+        session_id: str,
+    ) -> bool:
+        """Compatibility seam for internal callers that still select a model directly."""
+        return await self._set_session_model(model_id, session_id)
 
     async def set_config_option(
         self,
@@ -194,12 +225,12 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
         if config_id == "model" and config_id not in provider_option_ids:
             if not isinstance(value, str):
                 raise RequestError.invalid_params({"configId": config_id, "value": value})
-            if await self.set_session_model(value, session_id) is not None:
+            if await self.set_session_model(value, session_id):
                 handled = True
         elif config_id == "mode" and config_id not in provider_option_ids:
             if not isinstance(value, str):
                 raise RequestError.invalid_params({"configId": config_id, "value": value})
-            if await self.set_session_mode(value, session_id) is not None:
+            if await self.set_session_mode(session_id, value) is not None:
                 handled = True
         if (
             not handled
@@ -250,6 +281,18 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
             path = Path.cwd() / path
         return path
 
+    def _normalize_additional_directories(
+        self,
+        directories: list[str] | None,
+    ) -> tuple[Path, ...]:
+        normalized: list[Path] = []
+        for directory in directories or []:
+            path = Path(directory).expanduser()
+            if not path.is_absolute():
+                raise RequestError.invalid_params({"additionalDirectories": directories})
+            normalized.append(path.resolve(strict=False))
+        return tuple(normalized)
+
     def _configure_agent_runtime(
         self,
         session: AcpSessionContext,
@@ -268,6 +311,7 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
 
     def _bind_session_client(self, session: AcpSessionContext) -> AcpSessionContext:
         session.client = self._owner._client
+        session.client_capabilities = self._owner._client_capabilities
         return session
 
     async def _build_session_surface(
@@ -297,6 +341,13 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
             emit_plan=emit_plan,
             emit_session_info=emit_session_info,
         )
+
+    async def _emit_plan_update(
+        self,
+        session: AcpSessionContext,
+        entries: Sequence[PlanEntry] | None,
+    ) -> None:
+        await self._surface_runtime.emit_plan_update(session, entries)
 
     async def _build_config_options(
         self,
@@ -519,7 +570,7 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
     def _update_session_mcp_servers(
         self,
         session: AcpSessionContext,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer] | None,
     ) -> None:
         if mcp_servers is None:
             return
@@ -527,16 +578,24 @@ class _SessionRuntime(Generic[AgentDepsT, OutputDataT]):
 
     def _serialize_mcp_server(
         self,
-        server: HttpMcpServer | McpServerStdio | SseMcpServer,
+        server: HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer,
     ) -> dict[str, JsonValue]:
+        if isinstance(server, AcpMcpServer):
+            return cast(
+                "dict[str, JsonValue]",
+                server.model_dump(mode="json", by_alias=True, exclude_none=True),
+            )
         if isinstance(server, McpServerStdio):
-            return {
+            payload: dict[str, JsonValue] = {
                 "args": list(server.args),
                 "command": server.command,
+                "env": {item.name: item.value for item in server.env},
                 "name": server.name,
                 "transport": "stdio",
             }
+            return payload
         return {
+            "headers": {item.name: item.value for item in server.headers},
             "name": server.name,
             "transport": server.type,
             "url": server.url,

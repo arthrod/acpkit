@@ -31,6 +31,7 @@ from .config import (
     DEFAULT_AGENT_TITLE,
     DEFAULT_AGENT_VERSION,
     AdapterConfig,
+    PlanUpdateMode,
 )
 from .event_projection import (
     CompositeEventProjectionMap,
@@ -46,6 +47,7 @@ from .graph_source import (
     StaticGraphSource,
 )
 from .hook_projection import HookEvent, HookProjectionMap
+from .models import AdapterModel
 from .permission_presentation import (
     DefaultPermissionToolCallBuilder,
     PermissionRequestContext,
@@ -131,6 +133,7 @@ __all__ = (
     "AcpAgent",
     "AcpSessionContext",
     "AdapterConfig",
+    "AdapterModel",
     "AdapterPromptCapabilities",
     "AgentPromptBlock",
     "ApprovalBridge",
@@ -188,6 +191,7 @@ __all__ = (
     "PlanEntry",
     "PlanGenerationType",
     "PlanProvider",
+    "PlanUpdateMode",
     "ProjectionAwareApprovalBridge",
     "ProjectionAwareToolClassifier",
     "ProjectionMap",

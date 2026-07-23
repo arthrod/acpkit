@@ -70,31 +70,47 @@ This is the lower-level construction seam behind `run_acp(...)`.
 
 ## ACP Client Provider Bridge
 
-Use `AcpProvider` when the thing you already have is an ACP agent and the host
-application needs to consume it through normal Pydantic AI v2 model/provider
-APIs.
+Use `create_acp_model(...)` when the thing you already have is an ACP agent or
+ACP stdio command and the host application needs to consume it through normal
+Pydantic AI v2 model APIs.
 
 This is the inverse of `create_acp_agent(...)`:
 
 - `create_acp_agent(...)` exposes a `pydantic_ai.Agent` as ACP
-- `AcpProvider` consumes an ACP agent as a Pydantic AI provider/model
+- `create_acp_model(...)` consumes an ACP agent as a Pydantic AI model
 
 ```python
 from pydantic_ai import Agent
-from pydantic_acp import AcpProvider
+from pydantic_acp import create_acp_agent, create_acp_model
 
-# `remote_acp_agent` can be any object implementing the ACP Agent interface.
-provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
-model = provider.model()
+inner_acp = create_acp_agent(agent=some_pydantic_agent)
+model = create_acp_model(acp_agent=inner_acp, cwd="/workspace")
 agent = Agent(model)
 
 result = await agent.run("Summarize the current workspace state.")
 print(result.output)
 ```
 
-`provider.model()` intentionally leaves ACP model selection to the wrapped
-agent's session default. Pass `provider.model("zed-agent")` only when the
-wrapped ACP agent accepts that concrete `session/set_model` id.
+`acp_command` is for child processes that speak ACP JSON-RPC on stdin/stdout.
+It is not an arbitrary CLI wrapper:
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(
+    acp_command=("npx", "@zed-industries/codex-acp"),
+    cwd="/workspace",
+    stderr_mode="inherit",
+)
+agent = Agent(model)
+```
+
+`create_acp_model(...)` intentionally leaves ACP model selection to the wrapped
+agent's session default. Pass `model_name="zed-agent"` only when the wrapped
+ACP agent exposes a selectable `"model"` `session/set_config_option` option.
+`AcpProvider` and
+`AcpModel` remain available when lower-level provider ownership is needed.
 
 The bridge keeps ownership explicit:
 
@@ -221,6 +237,8 @@ Common bridges:
   powers ACP approval workflows
 - `McpBridge`
   exposes MCP metadata and config options
+- `SessionMcpBridge`
+  converts ACP client-provided `session/new.mcpServers` payloads into real Pydantic AI MCP toolsets
 - `HookBridge`
   exposes or suppresses hook activity
 - `HistoryProcessorBridge`
@@ -329,8 +347,8 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
-outside the supported range.
+`pydantic-acp` supports `pydantic-ai-slim>=2.9.0,<=2.16.0`. Pydantic AI V1 and
+Pydantic AI 2.x releases before 2.9.0 are outside the supported range.
 
 Each supported minor is checked against the same adapter runtime suite and
 Pydantic-specific type-check scope. Run the matrix locally with:
@@ -359,8 +377,8 @@ agent: Agent[None, str] = Agent(
 ```
 
 The adapter consumes `run_stream_events()` as an async context manager across
-the supported range. Pydantic AI 2.4.0 starts that run lazily when event
-iteration begins; callers do not need a version branch.
+the supported range. Event iteration starts the run lazily; callers do not need
+a version branch.
 
 ACP Kit also no longer imports Pydantic AI private history-processor modules
 directly. History processor support is expressed through ACP Kit's own callable
@@ -370,6 +388,6 @@ aliases and wrapped as `ProcessHistory` capabilities inside
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- Pydantic AI 2.0.0 through 2.4.0 share one public adapter contract
+- Pydantic AI 2.9.0 through 2.16.0 share one public adapter contract
 - future Pydantic AI upgrades remain explicit compatibility work
 - integration points stay isolated behind ACP Kit bridge and runtime seams

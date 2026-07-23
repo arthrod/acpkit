@@ -6,6 +6,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.create_acp_agent
 
+::: pydantic_acp.create_acp_model
+
 ::: pydantic_acp.run_acp
 
 ::: pydantic_acp.compose_projection_maps
@@ -117,6 +119,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 ::: pydantic_acp.WebFetchBridge
 
 ::: pydantic_acp.McpCapabilityBridge
+
+::: pydantic_acp.SessionMcpBridge
 
 ::: pydantic_acp.OpenAICompactionBridge
 

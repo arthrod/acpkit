@@ -423,6 +423,38 @@ UI note:
 
 - add `BuiltinToolProjectionMap()` when you want ACP transcript cards to summarize builtin MCP calls such as `call_tool`, `list_tools`, and output previews instead of generic execute cards
 
+### `SessionMcpBridge`
+
+Turns ACP client-provided `session/new.mcpServers` payloads into a real Pydantic AI
+`MCPToolset` capability for the active session.
+
+Use it when:
+
+- the client, editor, or host process should decide which MCP servers attach to a session
+- `session.mcp_servers` should become runnable model tools instead of observability metadata only
+- server instructions and tool return schemas should flow through Pydantic AI's normal toolset path
+
+Without this bridge, `pydantic-acp` still stores session MCP server payloads and shows them in
+`/mcp-servers`, but it does not connect to those servers or register their tools.
+
+```python
+from pydantic_acp import AdapterConfig, SessionMcpBridge
+
+config = AdapterConfig(
+    capability_bridges=[
+        SessionMcpBridge(
+            include_instructions=True,
+            include_return_schema=True,
+            tool_name_prefixes=frozenset({"docs_", "repo_"}),
+        ),
+    ],
+)
+```
+
+Client-side `mcpServers` payloads may contain stdio, streamable HTTP, or SSE servers. The bridge
+keeps env/header values available to the underlying MCP connection but only publishes env/header
+names in session metadata, so secrets are not echoed into ACP-visible metadata.
+
 ### `OpenAICompactionBridge`
 
 Adds provider-owned OpenAI Responses compaction through the bridge-builder seam.
@@ -579,6 +611,7 @@ That makes it a natural fit inside `agent_factory` or `AgentSource.get_agent(...
 - `HookBridge(hide_all=True)` hides hook listing output; it does not remove hook capability wiring
 - `run_event_stream` wrappers must return an async iterable; returning a coroutine or plain object breaks stream execution
 - `McpBridge` only contributes MCP metadata and classification; it does not register the underlying tools for you
+- `SessionMcpBridge` registers client-provided `session/new.mcpServers`; use it when those payloads should become real Pydantic AI MCP toolsets
 
 ## Existing Hook Introspection vs HookBridge
 

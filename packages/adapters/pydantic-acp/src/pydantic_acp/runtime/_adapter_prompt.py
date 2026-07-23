@@ -9,6 +9,11 @@ from uuid import uuid4
 from acp.schema import AgentMessageChunk, PromptResponse, TextContentBlock
 from pydantic_ai import Agent as PydanticAgent
 
+from .._meta_protocol import (
+    build_structured_output_response_meta,
+    build_structured_output_type,
+    has_structured_output_request,
+)
 from ..awaitables import resolve_value
 from ..session.state import AcpSessionContext, StoredSessionUpdate, utc_now
 from ..slash import SlashCommandRequest, SlashCommandResult
@@ -43,16 +48,16 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
 
     async def prompt(
         self,
-        prompt: list[PromptBlock],
         session_id: str,
+        prompt: list[PromptBlock],
         *,
-        message_id: str | None,
+        request_meta: dict[str, object] | None = None,
     ) -> PromptResponse:
         session = self._owner._require_session(session_id)
         current_task = asyncio.current_task()
         if current_task is not None:
             self._owner._active_prompt_tasks[session_id] = current_task
-        acknowledged_message_id = message_id or uuid4().hex
+        acknowledged_message_id = uuid4().hex
         prompt_text = self._prepare_prompt_session(
             prompt,
             session=session,
@@ -95,18 +100,19 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
                 prompt=prompt,
                 session=session,
                 prompt_text=prompt_text,
+                output_type_override=build_structured_output_type(request_meta),
             )
             if isinstance(prompt_result, PromptResponse):
                 return PromptResponse(
                     stop_reason=prompt_result.stop_reason,
                     usage=prompt_result.usage,
-                    user_message_id=acknowledged_message_id,
                 )
             return await self._finalize_prompt_outcome(
                 session=session,
                 agent=agent,
                 prompt_outcome=prompt_result,
                 acknowledged_message_id=acknowledged_message_id,
+                request_meta=request_meta,
             )
         finally:
             active_task = self._owner._active_prompt_tasks.get(session_id)
@@ -151,7 +157,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         return PromptResponse(
             stop_reason="end_turn",
             usage=None,
-            user_message_id=acknowledged_message_id,
         )
 
     async def _handle_custom_slash_command(
@@ -216,7 +221,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         return PromptResponse(
             stop_reason=result.stop_reason,
             usage=None,
-            user_message_id=acknowledged_message_id,
         )
 
     async def _run_prompt(
@@ -226,9 +230,21 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         prompt: list[PromptBlock],
         session: AcpSessionContext,
         prompt_text: str,
+        output_type_override: object | None,
     ) -> PromptExecutionResult:
         try:
-            return await self._owner._run_prompt(agent=agent, prompt=prompt, session=session)
+            if output_type_override is None:
+                return await self._owner._run_prompt(
+                    agent=agent,
+                    prompt=prompt,
+                    session=session,
+                )
+            return await self._owner._run_prompt(
+                agent=agent,
+                prompt=prompt,
+                session=session,
+                output_type_override=output_type_override,
+            )
         except asyncio.CancelledError:
             return await self._handle_cancelled_prompt(
                 session=session,
@@ -274,7 +290,6 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         return PromptResponse(
             stop_reason="cancelled",
             usage=None,
-            user_message_id="",
         )
 
     def _handle_prompt_error(
@@ -301,6 +316,7 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
         agent: PydanticAgent[AgentDepsT, OutputDataT],
         prompt_outcome: PromptRunOutcome,
         acknowledged_message_id: str,
+        request_meta: dict[str, object] | None,
     ) -> PromptResponse:
         result = prompt_outcome.result
 
@@ -351,8 +367,13 @@ class _AdapterPromptHandler(Generic[AgentDepsT, OutputDataT]):
             emit_plan=not self._owner._consume_native_plan_update(session),
             emit_session_info=True,
         )
+        response_meta = None
+        if prompt_outcome.stop_reason != "cancelled" and has_structured_output_request(
+            request_meta
+        ):
+            response_meta = build_structured_output_response_meta(result.output)
         return PromptResponse(
+            field_meta=response_meta,
             stop_reason=prompt_outcome.stop_reason,
             usage=usage_from_run(result.usage),
-            user_message_id=acknowledged_message_id,
         )

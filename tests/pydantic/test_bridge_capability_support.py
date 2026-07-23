@@ -303,6 +303,26 @@ def test_harness_code_mode_bridge_builds_capability_and_metadata(
     assert bridge.get_tool_kind("other") is None
 
 
+def test_harness_v07_bridges_build_real_capabilities() -> None:
+    pytest.importorskip("pydantic_ai_harness")
+
+    from pydantic_ai_harness.code_mode import CodeMode
+    from pydantic_ai_harness.filesystem import FileSystem
+    from pydantic_ai_harness.shell import Shell
+
+    session = _test_session()
+
+    assert isinstance(
+        HarnessFileSystemBridge(root_dir=Path(".")).build_capability(session),
+        FileSystem,
+    )
+    assert isinstance(
+        HarnessShellBridge(cwd=Path(".")).build_capability(session),
+        Shell,
+    )
+    assert isinstance(HarnessCodeModeBridge().build_capability(session), CodeMode)
+
+
 def test_harness_bridges_report_missing_optional_dependency(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

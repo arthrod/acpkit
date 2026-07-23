@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Generic, TypeVar
 
 from acp.exceptions import RequestError
 from acp.schema import (
+    AcpMcpServer,
     HttpMcpServer,
     McpServerStdio,
     NewSessionResponse,
@@ -30,7 +31,9 @@ class _SessionLifecycle(Generic[AgentDepsT, OutputDataT]):
     async def new_session(
         self,
         cwd: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
     ) -> NewSessionResponse:
         owner = self._runtime._owner
         session = self._runtime._bind_session_client(
@@ -39,6 +42,9 @@ class _SessionLifecycle(Generic[AgentDepsT, OutputDataT]):
                 cwd=self._runtime._normalize_cwd(cwd),
                 created_at=utc_now(),
                 updated_at=utc_now(),
+                additional_directories=self._runtime._normalize_additional_directories(
+                    additional_directories,
+                ),
             ),
         )
         self._runtime._update_session_mcp_servers(session, mcp_servers)
@@ -50,13 +56,18 @@ class _SessionLifecycle(Generic[AgentDepsT, OutputDataT]):
         self,
         cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
+        additional_directories: list[str] | None = None,
     ) -> NewSessionResponse | None:
         session = self._runtime._owner._config.session_store.get(session_id)
         if session is None:
             return None
         session = self._runtime._bind_session_client(session)
         session.cwd = self._runtime._normalize_cwd(cwd)
+        session.additional_directories = self._runtime._normalize_additional_directories(
+            additional_directories,
+        )
         self._runtime._update_session_mcp_servers(session, mcp_servers)
         session.updated_at = utc_now()
         self._runtime._owner._config.session_store.save(session)
@@ -65,9 +76,11 @@ class _SessionLifecycle(Generic[AgentDepsT, OutputDataT]):
 
     async def fork_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
     ) -> NewSessionResponse:
         owner = self._runtime._owner
         forked_session = owner._config.session_store.fork(
@@ -78,25 +91,32 @@ class _SessionLifecycle(Generic[AgentDepsT, OutputDataT]):
         if forked_session is None:
             raise RequestError.invalid_params({"sessionId": session_id})
         forked_session = self._runtime._bind_session_client(forked_session)
+        forked_session.additional_directories = self._runtime._normalize_additional_directories(
+            additional_directories,
+        )
         self._runtime._update_session_mcp_servers(forked_session, mcp_servers)
         surface = await self._prepare_session_surface(forked_session, replay_transcript=False)
         return self._new_session_response(forked_session, surface=surface)
 
     async def resume_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
     ) -> ResumeSessionResponse:
         session = self._runtime._require_session(session_id)
         session.cwd = self._runtime._normalize_cwd(cwd)
+        session.additional_directories = self._runtime._normalize_additional_directories(
+            additional_directories,
+        )
         self._runtime._update_session_mcp_servers(session, mcp_servers)
         session.updated_at = utc_now()
         self._runtime._owner._config.session_store.save(session)
         surface = await self._prepare_session_surface(session, replay_transcript=True)
         return ResumeSessionResponse(
             config_options=surface.config_options,
-            models=surface.model_state,
             modes=surface.mode_state,
         )
 
@@ -132,6 +152,5 @@ class _SessionLifecycle(Generic[AgentDepsT, OutputDataT]):
         return NewSessionResponse(
             session_id=session.session_id,
             config_options=surface.config_options,
-            models=surface.model_state,
             modes=surface.mode_state,
         )

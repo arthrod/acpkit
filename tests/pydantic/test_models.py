@@ -5,6 +5,14 @@ from typing import Any, Protocol, cast
 
 import pytest
 from acp.exceptions import RequestError
+from acp.schema import (
+    AgentPlanContentUpdate,
+    AgentPlanRemovedUpdate,
+    ClientCapabilities,
+    ClientSessionCapabilities,
+    PlanCapabilities,
+    SessionConfigOptionsCapabilities,
+)
 from pydantic_ai import ModelRequest, ModelResponse, TextPart, ToolCallPart
 from pydantic_ai.messages import ToolReturnPart, UserPromptPart
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -86,15 +94,14 @@ def test_new_session_exposes_model_state_and_model_config_option(
 
     new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
-    assert new_session_response.models is not None
-    assert new_session_response.models.current_model_id == "model-a"
-    assert [model.model_id for model in new_session_response.models.available_models] == [
+    assert new_session_response.config_options is not None
+    model_option = new_session_response.config_options[0]
+    assert model_option.id == "model"
+    assert model_option.current_value == "model-a"
+    assert [option.value for option in model_option.options] == [
         "model-a",
         "model-b",
     ]
-    assert new_session_response.config_options is not None
-    assert new_session_response.config_options[0].id == "model"
-    assert new_session_response.config_options[0].current_value == "model-a"
 
 
 def test_session_model_override_is_session_local(tmp_path: Path) -> None:
@@ -174,6 +181,89 @@ def test_set_config_option_model_updates_current_model(tmp_path: Path) -> None:
     assert config_response.config_options[0].current_value == "model-b"
 
 
+def test_client_config_capabilities_gate_pydantic_session_options(tmp_path: Path) -> None:
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="default", model_name="model-a")),
+        config=AdapterConfig(
+            allow_model_selection=True,
+            available_models=[
+                AdapterModel(
+                    model_id="model-a",
+                    name="Model A",
+                    override=TestModel(custom_output_text="default", model_name="model-a"),
+                ),
+            ],
+            config_options_provider=DemoConfigOptionsProvider(),
+            session_store=MemorySessionStore(),
+        ),
+    )
+    asyncio.run(
+        adapter.initialize(
+            protocol_version=1,
+            client_capabilities=ClientCapabilities(
+                session=ClientSessionCapabilities(
+                    config_options=SessionConfigOptionsCapabilities(),
+                ),
+            ),
+        ),
+    )
+
+    select_only = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+
+    assert select_only.config_options is not None
+    assert [option.id for option in select_only.config_options] == ["model"]
+
+    asyncio.run(
+        adapter.initialize(
+            protocol_version=1,
+            client_capabilities=ClientCapabilities(session=ClientSessionCapabilities()),
+        ),
+    )
+    unsupported = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+
+    assert unsupported.config_options is None
+
+
+def test_content_plan_updates_require_client_plan_capability(tmp_path: Path) -> None:
+    adapter = create_acp_agent(
+        agent=Agent(TestModel(custom_output_text="unused")),
+        config=AdapterConfig(
+            plan_id="pydantic-plan",
+            plan_update_mode="content",
+            session_store=MemorySessionStore(),
+        ),
+    )
+    client = RecordingClient()
+    adapter.on_connect(client)
+    adapter_any = cast("Any", adapter)
+    entries = [PlanEntry(content="Inspect repository", status="pending", priority="high")]
+
+    asyncio.run(
+        adapter.initialize(protocol_version=1, client_capabilities=ClientCapabilities()),
+    )
+    full_session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    stored_full_session = adapter_any._session_runtime._require_session(full_session.session_id)
+    client.updates.clear()
+    asyncio.run(adapter_any._session_runtime._emit_plan_update(stored_full_session, entries))
+
+    assert isinstance(client.updates[-1][1], AgentPlanUpdate)
+
+    asyncio.run(
+        adapter.initialize(
+            protocol_version=1,
+            client_capabilities=ClientCapabilities(plan=PlanCapabilities()),
+        ),
+    )
+    delta_session = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
+    stored_delta_session = adapter_any._session_runtime._require_session(delta_session.session_id)
+    client.updates.clear()
+    asyncio.run(adapter_any._session_runtime._emit_plan_update(stored_delta_session, entries))
+    asyncio.run(adapter_any._session_runtime._emit_plan_update(stored_delta_session, None))
+
+    assert isinstance(client.updates[0][1], AgentPlanContentUpdate)
+    assert isinstance(client.updates[1][1], AgentPlanRemovedUpdate)
+
+
 def test_provider_backed_surface_exposes_modes_config_and_plan(tmp_path: Path) -> None:
     adapter = create_acp_agent(
         agent=Agent(TestModel(custom_output_text="provider:default")),
@@ -190,8 +280,6 @@ def test_provider_backed_surface_exposes_modes_config_and_plan(tmp_path: Path) -
 
     new_session_response = asyncio.run(adapter.new_session(cwd=str(tmp_path), mcp_servers=[]))
 
-    assert new_session_response.models is not None
-    assert new_session_response.models.current_model_id == "provider-model-a"
     assert new_session_response.modes is not None
     assert new_session_response.modes.current_mode_id == "chat"
     assert [mode.id for mode in new_session_response.modes.available_modes] == [
@@ -633,8 +721,6 @@ def test_freeform_model_provider_omits_select_option_and_accepts_custom_ids(
     stored_session = session_store.get(session.session_id)
 
     assert session.config_options is None
-    assert session.models is not None
-    assert session.models.current_model_id == "custom-model-a"
     assert response is not None
     assert stored_session is not None
     assert stored_session.session_model_id == "custom-model-z"

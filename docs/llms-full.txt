@@ -66,6 +66,7 @@ This file inlines the current documentation corpus so tools and agents can reaso
 
 ### Release Notes
 
+- [ACP Kit 1.4.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.4.0/)
 - [ACP Kit 1.1.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.1.0/)
 - [ACP Kit 1.0.0](https://vcoderun.github.io/acpkit/releases/acpkit-1.0.0/)
 
@@ -286,8 +287,9 @@ uv add pydantic-acp
 pip install pydantic-acp
 ```
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0` and pins the ACP
-protocol version it integrates against. Pydantic AI V1 is not supported.
+`pydantic-acp` supports `pydantic-ai-slim>=2.9.0,<=2.16.0` and pins the ACP
+protocol version it integrates against. Pydantic AI V1 and releases before
+2.9.0 are not supported.
 
 For LangChain, LangGraph, or DeepAgents runtimes:
 
@@ -801,9 +803,9 @@ If the ACP session should affect graph construction, use `graph_factory=`:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, run_acp
+from langchain_acp import AcpSessionContext, CompiledAgentGraph, run_acp
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     mode_name = session.session_mode_id or "default"
     return create_agent(
@@ -823,13 +825,13 @@ This is the LangChain-side equivalent of `agent_factory=` in `pydantic-acp`.
 The core config seam is still `AdapterConfig`:
 
 ```python
-from acp.schema import ModelInfo, SessionMode
-from langchain_acp import AdapterConfig
+from acp.schema import SessionMode
+from langchain_acp import AdapterConfig, AdapterModel
 
 config = AdapterConfig(
     available_models=[
-        ModelInfo(model_id="fast", name="Fast"),
-        ModelInfo(model_id="smart", name="Smart"),
+        AdapterModel(model_id="fast", name="Fast"),
+        AdapterModel(model_id="smart", name="Smart"),
     ],
     available_modes=[
         SessionMode(id="ask", name="Ask"),
@@ -1206,31 +1208,47 @@ This is the lower-level construction seam behind `run_acp(...)`.
 
 ## ACP Client Provider Bridge
 
-Use `AcpProvider` when the thing you already have is an ACP agent and the host
-application needs to consume it through normal Pydantic AI v2 model/provider
-APIs.
+Use `create_acp_model(...)` when the thing you already have is an ACP agent or
+ACP stdio command and the host application needs to consume it through normal
+Pydantic AI v2 model APIs.
 
 This is the inverse of `create_acp_agent(...)`:
 
 - `create_acp_agent(...)` exposes a `pydantic_ai.Agent` as ACP
-- `AcpProvider` consumes an ACP agent as a Pydantic AI provider/model
+- `create_acp_model(...)` consumes an ACP agent as a Pydantic AI model
 
 ```python
 from pydantic_ai import Agent
-from pydantic_acp import AcpProvider
+from pydantic_acp import create_acp_agent, create_acp_model
 
-# `remote_acp_agent` can be any object implementing the ACP Agent interface.
-provider = AcpProvider(acp_agent=remote_acp_agent, cwd="/workspace")
-model = provider.model()
+inner_acp = create_acp_agent(agent=some_pydantic_agent)
+model = create_acp_model(acp_agent=inner_acp, cwd="/workspace")
 agent = Agent(model)
 
 result = await agent.run("Summarize the current workspace state.")
 print(result.output)
 ```
 
-`provider.model()` intentionally leaves ACP model selection to the wrapped
-agent's session default. Pass `provider.model("zed-agent")` only when the
-wrapped ACP agent accepts that concrete `session/set_model` id.
+`acp_command` is for child processes that speak ACP JSON-RPC on stdin/stdout.
+It is not an arbitrary CLI wrapper:
+
+```python
+from pydantic_ai import Agent
+from pydantic_acp import create_acp_model
+
+model = create_acp_model(
+    acp_command=("npx", "@zed-industries/codex-acp"),
+    cwd="/workspace",
+    stderr_mode="inherit",
+)
+agent = Agent(model)
+```
+
+`create_acp_model(...)` intentionally leaves ACP model selection to the wrapped
+agent's session default. Pass `model_name="zed-agent"` only when the wrapped
+ACP agent exposes a selectable `"model"` `session/set_config_option` option.
+`AcpProvider` and
+`AcpModel` remain available when lower-level provider ownership is needed.
 
 The bridge keeps ownership explicit:
 
@@ -1354,6 +1372,8 @@ Common bridges:
   powers ACP approval workflows
 - `McpBridge`
   exposes MCP metadata and config options
+- `SessionMcpBridge`
+  converts ACP client-provided `session/new.mcpServers` payloads into real Pydantic AI MCP toolsets
 - `HookBridge`
   exposes or suppresses hook activity
 - `HistoryProcessorBridge`
@@ -1462,8 +1482,8 @@ If you are integrating `pydantic-acp` in a real product:
 
 ## Version Compatibility And Private Upstream APIs
 
-`pydantic-acp` supports `pydantic-ai-slim>=2.0.0,<=2.4.0`. Pydantic AI V1 is
-outside the supported range.
+`pydantic-acp` supports `pydantic-ai-slim>=2.9.0,<=2.16.0`. Pydantic AI V1 and
+Pydantic AI 2.x releases before 2.9.0 are outside the supported range.
 
 Each supported minor is checked against the same adapter runtime suite and
 Pydantic-specific type-check scope. Run the matrix locally with:
@@ -1492,8 +1512,8 @@ agent: Agent[None, str] = Agent(
 ```
 
 The adapter consumes `run_stream_events()` as an async context manager across
-the supported range. Pydantic AI 2.4.0 starts that run lazily when event
-iteration begins; callers do not need a version branch.
+the supported range. Event iteration starts the run lazily; callers do not need
+a version branch.
 
 ACP Kit also no longer imports Pydantic AI private history-processor modules
 directly. History processor support is expressed through ACP Kit's own callable
@@ -1503,7 +1523,7 @@ aliases and wrapped as `ProcessHistory` capabilities inside
 What this means in practice:
 
 - the adapter is less exposed to private upstream type-module churn
-- Pydantic AI 2.0.0 through 2.4.0 share one public adapter contract
+- Pydantic AI 2.9.0 through 2.16.0 share one public adapter contract
 - future Pydantic AI upgrades remain explicit compatibility work
 - integration points stay isolated behind ACP Kit bridge and runtime seams
 
@@ -1576,9 +1596,9 @@ Session-aware graph factory:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AcpSessionContext, run_acp
+from langchain_acp import AcpSessionContext, CompiledAgentGraph, run_acp
 
-def graph_from_session(session: AcpSessionContext):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     mode_name = session.session_mode_id or "default"
     return create_agent(
@@ -1625,6 +1645,8 @@ This is the kind of shape the adapter is built for:
 from langchain.agents import create_agent
 from langchain_acp import (
     AdapterConfig,
+    AcpSessionContext,
+    CompiledAgentGraph,
     DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     FileSessionStore,
@@ -1633,7 +1655,7 @@ from langchain_acp import (
     run_acp,
 )
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     return create_agent(
         model=model_name,
@@ -2216,6 +2238,26 @@ Each session carries the information needed to:
 - keep plan state stable across prompts
 - reflect mode, model, and approval metadata accurately
 
+## ACP 0.11 Session Contract
+
+`pydantic-acp` targets ACP Python SDK `0.11.0`. Model selection is now a
+session config option, not a `session/set_model` RPC. Configure a concrete
+model only when the adapter exposes a selectable `"model"` option; otherwise
+keep the agent default with `AcpProvider.model()` or `create_acp_model(...)`
+without `model_name`.
+
+Client capability negotiation is respected:
+
+- no `session.configOptions` capability means no config option surface is sent
+- select options require `session.configOptions`
+- boolean options additionally require `session.configOptions.boolean`
+- `plan_update_mode="content"` uses `plan_update` and `plan_removed` only
+  when the client advertises `plan`; it otherwise falls back to full `plan`
+  updates
+
+This preserves a usable full-plan surface for older clients while allowing
+newer clients to reconcile a named plan incrementally.
+
 ## What Is Stored
 
 An `AcpSessionContext` captures:
@@ -2230,6 +2272,66 @@ An `AcpSessionContext` captures:
 - `plan_entries` and `plan_markdown`
 - MCP server metadata
 - adapter-owned session metadata
+- `additional_directories`
+
+ACP client-supplied MCP servers are stored in `session.mcp_servers` so load, fork, resume, and
+`/mcp-servers` can reflect the same session surface. They become runnable Pydantic AI MCP tools
+only when the agent build includes `SessionMcpBridge`.
+
+ACP 0.11 also permits an ACP-transport descriptor. It is preserved across the
+session lifecycle so the hosting application can retain its identity and
+metadata, but `pydantic-acp` does not connect it or advertise
+`McpCapabilities.acp`: the SDK does not expose a public ACP MCP router yet.
+
+```python
+from acp.schema import AcpMcpServer
+
+delegated_agent = AcpMcpServer(
+    id="workspace-reviewer",
+    name="Workspace reviewer",
+    type="acp",
+)
+
+response = await acp_agent.new_session(
+    cwd="/workspace",
+    mcp_servers=[delegated_agent],
+)
+```
+
+Use HTTP, SSE, or stdio descriptors with `SessionMcpBridge` when the Pydantic
+agent must actually invoke MCP tools. Use `AcpMcpServer` only to preserve a
+delegated ACP endpoint for a host that owns the connection.
+
+`additional_directories` is persisted through new, load, fork, resume, and
+list operations. `ClientHostContext` treats those directories as extra session
+roots for host-backed file and terminal requests. An explicit
+`workspace_root` remains a hard boundary, so a client cannot use an additional
+directory to escape host policy.
+
+## Typed Elicitation
+
+Session-aware agent factories and providers can ask the connected client for
+input through `AcpSessionContext`. Build the exact ACP mode object and let the
+context reject unsupported client capabilities before any request is sent:
+
+```python
+from acp.schema import (
+    ElicitationFormSessionMode,
+    ElicitationSchema,
+)
+from pydantic_acp import AcpSessionContext
+
+async def request_confirmation(session: AcpSessionContext) -> None:
+    mode = ElicitationFormSessionMode(
+        session_id=session.session_id,
+        requested_schema=ElicitationSchema(),
+    )
+    await session.create_elicitation("Confirm deployment", mode)
+```
+
+`create_elicitation(...)` requires the matching `ClientCapabilities.elicitation`
+mode and a connected ACP client. It fails explicitly rather than fabricating a
+host UI.
 
 ## Session Lifecycle Operations
 
@@ -2586,7 +2688,24 @@ The MCP server listing is assembled from:
 - session MCP server payloads
 - bridge-contributed MCP metadata
 
-It is primarily intended as a client-visible observability surface, not as the source of truth for server wiring.
+It is primarily intended as a client-visible observability surface, not as the source of truth for
+server wiring.
+
+If client-provided `session/new.mcpServers` should become runnable model tools, configure
+`SessionMcpBridge` and build the agent through `AgentBridgeBuilder`:
+
+```python
+from pydantic_acp import AdapterConfig, SessionMcpBridge
+
+config = AdapterConfig(
+    capability_bridges=[
+        SessionMcpBridge(include_instructions=True),
+    ],
+)
+```
+
+Without that bridge, session MCP payloads are retained for resume/listing and shown by
+`/mcp-servers`, but the adapter does not connect to those servers.
 
 ## Common Failure Modes
 
@@ -3163,7 +3282,6 @@ from acp.schema import (
     SessionConfigOptionBoolean,
     SessionMode,
 )
-from pydantic_ai import Agent
 from pydantic_acp import (
     AcpSessionContext,
     AdapterConfig,
@@ -3171,6 +3289,7 @@ from pydantic_acp import (
     ConfigOption,
     ModelSelectionState,
     ModeState,
+    RuntimeAgent,
 )
 
 @dataclass(slots=True)
@@ -3187,7 +3306,7 @@ class ModelsProvider:
     def get_model_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> ModelSelectionState:
         config = self.state.config_for(session)
         return ModelSelectionState(
@@ -3211,7 +3330,7 @@ class ModelsProvider:
     def set_model(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         model_id: str,
     ) -> ModelSelectionState:
         config = self.state.config_for(session)
@@ -3225,7 +3344,7 @@ class ModesProvider:
     def get_mode_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> ModeState:
         config = self.state.config_for(session)
         return ModeState(
@@ -3239,7 +3358,7 @@ class ModesProvider:
     def set_mode(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         mode_id: str,
     ) -> ModeState:
         config = self.state.config_for(session)
@@ -3253,7 +3372,7 @@ class ConfigProvider:
     def get_config_options(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> list[ConfigOption]:
         config = self.state.config_for(session)
         return [
@@ -3270,7 +3389,7 @@ class ConfigProvider:
     def set_config_option(
         self,
         session: AcpSessionContext,
-        agent: Agent[None, str],
+        agent: RuntimeAgent,
         config_id: str,
         value: str | bool,
     ) -> list[ConfigOption] | None:
@@ -3287,7 +3406,7 @@ class PlanProvider:
     def get_plan(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> list[PlanEntry]:
         config = self.state.config_for(session)
         return [
@@ -3305,7 +3424,7 @@ class ApprovalMetadataProvider:
     def get_approval_state(
         self,
         session: AcpSessionContext,
-        _agent: Agent[None, str],
+        _agent: RuntimeAgent,
     ) -> dict[str, str | bool]:
         config = self.state.config_for(session)
         return {
@@ -3812,6 +3931,38 @@ UI note:
 
 - add `BuiltinToolProjectionMap()` when you want ACP transcript cards to summarize builtin MCP calls such as `call_tool`, `list_tools`, and output previews instead of generic execute cards
 
+### `SessionMcpBridge`
+
+Turns ACP client-provided `session/new.mcpServers` payloads into a real Pydantic AI
+`MCPToolset` capability for the active session.
+
+Use it when:
+
+- the client, editor, or host process should decide which MCP servers attach to a session
+- `session.mcp_servers` should become runnable model tools instead of observability metadata only
+- server instructions and tool return schemas should flow through Pydantic AI's normal toolset path
+
+Without this bridge, `pydantic-acp` still stores session MCP server payloads and shows them in
+`/mcp-servers`, but it does not connect to those servers or register their tools.
+
+```python
+from pydantic_acp import AdapterConfig, SessionMcpBridge
+
+config = AdapterConfig(
+    capability_bridges=[
+        SessionMcpBridge(
+            include_instructions=True,
+            include_return_schema=True,
+            tool_name_prefixes=frozenset({"docs_", "repo_"}),
+        ),
+    ],
+)
+```
+
+Client-side `mcpServers` payloads may contain stdio, streamable HTTP, or SSE servers. The bridge
+keeps env/header values available to the underlying MCP connection but only publishes env/header
+names in session metadata, so secrets are not echoed into ACP-visible metadata.
+
 ### `OpenAICompactionBridge`
 
 Adds provider-owned OpenAI Responses compaction through the bridge-builder seam.
@@ -3965,6 +4116,7 @@ That makes it a natural fit inside `agent_factory` or `AgentSource.get_agent(...
 - `HookBridge(hide_all=True)` hides hook listing output; it does not remove hook capability wiring
 - `run_event_stream` wrappers must return an async iterable; returning a coroutine or plain object breaks stream execution
 - `McpBridge` only contributes MCP metadata and classification; it does not register the underlying tools for you
+- `SessionMcpBridge` registers client-provided `session/new.mcpServers`; use it when those payloads should become real Pydantic AI MCP toolsets
 
 ## Existing Hook Introspection vs HookBridge
 
@@ -4409,9 +4561,10 @@ Most integrations can keep the default serializer and only customize
 ## Minimal Example
 
 ```python
-from acp.schema import ModelInfo, SessionMode
+from acp.schema import SessionMode
 from langchain_acp import (
     AdapterConfig,
+    AdapterModel,
     DeepAgentsCompatibilityBridge,
     DeepAgentsProjectionMap,
     FileSessionStore,
@@ -4421,8 +4574,8 @@ from langchain_acp import (
 config = AdapterConfig(
     agent_name="workspace-graph",
     available_models=[
-        ModelInfo(model_id="fast", name="Fast"),
-        ModelInfo(model_id="deep", name="Deep"),
+        AdapterModel(model_id="fast", name="Fast"),
+        AdapterModel(model_id="deep", name="Deep"),
     ],
     available_modes=[
         SessionMode(id="ask", name="Ask"),
@@ -4466,6 +4619,19 @@ Supported lifecycle operations:
 This is not transport bookkeeping. Session state affects graph rebuilds,
 projection behavior, plan state, and config surface.
 
+## ACP 0.11 Session Contract
+
+`langchain-acp` targets ACP Python SDK `0.11.0`. The adapter uses
+`session/set_config_option` for model and mode selection; the removed
+`session/set_model` RPC is not sent on the wire. Config options are emitted
+only when the client advertises `session.configOptions`, and boolean options
+also require `session.configOptions.boolean`.
+
+`AdapterConfig(plan_update_mode="full")` remains the default. Set
+`plan_update_mode="content"` only when incremental plan reconciliation is
+useful: the adapter emits `plan_update` and `plan_removed` when the client
+advertises `plan`, otherwise it safely falls back to the full `plan` update.
+
 ## SessionStore
 
 The adapter uses a `SessionStore` abstraction:
@@ -4482,6 +4648,7 @@ inspectable on disk.
 Stored session state includes:
 
 - `cwd`
+- `additional_directories`
 - session-local model id
 - session-local mode id
 - config values
@@ -4499,6 +4666,59 @@ runtime when a session is reloaded.
 
 `AcpSessionContext` is the same object the adapter passes to `graph_factory`,
 providers, and replay-sensitive runtime seams.
+
+The adapter persists `additional_directories` through new, load, fork, resume,
+and list responses so a graph factory can treat declared sibling worktrees as
+session input without losing them across reconnects.
+
+## ACP-Transport MCP Descriptors
+
+ACP 0.11 accepts an `AcpMcpServer` descriptor during session creation. The
+adapter preserves it in session state and exposes it through `/mcp-servers`,
+but does not create a connection or advertise `McpCapabilities.acp`: the ACP
+Python SDK has no public MCP router for that transport.
+
+```python
+from acp.schema import AcpMcpServer
+
+delegated_agent = AcpMcpServer(
+    id="workspace-reviewer",
+    name="Workspace reviewer",
+    type="acp",
+)
+
+response = await acp_agent.new_session(
+    cwd="/workspace",
+    mcp_servers=[delegated_agent],
+)
+```
+
+Use the descriptor when a host owns the delegated ACP connection. For
+tool-executing MCP integrations, use the HTTP, SSE, or stdio forms supported
+by the active graph/tool bridge.
+
+## Typed Elicitation
+
+Graph factories and providers can use the typed session context to request
+form or URL input from a capable ACP client:
+
+```python
+from acp.schema import (
+    ElicitationFormSessionMode,
+    ElicitationSchema,
+)
+from langchain_acp import AcpSessionContext
+
+async def request_confirmation(session: AcpSessionContext) -> None:
+    mode = ElicitationFormSessionMode(
+        session_id=session.session_id,
+        requested_schema=ElicitationSchema(),
+    )
+    await session.create_elicitation("Confirm deployment", mode)
+```
+
+The context checks `ClientCapabilities.elicitation` before forwarding the
+request and raises an ACP request error when the client or mode is unavailable.
 
 ## Transcript Replay
 
@@ -4529,9 +4749,15 @@ custom `GraphSource`.
 from pathlib import Path
 
 from langchain.agents import create_agent
-from langchain_acp import AdapterConfig, FileSessionStore, run_acp
+from langchain_acp import (
+    AcpSessionContext,
+    AdapterConfig,
+    CompiledAgentGraph,
+    FileSessionStore,
+    run_acp,
+)
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_name = session.session_model_id or "openai:gpt-5-mini"
     return create_agent(model=model_name, tools=[])
 
@@ -4633,9 +4859,9 @@ providers and graph factories:
 
 ```python
 from langchain.agents import create_agent
-from langchain_acp import AdapterConfig, run_acp
+from langchain_acp import AcpSessionContext, AdapterConfig, CompiledAgentGraph, run_acp
 
-def graph_from_session(session):
+def graph_from_session(session: AcpSessionContext) -> CompiledAgentGraph:
     model_id = session.session_model_id or "openai:gpt-5-mini"
     mode_id = session.session_mode_id or "default"
     return create_agent(
@@ -4673,13 +4899,13 @@ Use these when control state belongs in the bridge layer instead of directly in
 ## Example
 
 ```python
-from acp.schema import ModelInfo, SessionMode
-from langchain_acp import AdapterConfig
+from acp.schema import SessionMode
+from langchain_acp import AdapterConfig, AdapterModel
 
 config = AdapterConfig(
     available_models=[
-        ModelInfo(model_id="fast", name="Fast"),
-        ModelInfo(model_id="deep", name="Deep"),
+        AdapterModel(model_id="fast", name="Fast"),
+        AdapterModel(model_id="deep", name="Deep"),
     ],
     available_modes=[
         SessionMode(id="ask", name="Ask"),
@@ -4973,7 +5199,6 @@ That is the preferred shape when:
 from dataclasses import dataclass, field
 
 from acp.schema import (
-    ModelInfo,
     PlanEntry,
     SessionConfigSelectOption,
     SessionConfigOptionSelect,
@@ -4981,6 +5206,7 @@ from acp.schema import (
 )
 from langchain_acp import (
     AcpSessionContext,
+    AdapterModel,
     ConfigOption,
     ModelSelectionState,
     ModeState,
@@ -5001,8 +5227,8 @@ class ModelsProvider:
         config = self.state.config_for(session)
         return ModelSelectionState(
             available_models=[
-                ModelInfo(model_id="fast", name="Fast"),
-                ModelInfo(model_id="deep", name="Deep"),
+                AdapterModel(model_id="fast", name="Fast"),
+                AdapterModel(model_id="deep", name="Deep"),
             ],
             current_model_id=config.get("model_id", "fast"),
         )
@@ -5788,6 +6014,7 @@ Source directory:
 | [`finance_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/finance_agent.py) | persistent finance sessions with ACP plans, approvals, mode-aware tool shaping, and projected note diffs |
 | [`travel_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/travel_agent.py) | travel planning runtime with hook projection, approval-gated trip files, and prompt-model override behavior for media prompts |
 | [`mock_harness_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/mock_harness_agent.py) | real harness filesystem and shell capabilities with bounded policy and opt-in code mode |
+| [`session_mcp_agent.py`](https://github.com/vcoderun/acpkit/blob/main/examples/pydantic/session_mcp_agent.py) | client-provided `session/new.mcpServers` converted into Pydantic AI MCP toolsets with `SessionMcpBridge` |
 
 ## Maintained LangChain Examples
 
@@ -5837,6 +6064,7 @@ Not every important integration seam needs another runnable demo file. Some patt
 6. [DeepAgents Compatibility Example](deepagents.md)
 7. [acpremote Overview](../acpremote.md)
 8. [Dynamic Factory Agents](dynamic-factory.md)
+9. [Session MCP Agent](session-mcp.md)
 
 ### Finance Agent
 URL: https://vcoderun.github.io/acpkit/examples/finance/
@@ -6418,6 +6646,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 
 ::: pydantic_acp.create_acp_agent
 
+::: pydantic_acp.create_acp_model
+
 ::: pydantic_acp.run_acp
 
 ::: pydantic_acp.compose_projection_maps
@@ -6529,6 +6759,8 @@ This page documents the public surface re-exported by `pydantic_acp`.
 ::: pydantic_acp.WebFetchBridge
 
 ::: pydantic_acp.McpCapabilityBridge
+
+::: pydantic_acp.SessionMcpBridge
 
 ::: pydantic_acp.OpenAICompactionBridge
 
@@ -6707,7 +6939,7 @@ make check-pydantic-ai-matrix
 ```
 
 This runs the Pydantic adapter runtime tests and type checks independently
-against Pydantic AI 2.0.0, 2.1.0, 2.2.0, 2.3.0, and 2.4.0. The same matrix runs
+against Pydantic AI 2.9.0 through 2.16.0. The same matrix runs
 in CI. Add a version only after both parts pass.
 
 LangChain stack compatibility checks:
@@ -6800,6 +7032,90 @@ Force the heavy hooks even for a small staged change:
 ```bash
 ACPKIT_FORCE_MAJOR_HOOKS=1 git commit
 ```
+
+### ACP Kit 1.4.0
+URL: https://vcoderun.github.io/acpkit/releases/acpkit-1.4.0/
+Source: `docs/releases/acpkit-1.4.0.md`
+
+# ACP Kit 1.4.0
+
+`1.4.0` upgrades the synchronized ACP Kit workspace to
+`agent-client-protocol==0.11.0` while preserving the adapter behavior that was
+previously available through the supported SDK surface.
+
+## Highlights
+
+- `pydantic-acp`, `langchain-acp`, and `acpremote` implement the ACP 0.11
+  public protocol contracts end to end.
+- Model selection is a selectable `"model"` session config option. ACP Kit no
+  longer sends the removed `session/set_model` wire request.
+- Plan updates remain truthful for every client: complete updates are the
+  default, while content/removal deltas require an advertised `plan`
+  capability.
+- Form and URL elicitation are exposed through typed
+  `AcpSessionContext.create_elicitation(...)` and delegated to real host
+  clients when the Pydantic provider bridge is used.
+- `additional_directories` and `AcpMcpServer` descriptors survive session
+  lifecycle operations. An ACP descriptor is preserved and displayed, but not
+  connected as a tool transport because the public ACP SDK does not provide an
+  ACP-MCP router.
+
+## Migration
+
+Use config-option selection when an ACP client or adapter needs to change the
+model:
+
+```python
+from pydantic_acp import AdapterConfig, AdapterModel
+
+config = AdapterConfig(
+    available_models=[AdapterModel(model_id="fast", name="Fast")],
+    default_model_id="fast",
+)
+```
+
+When a client supports plan deltas, enable them explicitly and retain the
+complete-update fallback for older clients:
+
+```python
+from langchain_acp import AdapterConfig
+
+config = AdapterConfig(
+    plan_id="research-plan",
+    plan_update_mode="content",
+)
+```
+
+Applications that need client input should pass a concrete ACP 0.11
+elicitation mode to the session context. The call rejects unsupported client
+capabilities rather than silently inventing a UI flow.
+
+```python
+from acp.schema import ElicitationFormSessionMode, ElicitationSchema
+from pydantic_acp import AcpSessionContext
+
+async def confirm(session: AcpSessionContext) -> None:
+    await session.create_elicitation(
+        "Confirm the deployment.",
+        ElicitationFormSessionMode(
+            session_id=session.session_id,
+            requested_schema=ElicitationSchema(),
+        ),
+    )
+```
+
+## Compatibility
+
+- Python 3.11 through 3.13
+- Pydantic AI 2.0.0 through 2.9.1
+- LangChain 1.3.11 or newer
+- LangGraph 1.2.7 or newer
+- DeepAgents 0.6.12 or newer through the optional extra
+- ACP Python SDK 0.11.0
+
+The release validation suite covers all repository tests with 100% line
+coverage, strict linting and typing, documentation build validation, framework
+compatibility matrices, and release metadata checks.
 
 ### ACP Kit 1.1.0
 URL: https://vcoderun.github.io/acpkit/releases/acpkit-1.1.0/

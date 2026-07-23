@@ -11,7 +11,6 @@ from acp.schema import (
     SessionConfigOptionBoolean,
     SessionConfigOptionSelect,
     SessionMode,
-    SessionModelState,
     SessionModeState,
     UnstructuredCommandInput,
 )
@@ -82,7 +81,7 @@ class McpServerInfo:
 def build_available_commands(
     *,
     mode_state: SessionModeState | None,
-    model_state: SessionModelState | None,
+    model_selection_enabled: bool,
     config_options: Sequence[ConfigOptionType] | None,
     custom_commands: Sequence[AvailableCommand] | None = None,
 ) -> list[AvailableCommand]:
@@ -90,7 +89,7 @@ def build_available_commands(
     if mode_state is not None:
         validate_mode_command_ids(mode.id for mode in mode_state.available_modes)
         commands.extend(_mode_commands(mode_state.available_modes))
-    if model_state is not None:
+    if model_selection_enabled:
         commands.append(
             AvailableCommand(
                 name=MODEL_COMMAND_NAME,
@@ -370,7 +369,9 @@ def _mcp_server_info_from_session_payload(
     name = raw_server.get("name")
     if not isinstance(name, str) or not name:
         return None
-    transport = raw_server.get("transport")
+    transport = raw_server.get("type")
+    if not isinstance(transport, str) or not transport:
+        transport = raw_server.get("transport")
     if not isinstance(transport, str) or not transport:
         return None
     if transport == "stdio":

@@ -9,14 +9,15 @@ from acp.interfaces import Agent as AcpAgent
 from acp.schema import (
     AgentMessageChunk,
     AgentPlanUpdate,
-    AgentThoughtChunk,
     AllowedOutcome,
     AvailableCommandsUpdate,
     ConfigOptionUpdate,
     ContentToolCallContent,
+    CreateElicitationResponse,
     CreateTerminalResponse,
     CurrentModeUpdate,
     DeniedOutcome,
+    ElicitationMode,
     EnvVariable,
     FileEditToolCallContent,
     KillTerminalResponse,
@@ -87,6 +88,7 @@ from pydantic_acp import (
     PrepareToolsBridge,
     PrepareToolsMode,
     ProjectionAwareToolClassifier,
+    SessionMcpBridge,
     SessionMetadataApprovalPolicyStore,
     SetToolMetadataBridge,
     SlashCommandProvider,
@@ -204,6 +206,7 @@ __all__ = (
     "SessionMetadataApprovalPolicyStore",
     "SessionMode",
     "SetToolMetadataBridge",
+    "SessionMcpBridge",
     "SlashCommandProvider",
     "SlashCommandRequest",
     "SlashCommandResult",
@@ -257,9 +260,9 @@ class RecordingClient:
 
     async def request_permission(
         self,
-        options: list[PermissionOption],
         session_id: str,
         tool_call: ToolCallUpdate,
+        options: list[PermissionOption],
         **kwargs: Any,
     ) -> RequestPermissionResponse:
         del kwargs
@@ -273,32 +276,15 @@ class RecordingClient:
             raise AssertionError("unexpected permission request")
         return self.permission_responses.pop(0)
 
-    async def session_update(
-        self,
-        session_id: str,
-        update: (
-            UserMessageChunk
-            | AgentMessageChunk
-            | AgentThoughtChunk
-            | ToolCallStart
-            | ToolCallProgress
-            | AgentPlanUpdate
-            | AvailableCommandsUpdate
-            | CurrentModeUpdate
-            | ConfigOptionUpdate
-            | SessionInfoUpdate
-            | UsageUpdate
-        ),
-        **kwargs: Any,
-    ) -> None:
+    async def session_update(self, session_id: str, update: Any, **kwargs: Any) -> None:
         del kwargs
         self.updates.append((session_id, update))
 
     async def write_text_file(
         self,
-        content: str,
-        path: str,
         session_id: str,
+        path: str,
+        content: str,
         **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         del content, path, session_id, kwargs
@@ -306,10 +292,10 @@ class RecordingClient:
 
     async def read_text_file(
         self,
-        path: str,
         session_id: str,
-        limit: int | None = None,
+        path: str,
         line: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> ReadTextFileResponse:
         del path, session_id, limit, line, kwargs
@@ -317,11 +303,11 @@ class RecordingClient:
 
     async def create_terminal(
         self,
-        command: str,
         session_id: str,
+        command: str,
         args: list[str] | None = None,
-        cwd: str | None = None,
         env: list[EnvVariable] | None = None,
+        cwd: str | None = None,
         output_byte_limit: int | None = None,
         **kwargs: Any,
     ) -> CreateTerminalResponse:
@@ -363,6 +349,19 @@ class RecordingClient:
     ) -> KillTerminalResponse | None:
         del session_id, terminal_id, kwargs
         raise AssertionError("terminal flow is not part of this test")
+
+    async def create_elicitation(
+        self,
+        message: str,
+        mode: ElicitationMode,
+        **kwargs: Any,
+    ) -> CreateElicitationResponse:
+        del message, mode, kwargs
+        raise AssertionError("elicitation flow is not part of this test")
+
+    async def complete_elicitation(self, elicitation_id: str, **kwargs: Any) -> None:
+        del elicitation_id, kwargs
+        raise AssertionError("elicitation flow is not part of this test")
 
     async def ext_method(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
         raise AssertionError(f"unexpected extension method: {method!r} {params!r}")
@@ -408,9 +407,9 @@ class FilesystemRecordingClient(RecordingClient):
 
     async def write_text_file(
         self,
-        content: str,
-        path: str,
         session_id: str,
+        path: str,
+        content: str,
         **kwargs: Any,
     ) -> WriteTextFileResponse | None:
         del kwargs
@@ -419,10 +418,10 @@ class FilesystemRecordingClient(RecordingClient):
 
     async def read_text_file(
         self,
-        path: str,
         session_id: str,
-        limit: int | None = None,
+        path: str,
         line: int | None = None,
+        limit: int | None = None,
         **kwargs: Any,
     ) -> ReadTextFileResponse:
         del kwargs
@@ -453,11 +452,11 @@ class TerminalRecordingClient(RecordingClient):
 
     async def create_terminal(
         self,
-        command: str,
         session_id: str,
+        command: str,
         args: list[str] | None = None,
-        cwd: str | None = None,
         env: list[EnvVariable] | None = None,
+        cwd: str | None = None,
         output_byte_limit: int | None = None,
         **kwargs: Any,
     ) -> CreateTerminalResponse:

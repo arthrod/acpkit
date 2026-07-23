@@ -7,6 +7,7 @@ from acp import PROTOCOL_VERSION
 from acp.helpers import text_block
 from acp.interfaces import Agent as AcpAgent
 from acp.schema import (
+    AcpMcpServer,
     AgentPlanUpdate,
     AgentThoughtChunk,
     AvailableCommandsUpdate,
@@ -38,7 +39,7 @@ if TYPE_CHECKING:
 AgentDepsT = TypeVar("AgentDepsT", contravariant=True)
 OutputDataT = TypeVar("OutputDataT", covariant=True)
 UpdateT = TypeVar("UpdateT")
-McpServerDefinition = HttpMcpServer | SseMcpServer | McpServerStdio
+McpServerDefinition = AcpMcpServer | HttpMcpServer | SseMcpServer | McpServerStdio
 
 __all__ = ("BlackBoxHarness",)
 
@@ -125,9 +126,10 @@ class BlackBoxHarness:
         )
 
     async def set_model(self, model_id: str, *, session_id: str | None = None):
-        return await self.adapter.set_session_model(
-            model_id=model_id,
+        return await self.adapter.set_config_option(
+            config_id="model",
             session_id=self.require_session_id(session_id),
+            value=model_id,
         )
 
     async def set_config_option(

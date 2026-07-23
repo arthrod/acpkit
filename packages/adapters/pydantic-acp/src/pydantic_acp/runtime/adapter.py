@@ -3,13 +3,14 @@ from __future__ import annotations as _annotations
 import asyncio
 from collections.abc import Sequence
 from dataclasses import replace
-from typing import Any, Generic, TypeVar
+from typing import Any, ClassVar, Generic, TypeVar
 from uuid import uuid4
 
 from acp import PROTOCOL_VERSION
 from acp.exceptions import RequestError
 from acp.interfaces import Client as AcpClient
 from acp.schema import (
+    AcpMcpServer,
     AgentCapabilities,
     ClientCapabilities,
     CloseSessionResponse,
@@ -20,6 +21,7 @@ from acp.schema import (
     McpServerStdio,
     PlanEntry,
     PromptCapabilities,
+    SessionAdditionalDirectoriesCapabilities,
     SessionCapabilities,
     SessionCloseCapabilities,
     SessionForkCapabilities,
@@ -57,6 +59,8 @@ class PydanticAcpAgent(
 ):
     """Expose a `pydantic_ai.Agent` as an ACP-compatible session runtime."""
 
+    _pydantic_acp_meta_supported: ClassVar[bool] = True
+
     def __init__(
         self,
         agent_source: AgentSource[AgentDepsT, OutputDataT],
@@ -78,6 +82,7 @@ class PydanticAcpAgent(
             else config
         )
         self._client: AcpClient | None = None
+        self._client_capabilities: ClientCapabilities | None = None
         self._bridge_manager = BridgeManager(
             base_classifier=self._config.tool_classifier,
             bridges=tuple(self._config.capability_bridges),
@@ -105,7 +110,8 @@ class PydanticAcpAgent(
         **kwargs: Any,
     ) -> InitializeResponse:
         """Negotiate ACP protocol version and advertise adapter capabilities."""
-        del client_capabilities, client_info, kwargs
+        del client_info, kwargs
+        self._client_capabilities = client_capabilities
         negotiated_version = min(protocol_version, PROTOCOL_VERSION)
         return InitializeResponse(
             protocol_version=negotiated_version,
@@ -118,6 +124,7 @@ class PydanticAcpAgent(
                     image=self._config.prompt_capabilities.image,
                 ),
                 session_capabilities=SessionCapabilities(
+                    additional_directories=SessionAdditionalDirectoriesCapabilities(),
                     close=SessionCloseCapabilities(),
                     fork=SessionForkCapabilities(),
                     list=SessionListCapabilities(),
@@ -137,17 +144,23 @@ class PydanticAcpAgent(
 
     async def fork_session(
         self,
-        cwd: str,
         session_id: str,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None = None,
+        cwd: str,
+        additional_directories: list[str] | None = None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer]
+        | None = None,
         **kwargs: Any,
     ) -> ForkSessionResponse:
         del kwargs
-        response = await self._session_runtime.fork_session(cwd, session_id, mcp_servers)
+        response = await self._session_runtime.fork_session(
+            session_id,
+            cwd,
+            additional_directories,
+            mcp_servers,
+        )
         return ForkSessionResponse(
             session_id=response.session_id,
             config_options=response.config_options,
-            models=response.models,
             modes=response.modes,
         )
 
@@ -283,13 +296,13 @@ class PydanticAcpAgent(
     def _update_session_mcp_servers(
         self,
         session: AcpSessionContext,
-        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer] | None,
+        mcp_servers: list[HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer] | None,
     ) -> None:
         self._session_runtime._update_session_mcp_servers(session, mcp_servers)
 
     def _serialize_mcp_server(
         self,
-        server: HttpMcpServer | McpServerStdio | SseMcpServer,
+        server: HttpMcpServer | McpServerStdio | SseMcpServer | AcpMcpServer,
     ) -> dict[str, JsonValue]:
         return self._session_runtime._serialize_mcp_server(server)
 

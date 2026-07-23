@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import cast
 
 from acp.schema import (
-    ModelInfo,
     PlanEntry,
     PlanEntryPriority,
     PlanEntryStatus,
@@ -13,6 +12,7 @@ from acp.schema import (
     ToolKind,
 )
 
+from ..models import AdapterModel
 from ..providers import (
     ConfigOption,
     ConfigOptionsProvider,
@@ -53,7 +53,7 @@ class ToolSurfaceBridge(CapabilityBridge):
 
 @dataclass(slots=True, frozen=True, kw_only=True)
 class ModelSelectionBridge(CapabilityBridge):
-    available_models: tuple[ModelInfo, ...] = ()
+    available_models: tuple[AdapterModel, ...] = ()
     default_model_id: str | None = None
     provider: SessionModelsProvider | None = None
 

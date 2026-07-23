@@ -9,6 +9,26 @@ Each session carries the information needed to:
 - keep plan state stable across prompts
 - reflect mode, model, and approval metadata accurately
 
+## ACP 0.11 Session Contract
+
+`pydantic-acp` targets ACP Python SDK `0.11.0`. Model selection is now a
+session config option, not a `session/set_model` RPC. Configure a concrete
+model only when the adapter exposes a selectable `"model"` option; otherwise
+keep the agent default with `AcpProvider.model()` or `create_acp_model(...)`
+without `model_name`.
+
+Client capability negotiation is respected:
+
+- no `session.configOptions` capability means no config option surface is sent
+- select options require `session.configOptions`
+- boolean options additionally require `session.configOptions.boolean`
+- `plan_update_mode="content"` uses `plan_update` and `plan_removed` only
+  when the client advertises `plan`; it otherwise falls back to full `plan`
+  updates
+
+This preserves a usable full-plan surface for older clients while allowing
+newer clients to reconcile a named plan incrementally.
+
 ## What Is Stored
 
 An `AcpSessionContext` captures:
@@ -23,6 +43,67 @@ An `AcpSessionContext` captures:
 - `plan_entries` and `plan_markdown`
 - MCP server metadata
 - adapter-owned session metadata
+- `additional_directories`
+
+ACP client-supplied MCP servers are stored in `session.mcp_servers` so load, fork, resume, and
+`/mcp-servers` can reflect the same session surface. They become runnable Pydantic AI MCP tools
+only when the agent build includes `SessionMcpBridge`.
+
+ACP 0.11 also permits an ACP-transport descriptor. It is preserved across the
+session lifecycle so the hosting application can retain its identity and
+metadata, but `pydantic-acp` does not connect it or advertise
+`McpCapabilities.acp`: the SDK does not expose a public ACP MCP router yet.
+
+```python
+from acp.schema import AcpMcpServer
+
+delegated_agent = AcpMcpServer(
+    id="workspace-reviewer",
+    name="Workspace reviewer",
+    type="acp",
+)
+
+response = await acp_agent.new_session(
+    cwd="/workspace",
+    mcp_servers=[delegated_agent],
+)
+```
+
+Use HTTP, SSE, or stdio descriptors with `SessionMcpBridge` when the Pydantic
+agent must actually invoke MCP tools. Use `AcpMcpServer` only to preserve a
+delegated ACP endpoint for a host that owns the connection.
+
+`additional_directories` is persisted through new, load, fork, resume, and
+list operations. `ClientHostContext` treats those directories as extra session
+roots for host-backed file and terminal requests. An explicit
+`workspace_root` remains a hard boundary, so a client cannot use an additional
+directory to escape host policy.
+
+## Typed Elicitation
+
+Session-aware agent factories and providers can ask the connected client for
+input through `AcpSessionContext`. Build the exact ACP mode object and let the
+context reject unsupported client capabilities before any request is sent:
+
+```python
+from acp.schema import (
+    ElicitationFormSessionMode,
+    ElicitationSchema,
+)
+from pydantic_acp import AcpSessionContext
+
+
+async def request_confirmation(session: AcpSessionContext) -> None:
+    mode = ElicitationFormSessionMode(
+        session_id=session.session_id,
+        requested_schema=ElicitationSchema(),
+    )
+    await session.create_elicitation("Confirm deployment", mode)
+```
+
+`create_elicitation(...)` requires the matching `ClientCapabilities.elicitation`
+mode and a connected ACP client. It fails explicitly rather than fabricating a
+host UI.
 
 ## Session Lifecycle Operations
 
