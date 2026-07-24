@@ -16,11 +16,13 @@ from acp.interfaces import Agent as AcpAgent
 from acp.interfaces import Client as AcpClient
 from acp.schema import (
     AgentMessageChunk,
+    AuthMethodAgent,
     ClientCapabilities,
     ClientSessionCapabilities,
     CreateElicitationResponse,
     CreateTerminalResponse,
     ElicitationMode,
+    EnvVarAuthMethod,
     EnvVariable,
     Implementation,
     KillTerminalResponse,
@@ -31,6 +33,7 @@ from acp.schema import (
     RequestPermissionResponse,
     SessionConfigOptionsCapabilities,
     SessionConfigOptionSelect,
+    TerminalAuthMethod,
     TerminalOutputResponse,
     ToolCallUpdate,
     UsageUpdate,
@@ -65,6 +68,7 @@ from pydantic_ai.profiles import ModelProfile, ModelProfileSpec
 from pydantic_ai.providers import Provider
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.usage import RequestUsage
+from typing_extensions import TypeIs
 
 from ._meta_protocol import (
     MISSING_STRUCTURED_OUTPUT,
@@ -76,7 +80,9 @@ from ._version import __version__
 from .types import AgentPromptBlock
 
 HistoryMode: TypeAlias = Literal["latest_user", "full"]
+AuthMethod: TypeAlias = EnvVarAuthMethod | TerminalAuthMethod | AuthMethodAgent
 _DEFAULT_MODEL_NAME = "agent"
+_TASK_GROUP_ERROR_MESSAGE = "unhandled errors in a TaskGroup"
 _AUTH_REQUIRED_DIAGNOSTIC = (
     "The ACP agent requires authentication (session/new returned auth_required / -32000)"
 )
@@ -412,7 +418,11 @@ def _default_client_capabilities() -> ClientCapabilities:
     )
 
 
-def _unwrap_acp_error(exc: BaseException) -> BaseException:
+def _is_task_group_error(exc: BaseException) -> TypeIs[ExceptionGroup[Exception]]:
+    return isinstance(exc, ExceptionGroup) and exc.message == _TASK_GROUP_ERROR_MESSAGE
+
+
+def _unwrap_acp_error(exc: Exception) -> Exception:
     """Return the ACP agent's real error, free of anyio TaskGroup wrapping.
 
     ACP calls run over a stdio connection whose background reader lives in an
@@ -422,16 +432,17 @@ def _unwrap_acp_error(exc: BaseException) -> BaseException:
     TaskGroup"), or as the real error carrying that group as its
     ``__context__``. Both bury the actual cause. This peels single-child groups
     down to the leaf and drops a TaskGroup ``__context__`` so the meaningful
-    error propagates on its own instead of as an opaque group.
+    error propagates on its own instead of as an opaque group. Other exception
+    groups are preserved because they may carry meaningful aggregate failures.
     """
-    leaf = exc
-    seen: set[int] = set()
+    leaf: Exception = exc
     while (
-        isinstance(leaf, BaseExceptionGroup) and len(leaf.exceptions) == 1 and id(leaf) not in seen
+        _is_task_group_error(leaf)
+        and len(leaf.exceptions) == 1
+        and isinstance(leaf.exceptions[0], Exception)
     ):
-        seen.add(id(leaf))
         leaf = leaf.exceptions[0]
-    if isinstance(leaf.__context__, BaseExceptionGroup):
+    if leaf.__context__ is not None and _is_task_group_error(leaf.__context__):
         leaf.__context__ = None
         leaf.__suppress_context__ = True
     return leaf
@@ -548,7 +559,7 @@ class AcpProvider(Provider[AcpAgent]):
         self._session_id: str | None = None
         self._current_model_name: str | None = None
         self._model_config_option_available: bool | None = None
-        self._auth_methods: list[Any] = []
+        self._auth_methods: list[AuthMethod] = []
         self._authenticated = False
         self._session_lock: asyncio.Lock | None = None
         self._session_lock_loop: asyncio.AbstractEventLoop | None = None
@@ -715,7 +726,7 @@ class AcpProvider(Provider[AcpAgent]):
             )
         except asyncio.CancelledError:
             raise
-        except BaseException as exc:
+        except Exception as exc:
             cleaned = _unwrap_acp_error(exc)
             if cleaned is exc:
                 raise
@@ -800,7 +811,7 @@ class AcpProvider(Provider[AcpAgent]):
             await self._authenticate()
             return await self._call_new_session()
 
-    async def _call_new_session(self) -> Any:
+    async def _call_new_session(self) -> NewSessionResponse:
         return await self._client.new_session(
             cwd=self._cwd,
             mcp_servers=list(self._mcp_servers),
@@ -814,19 +825,18 @@ class AcpProvider(Provider[AcpAgent]):
                 f"{_AUTH_REQUIRED_DIAGNOSTIC} but the wrapped agent does not expose an "
                 "'authenticate' method, so the session cannot be established."
             )
-        method_id = self._auth_method_id or next(
-            (getattr(method, "id", None) for method in self._auth_methods),
+        agent_method = next(
+            (method for method in self._auth_methods if isinstance(method, AuthMethodAgent)),
             None,
         )
+        method_id = self._auth_method_id or (agent_method.id if agent_method is not None else None)
         if method_id is None:
-            advertised = ", ".join(
-                str(getattr(method, "id", method)) for method in self._auth_methods
-            )
+            advertised = ", ".join(method.id for method in self._auth_methods)
             raise UserError(
-                f"{_AUTH_REQUIRED_DIAGNOSTIC} but advertised no usable authentication "
+                f"{_AUTH_REQUIRED_DIAGNOSTIC} but advertised no agent-managed authentication "
                 f"method to satisfy it{f' (advertised: {advertised})' if advertised else ''}. "
-                "Pass auth_method_id=... to AcpProvider, or authenticate the agent "
-                "out of band."
+                "Environment-variable and terminal methods require client-side setup. Complete "
+                "that setup out of band, or pass auth_method_id=... after preparing the agent."
             )
         result = authenticate(method_id=method_id)
         if inspect.isawaitable(result):

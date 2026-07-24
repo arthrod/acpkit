@@ -6,7 +6,7 @@ import sys
 import tomllib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Literal, cast
+from typing import Any, Literal, TypeAlias, cast
 from unittest.mock import AsyncMock
 
 import pydantic_acp
@@ -22,11 +22,13 @@ from acp.schema import (
     AgentCapabilities,
     AgentMessageChunk,
     AllowedOutcome,
+    AuthEnvVar,
     AuthMethodAgent,
     ClientCapabilities,
     ElicitationFormSessionMode,
     ElicitationMode,
     ElicitationSchema,
+    EnvVarAuthMethod,
     Implementation,
     InitializeResponse,
     NewSessionResponse,
@@ -35,6 +37,7 @@ from acp.schema import (
     SessionConfigOptionSelect,
     SessionConfigSelectOption,
     SetSessionConfigOptionResponse,
+    TerminalAuthMethod,
     ToolCallUpdate,
     Usage,
     UsageUpdate,
@@ -76,6 +79,8 @@ from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RequestUsage
 
 from .support import HostRecordingClient, RecordingClient
+
+TestAuthMethod: TypeAlias = EnvVarAuthMethod | TerminalAuthMethod | AuthMethodAgent
 
 
 class EchoACPAgent:  # type: ignore[misc]
@@ -414,6 +419,33 @@ async def test_create_acp_model_wraps_in_process_acp_agent() -> None:
     assert acp_agent.initialized_protocols == [PROTOCOL_VERSION]
     assert acp_agent.session_cwds == ["/workspace"]
     assert acp_agent.session_models == [("session-1", "zed-agent")]
+
+
+async def test_create_acp_model_forwards_auth_and_empty_turn_options() -> None:
+    auth_agent = AuthRequiredACPAgent(
+        auth_methods=[AuthMethodAgent(id="login", name="Login")],
+    )
+    auth_model = create_acp_model(
+        acp_agent=cast(AcpAgent, auth_agent),
+        cwd="/workspace",
+        auth_method_id="custom",
+    )
+
+    await cast(AcpProvider, auth_model.provider).ensure_session()
+
+    assert auth_agent.authenticated_with == ["custom"]
+
+    empty_model = create_acp_model(
+        acp_agent=cast(AcpAgent, NoHandshakeACPAgent()),
+        cwd="/workspace",
+        raise_on_empty_turn=True,
+    )
+    with pytest.raises(UnexpectedModelBehavior, match="ACP agent ended its turn"):
+        await empty_model.request(
+            [ModelRequest(parts=[UserPromptPart("hello")])],
+            None,
+            ModelRequestParameters(),
+        )
 
 
 async def test_acp_provider_default_model_leaves_remote_model_selection_to_agent() -> None:
@@ -2173,7 +2205,7 @@ def test_acp_model_profile_disables_tool_and_structured_output_support() -> None
 class AuthRequiredACPAgent(EchoACPAgent):
     """An ACP agent that rejects ``session/new`` until ``authenticate`` runs."""
 
-    def __init__(self, *, auth_methods: list[Any], fail_times: int = 1) -> None:
+    def __init__(self, *, auth_methods: list[TestAuthMethod], fail_times: int = 1) -> None:
         super().__init__()
         self._auth_methods = auth_methods
         self._fail_times = fail_times
@@ -2385,6 +2417,25 @@ async def test_acp_provider_uses_first_advertised_auth_method_when_multiple_exis
     assert agent.authenticated_with == ["oauth"]
 
 
+async def test_acp_provider_automatically_uses_only_agent_managed_auth_methods() -> None:
+    agent = AuthRequiredACPAgent(
+        auth_methods=[
+            EnvVarAuthMethod(
+                id="api-key",
+                name="API key",
+                type="env_var",
+                vars=[AuthEnvVar(name="API_KEY")],
+            ),
+            AuthMethodAgent(id="oauth", name="OAuth", description="Browser login"),
+        ],
+    )
+    provider = AcpProvider(acp_agent=cast(AcpAgent, agent), cwd="/workspace")
+
+    await provider.ensure_session()
+
+    assert agent.authenticated_with == ["oauth"]
+
+
 async def test_acp_provider_supports_synchronous_authenticate() -> None:
     # A *synchronous* authenticate() exercises the non-awaitable branch of
     # AcpProvider._authenticate. It subclasses EchoACPAgent (which has no
@@ -2449,37 +2500,23 @@ async def test_acp_provider_auth_required_without_any_method_error_omits_adverti
     assert "(advertised:" not in str(exc_info.value)
 
 
-async def test_acp_provider_auth_required_with_unusable_advertised_methods_raises_userror() -> None:
-    class AuthMethodsWithoutIdACPAgent(EchoACPAgent):
-        async def initialize(
-            self,
-            protocol_version: int,
-            client_capabilities: ClientCapabilities | None = None,
-            client_info: Implementation | None = None,
-            **kwargs: Any,
-        ) -> Any:
-            del client_capabilities, client_info, kwargs
-            self.initialized_protocols.append(protocol_version)
-            return SimpleNamespace(auth_methods=[SimpleNamespace(name="mystery")])
-
-        async def new_session(
-            self,
-            cwd: str,
-            mcp_servers: list[Any] | None = None,
-            **kwargs: Any,
-        ) -> NewSessionResponse:
-            del cwd, mcp_servers, kwargs
-            raise RequestError.auth_required()
-
-        async def authenticate(self, method_id: str, **kwargs: Any) -> None:
-            del method_id, kwargs
-
-    provider = AcpProvider(
-        acp_agent=cast(AcpAgent, AuthMethodsWithoutIdACPAgent()), cwd="/workspace"
+async def test_acp_provider_requires_client_setup_for_env_var_auth_method() -> None:
+    agent = AuthRequiredACPAgent(
+        auth_methods=[
+            EnvVarAuthMethod(
+                id="api-key",
+                name="API key",
+                type="env_var",
+                vars=[AuthEnvVar(name="API_KEY")],
+            )
+        ],
     )
+    provider = AcpProvider(acp_agent=cast(AcpAgent, agent), cwd="/workspace")
 
-    with pytest.raises(UserError, match="advertised no usable authentication"):
+    with pytest.raises(UserError, match="require client-side setup"):
         await provider.ensure_session()
+
+    assert agent.authenticated_with == []
 
 
 async def test_acp_provider_ensure_session_forwards_model_name() -> None:
@@ -2582,19 +2619,22 @@ async def test_empty_turn_raises_with_stop_reason_in_message_when_available() ->
 
 def test_unwrap_acp_error_peels_single_child_group() -> None:
     inner = RequestError(-32000, "Rate limited")
-    group = BaseExceptionGroup("unhandled errors in a TaskGroup", [inner])
+    group = ExceptionGroup("unhandled errors in a TaskGroup", [inner])
     assert client_module._unwrap_acp_error(group) is inner
 
 
 def test_unwrap_acp_error_peels_nested_single_child_groups() -> None:
     inner = RequestError(-32000, "Rate limited")
-    nested = BaseExceptionGroup("outer", [BaseExceptionGroup("inner", [inner])])
+    nested = ExceptionGroup(
+        "unhandled errors in a TaskGroup",
+        [ExceptionGroup("unhandled errors in a TaskGroup", [inner])],
+    )
     assert client_module._unwrap_acp_error(nested) is inner
 
 
 def test_unwrap_acp_error_drops_taskgroup_context_noise() -> None:
     err = RuntimeError("boom")
-    err.__context__ = BaseExceptionGroup("unhandled errors in a TaskGroup", [ValueError("x")])
+    err.__context__ = ExceptionGroup("unhandled errors in a TaskGroup", [ValueError("x")])
     cleaned = client_module._unwrap_acp_error(err)
     assert cleaned is err
     assert cleaned.__context__ is None
@@ -2607,8 +2647,18 @@ def test_unwrap_acp_error_leaves_plain_exception_untouched() -> None:
 
 
 def test_unwrap_acp_error_keeps_multi_child_group() -> None:
-    group = BaseExceptionGroup("many", [ValueError("a"), RequestError(-32000, "b")])
+    group = ExceptionGroup("many", [ValueError("a"), RequestError(-32000, "b")])
     assert client_module._unwrap_acp_error(group) is group
+
+
+def test_unwrap_acp_error_preserves_unrelated_single_child_group_and_context() -> None:
+    context = ExceptionGroup("validation failures", [ValueError("context")])
+    inner = RuntimeError("boom")
+    inner.__context__ = context
+    group = ExceptionGroup("validation failures", [inner])
+
+    assert client_module._unwrap_acp_error(group) is group
+    assert inner.__context__ is context
 
 
 async def test_request_prompt_unwraps_taskgroup_error_from_the_agent() -> None:
@@ -2621,7 +2671,7 @@ async def test_request_prompt_unwraps_taskgroup_error_from_the_agent() -> None:
             **kwargs: Any,
         ) -> PromptResponse:
             del prompt, session_id, message_id, kwargs
-            raise BaseExceptionGroup(
+            raise ExceptionGroup(
                 "unhandled errors in a TaskGroup",
                 [RequestError(-32000, "Rate limited")],
             )
