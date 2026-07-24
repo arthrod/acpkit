@@ -427,9 +427,7 @@ def _unwrap_acp_error(exc: BaseException) -> BaseException:
     leaf = exc
     seen: set[int] = set()
     while (
-        isinstance(leaf, BaseExceptionGroup)
-        and len(leaf.exceptions) == 1
-        and id(leaf) not in seen
+        isinstance(leaf, BaseExceptionGroup) and len(leaf.exceptions) == 1 and id(leaf) not in seen
     ):
         seen.add(id(leaf))
         leaf = leaf.exceptions[0]

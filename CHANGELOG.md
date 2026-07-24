@@ -5,6 +5,29 @@ ACP Kit uses synchronized versions for `acpkit`, `pydantic-acp`, `langchain-acp`
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-24
+
+### Added
+
+- `AcpProvider` recovers from an `auth_required` (`-32000`) rejection of
+  `session/new` by running the ACP `authenticate` flow — using an advertised
+  auth method or an explicit `auth_method_id=` — and retrying session creation
+  once.
+- Public `AcpProvider.ensure_session()` and `AcpProvider.set_session_mode()`
+  for bootstrapping a session and selecting a session mode without sending a
+  prompt turn, so callers no longer reach into the private `_ensure_session`.
+- Opt-in `AcpProvider(raise_on_empty_turn=True)` raises
+  `UnexpectedModelBehavior` with an ACP-specific diagnostic when a text-output
+  turn yields no visible text, instead of returning an empty response.
+
+### Fixed
+
+- `request_prompt` now propagates the ACP agent's real error (rate limit,
+  auth rejection, upstream API failure) by unwrapping single-child anyio
+  TaskGroup `BaseExceptionGroup`s and dropping TaskGroup `__context__` noise,
+  instead of surfacing an opaque `ExceptionGroup: unhandled errors in a
+  TaskGroup`.
+
 ## [1.5.0] - 2026-07-24
 
 ### Changed
