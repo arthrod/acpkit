@@ -1,7 +1,9 @@
 from __future__ import annotations as _annotations
 
 import asyncio
+import contextlib
 import inspect
+import math
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -35,6 +37,7 @@ from acp.schema import (
     WaitForTerminalExitResponse,
     WriteTextFileResponse,
 )
+from httpx import Timeout
 from pydantic_ai.exceptions import UserError
 from pydantic_ai.messages import (
     AudioUrl,
@@ -101,9 +104,39 @@ __all__ = (
     "AcpHostBridge",
     "AcpModel",
     "AcpPromptRenderer",
+    "AcpPromptTimeoutError",
     "AcpProvider",
     "AcpUpdateRecord",
 )
+
+
+# ---------------------------------------------------------------------------
+# AcpPromptTimeoutError
+# ---------------------------------------------------------------------------
+
+
+class AcpPromptTimeoutError(TimeoutError):
+    """Raised when a whole delegated ACP prompt turn exceeds its deadline.
+
+    The deadline is enforced client-side: when it expires, the provider sends
+    ACP ``session/cancel`` and gives the agent ``cancel_grace`` seconds to
+    honor it by responding to the outstanding ``session/prompt`` request with
+    stop reason ``"cancelled"``. Whether that acknowledgement arrived is
+    recorded in :attr:`cancelled_cleanly`.
+    """
+
+    def __init__(self, *, session_id: str, timeout: float, cancelled_cleanly: bool) -> None:
+        self.session_id = session_id
+        self.timeout = timeout
+        self.cancelled_cleanly = cancelled_cleanly
+        detail = (
+            "the agent acknowledged session/cancel"
+            if cancelled_cleanly
+            else "the agent did not respond to session/cancel within the grace period"
+        )
+        super().__init__(
+            f"ACP prompt turn in session {session_id!r} exceeded {timeout}s; {detail}."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +478,8 @@ class AcpProvider(Provider[AcpAgent]):
         prompt_renderer: AcpPromptRenderer | None = None,
         history_mode: HistoryMode = "latest_user",
         enable_pydantic_acp_meta: bool | None = None,
+        prompt_timeout: float | None = None,
+        cancel_grace: float = 10.0,
     ) -> None:
         """Create a new ACP provider.
 
@@ -477,8 +512,23 @@ class AcpProvider(Provider[AcpAgent]):
                 output. ``None`` auto-enables it only for ACP agents produced
                 by this package; arbitrary ACP agents must not be trusted to
                 implement this private contract.
+            prompt_timeout: Optional wall-clock deadline in seconds for one
+                whole delegated prompt turn. When it expires, the provider
+                sends ACP ``session/cancel`` and raises
+                :class:`AcpPromptTimeoutError`. A numeric
+                ``ModelSettings.timeout`` overrides this per model request.
+                ``None`` (default) disables the client-side deadline.
+            cancel_grace: Seconds to wait, after sending ``session/cancel``,
+                for the agent to respond to the outstanding ``session/prompt``
+                request before the pending request is dropped.
 
         """
+        if prompt_timeout is not None and (
+            not math.isfinite(prompt_timeout) or prompt_timeout <= 0
+        ):
+            raise ValueError("prompt_timeout must be a positive finite number or None.")
+        if not math.isfinite(cancel_grace) or cancel_grace <= 0:
+            raise ValueError("cancel_grace must be a positive finite number.")
         self._client = acp_agent
 
         self._host = AcpHostBridge(delegate=host_client)
@@ -494,6 +544,8 @@ class AcpProvider(Provider[AcpAgent]):
         self._mcp_servers = list(mcp_servers or [])
         self._prompt_renderer = prompt_renderer
         self._history_mode = history_mode
+        self._prompt_timeout = prompt_timeout
+        self._cancel_grace = cancel_grace
         self._enable_pydantic_acp_meta = (
             _agent_supports_pydantic_acp_meta(acp_agent)
             if enable_pydantic_acp_meta is None
@@ -617,8 +669,14 @@ class AcpProvider(Provider[AcpAgent]):
         model_name: str | None,
         prompt: Sequence[AgentPromptBlock],
         model_request_parameters: ModelRequestParameters,
+        timeout: float | None = None,
     ) -> _AcpPromptResult:
-        """Send one prompt turn to the ACP agent and collect its visible text."""
+        """Send one prompt turn to the ACP agent and collect its visible text.
+
+        ``timeout`` bounds the whole delegated prompt turn; when ``None`` the
+        provider-level ``prompt_timeout`` applies. On expiry the provider sends
+        ACP ``session/cancel`` and raises :class:`AcpPromptTimeoutError`.
+        """
         session_id = await self._ensure_session(model_name=model_name)
         start_index = self._host.snapshot_index()
         request_meta = None
@@ -631,7 +689,11 @@ class AcpProvider(Provider[AcpAgent]):
         }
         if request_meta is not None:
             prompt_kwargs["_meta"] = request_meta
-        prompt_response = await self._client.prompt(**prompt_kwargs)
+        prompt_response = await self._prompt_with_deadline(
+            prompt_kwargs,
+            session_id=session_id,
+            timeout=self._prompt_timeout if timeout is None else timeout,
+        )
         text = await self._agent_message_text_after_prompt(
             start_index,
             session_id=session_id,
@@ -654,6 +716,53 @@ class AcpProvider(Provider[AcpAgent]):
             session_id=session_id,
             structured_output=extract_structured_output(response_meta),
         )
+
+    async def _prompt_with_deadline(
+        self,
+        prompt_kwargs: dict[str, Any],
+        *,
+        session_id: str,
+        timeout: float | None,
+    ) -> Any:
+        if timeout is None:
+            return await self._client.prompt(**prompt_kwargs)
+        prompt_task = asyncio.ensure_future(self._client.prompt(**prompt_kwargs))
+        try:
+            return await asyncio.wait_for(asyncio.shield(prompt_task), timeout)
+        except TimeoutError:
+            cancelled_cleanly = await self._cancel_expired_prompt(
+                prompt_task,
+                session_id=session_id,
+            )
+            raise AcpPromptTimeoutError(
+                session_id=session_id,
+                timeout=timeout,
+                cancelled_cleanly=cancelled_cleanly,
+            ) from None
+        except asyncio.CancelledError:
+            prompt_task.cancel()
+            raise
+
+    async def _cancel_expired_prompt(
+        self,
+        prompt_task: asyncio.Future[Any],
+        *,
+        session_id: str,
+    ) -> bool:
+        # The deadline must hold even when the agent's cancel pathway is broken,
+        # so a failing session/cancel cannot abort enforcement.
+        with contextlib.suppress(Exception):
+            await self._client.cancel(session_id=session_id)
+        try:
+            response = await asyncio.wait_for(prompt_task, self._cancel_grace)
+        except Exception:
+            return False
+        stop_reason = getattr(response, "stop_reason", None) or getattr(
+            response,
+            "stopReason",
+            None,
+        )
+        return stop_reason == "cancelled"
 
     async def _agent_message_text_after_prompt(
         self,
@@ -733,7 +842,15 @@ class AcpProvider(Provider[AcpAgent]):
 
 
 class AcpModel(Model[AcpAgent]):
-    """Pydantic AI ``Model`` backed by an ACP agent provider."""
+    """Pydantic AI ``Model`` backed by an ACP agent provider.
+
+    ``ModelSettings.timeout`` (numeric seconds only, not ``httpx.Timeout``) is
+    honored as a wall-clock deadline for the whole delegated ACP prompt turn,
+    enforced via ACP ``session/cancel``; it overrides the provider-level
+    ``prompt_timeout``. All other model settings (``temperature``, ``top_p``,
+    ``max_tokens``, ...) are ignored: the remote ACP agent owns its own model
+    invocation and does not accept per-request tuning over ACP.
+    """
 
     _provider: Provider[AcpAgent]
     _history_mode: HistoryMode | None
@@ -783,7 +900,6 @@ class AcpModel(Model[AcpAgent]):
             model_settings,
             model_request_parameters,
         )
-        del model_settings
         self._ensure_supported_request(
             model_request_parameters,
             raw_params=raw_model_request_parameters,
@@ -798,6 +914,7 @@ class AcpModel(Model[AcpAgent]):
             model_name=self._model_name,
             prompt=prompt,
             model_request_parameters=raw_model_request_parameters,
+            timeout=_resolve_prompt_timeout(model_settings),
         )
         parts = self._response_parts(acp_result, raw_model_request_parameters)
         return ModelResponse(
@@ -1038,6 +1155,21 @@ def _section(title: str, content: str) -> str:
     if not content:
         return ""
     return f"{title}:\n{content}"
+
+
+def _resolve_prompt_timeout(model_settings: ModelSettings | None) -> float | None:
+    if not model_settings:
+        return None
+    timeout = model_settings.get("timeout")
+    if timeout is None:
+        return None
+    if isinstance(timeout, Timeout):
+        raise UserError(
+            "AcpModel supports only numeric ModelSettings 'timeout' values (seconds): "
+            "the deadline bounds a whole delegated ACP prompt turn, not a single HTTP "
+            "request, so httpx.Timeout granularity does not apply.",
+        )
+    return float(timeout)
 
 
 def _is_agent_message_chunk(update: Any) -> bool:

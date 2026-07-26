@@ -19,6 +19,7 @@ __all__ = ("BridgeManager",)
 class BridgeManager:
     base_classifier: ToolClassifier
     bridges: Sequence[CapabilityBridge]
+    default_model_settings: ModelSettings | None = None
 
     @property
     def tool_classifier(self) -> ToolClassifier:
@@ -77,7 +78,7 @@ class BridgeManager:
         session: AcpSessionContext,
         agent: RuntimeAgent,
     ) -> ModelSettings | None:
-        merged: ModelSettings | None = None
+        merged: ModelSettings | None = self.default_model_settings
         for bridge in self.bridges:
             bridge_settings = bridge.get_model_settings(session, agent)
             if bridge_settings is not None:

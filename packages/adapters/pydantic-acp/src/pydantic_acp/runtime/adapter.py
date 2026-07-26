@@ -86,6 +86,7 @@ class PydanticAcpAgent(
         self._bridge_manager = BridgeManager(
             base_classifier=self._config.tool_classifier,
             bridges=tuple(self._config.capability_bridges),
+            default_model_settings=self._config.model_settings,
         )
         self._tool_classifier = self._bridge_manager.tool_classifier
         self._prompt_runtime = _PromptRuntime(self)

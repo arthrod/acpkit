@@ -9,6 +9,7 @@ from types import SimpleNamespace
 from typing import Any, Literal, cast
 from unittest.mock import AsyncMock
 
+import httpx
 import pydantic_acp
 import pydantic_acp.command_agent as command_agent_module
 import pytest
@@ -39,7 +40,14 @@ from acp.schema import (
     UsageUpdate,
 )
 from pydantic import BaseModel
-from pydantic_acp import AcpHostBridge, AcpModel, AcpProvider, create_acp_agent, create_acp_model
+from pydantic_acp import (
+    AcpHostBridge,
+    AcpModel,
+    AcpPromptTimeoutError,
+    AcpProvider,
+    create_acp_agent,
+    create_acp_model,
+)
 from pydantic_acp import client as client_module
 from pydantic_acp._meta_protocol import (
     MISSING_STRUCTURED_OUTPUT,
@@ -71,6 +79,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.native_tools import WebSearchTool
 from pydantic_ai.providers import Provider
+from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RequestUsage
 
@@ -243,6 +252,43 @@ class DelayedUpdateACPAgent(EchoACPAgent):
 
         asyncio.create_task(publish_update())
         return PromptResponse(stop_reason=self.stop_reason, usage=self.usage)
+
+
+class SlowACPAgent(EchoACPAgent):
+    """Agent whose prompt turn only finishes once the host sends ``session/cancel``."""
+
+    def __init__(self, *, honor_cancel: bool = True) -> None:
+        super().__init__()
+        self.honor_cancel = honor_cancel
+        self.cancelled_sessions: list[str] = []
+        self.prompt_cancellations: list[str] = []
+        self.prompt_started = asyncio.Event()
+        self._cancel_events: dict[str, asyncio.Event] = {}
+
+    async def prompt(
+        self,
+        prompt: list[Any],
+        session_id: str,
+        message_id: str | None = None,
+        **kwargs: Any,
+    ) -> PromptResponse:
+        del message_id, kwargs
+        rendered_prompt = "".join(str(getattr(block, "text", "")) for block in prompt)
+        self.prompts.append((session_id, rendered_prompt))
+        event = self._cancel_events.setdefault(session_id, asyncio.Event())
+        self.prompt_started.set()
+        try:
+            await event.wait()
+        except asyncio.CancelledError:
+            self.prompt_cancellations.append(session_id)
+            raise
+        return PromptResponse(stop_reason="cancelled")
+
+    async def cancel(self, session_id: str, **kwargs: Any) -> None:
+        del kwargs
+        self.cancelled_sessions.append(session_id)
+        if self.honor_cancel:
+            self._cancel_events.setdefault(session_id, asyncio.Event()).set()
 
 
 class StructuredMetaACPAgent(EchoACPAgent):
@@ -2147,6 +2193,7 @@ def test_acp_client_provider_symbols_are_exported_from_the_top_level_package() -
         "AcpHostBridge",
         "AcpModel",
         "AcpPromptRenderer",
+        "AcpPromptTimeoutError",
         "AcpProvider",
         "AcpUpdateRecord",
     ):
@@ -2162,3 +2209,179 @@ def test_acp_model_profile_disables_tool_and_structured_output_support() -> None
     assert profile["supports_json_object_output"] is False
     assert profile["supports_image_output"] is False
     assert profile["supported_native_tools"] == frozenset()
+
+
+async def test_provider_prompt_timeout_enforced_via_session_cancel() -> None:
+    acp_agent = SlowACPAgent()
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        prompt_timeout=0.05,
+        cancel_grace=1.0,
+    )
+    model = provider.model()
+
+    with pytest.raises(AcpPromptTimeoutError) as exc_info:
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("slow turn")])],
+            None,
+            ModelRequestParameters(),
+        )
+
+    assert acp_agent.cancelled_sessions == ["session-1"]
+    assert exc_info.value.session_id == "session-1"
+    assert exc_info.value.timeout == 0.05
+    assert exc_info.value.cancelled_cleanly is True
+
+
+async def test_run_model_settings_timeout_overrides_provider_prompt_timeout() -> None:
+    acp_agent = SlowACPAgent()
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        prompt_timeout=30.0,
+        cancel_grace=1.0,
+    )
+    model = provider.model()
+
+    with pytest.raises(AcpPromptTimeoutError) as exc_info:
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("slow turn")])],
+            ModelSettings(timeout=0.05),
+            ModelRequestParameters(),
+        )
+
+    assert exc_info.value.timeout == 0.05
+    assert acp_agent.cancelled_sessions == ["session-1"]
+
+
+async def test_model_level_settings_timeout_enforces_deadline() -> None:
+    acp_agent = SlowACPAgent()
+    provider = AcpProvider(acp_agent=cast(AcpAgent, acp_agent), cwd="/workspace")
+    model = provider.model(settings=ModelSettings(timeout=0.05))
+
+    with pytest.raises(AcpPromptTimeoutError):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("slow turn")])],
+            None,
+            ModelRequestParameters(),
+        )
+
+    assert acp_agent.cancelled_sessions == ["session-1"]
+
+
+async def test_prompt_timeout_grace_expiry_marks_unclean_cancellation() -> None:
+    acp_agent = SlowACPAgent(honor_cancel=False)
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        prompt_timeout=0.05,
+        cancel_grace=0.05,
+    )
+    model = provider.model()
+
+    with pytest.raises(AcpPromptTimeoutError) as exc_info:
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("stuck turn")])],
+            None,
+            ModelRequestParameters(),
+        )
+
+    assert exc_info.value.cancelled_cleanly is False
+    assert acp_agent.cancelled_sessions == ["session-1"]
+
+
+async def test_prompt_without_timeout_is_unbounded_and_unchanged() -> None:
+    acp_agent = EchoACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("no deadline")])],
+        None,
+        ModelRequestParameters(),
+    )
+
+    assert isinstance(response.parts[0], TextPart)
+    assert response.parts[0].content == "acp echo: no deadline"
+
+
+async def test_httpx_timeout_model_setting_is_rejected() -> None:
+    acp_agent = EchoACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    with pytest.raises(UserError, match="numeric ModelSettings 'timeout'"):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("hello")])],
+            ModelSettings(timeout=httpx.Timeout(5.0)),
+            ModelRequestParameters(),
+        )
+
+
+def test_provider_prompt_timeout_validation() -> None:
+    acp_agent = EchoACPAgent()
+
+    with pytest.raises(ValueError, match="prompt_timeout"):
+        AcpProvider(acp_agent=cast(AcpAgent, acp_agent), prompt_timeout=0)
+    with pytest.raises(ValueError, match="cancel_grace"):
+        AcpProvider(acp_agent=cast(AcpAgent, acp_agent), cancel_grace=0)
+
+
+async def test_create_acp_model_forwards_prompt_timeout() -> None:
+    acp_agent = SlowACPAgent()
+    model = create_acp_model(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        prompt_timeout=0.05,
+    )
+
+    with pytest.raises(AcpPromptTimeoutError):
+        await model.request(
+            [ModelRequest(parts=[UserPromptPart("slow turn")])],
+            None,
+            ModelRequestParameters(),
+        )
+
+    assert acp_agent.cancelled_sessions == ["session-1"]
+
+
+async def test_external_cancellation_cancels_deadline_bounded_prompt() -> None:
+    acp_agent = SlowACPAgent()
+    provider = AcpProvider(
+        acp_agent=cast(AcpAgent, acp_agent),
+        cwd="/workspace",
+        prompt_timeout=30.0,
+    )
+    model = provider.model()
+
+    request_task = asyncio.ensure_future(
+        model.request(
+            [ModelRequest(parts=[UserPromptPart("slow turn")])],
+            None,
+            ModelRequestParameters(),
+        ),
+    )
+    await acp_agent.prompt_started.wait()
+    request_task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await request_task
+
+    for _ in range(10):
+        if acp_agent.prompt_cancellations:
+            break
+        await asyncio.sleep(0)
+    assert acp_agent.prompt_cancellations == ["session-1"]
+    assert acp_agent.cancelled_sessions == []
+
+
+async def test_model_settings_without_timeout_do_not_bound_the_prompt() -> None:
+    acp_agent = EchoACPAgent()
+    _provider, model = _build_provider_and_model(acp_agent)
+
+    response = await model.request(
+        [ModelRequest(parts=[UserPromptPart("tuned")])],
+        ModelSettings(temperature=0.0),
+        ModelRequestParameters(),
+    )
+
+    assert isinstance(response.parts[0], TextPart)
+    assert response.parts[0].content == "acp echo: tuned"

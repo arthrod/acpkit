@@ -63,6 +63,7 @@ from .client import (
     AcpHostBridge,
     AcpModel,
     AcpPromptRenderer,
+    AcpPromptTimeoutError,
     AcpProvider,
     AcpUpdateRecord,
 )
@@ -164,6 +165,7 @@ __all__ = (
     "AcpHostBridge",
     "AcpModel",
     "AcpPromptRenderer",
+    "AcpPromptTimeoutError",
     "AcpProvider",
     "AcpSessionContext",
     "AcpUpdateRecord",

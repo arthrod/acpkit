@@ -4,6 +4,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
+from pydantic_ai.settings import ModelSettings
+
 from ._version import __version__
 from .approvals import ApprovalBridge, NativeApprovalBridge
 from .bridges import CapabilityBridge
@@ -54,6 +56,13 @@ class AdapterConfig:
     enable_model_config_option: bool = True
     host_access_policy: HostAccessPolicy | None = None
     hook_projection_map: HookProjectionMap | None = field(default_factory=HookProjectionMap)
+    model_settings: ModelSettings | None = None
+    """Default model settings applied to every prompt run.
+
+    Merged per-key below session-driven bridge settings (bridges win) and above
+    the wrapped agent's own ``model_settings`` (these win, as run-level
+    settings). A numeric ``timeout`` here bounds each LLM request.
+    """
     models_provider: SessionModelsProvider | None = None
     modes_provider: SessionModesProvider | None = None
     native_plan_additional_instructions: str | None = None

@@ -29,12 +29,21 @@ def create_acp_model(
     enable_pydantic_acp_meta: bool | None = None,
     settings: ModelSettings | None = None,
     profile: ModelProfileSpec | None = None,
+    prompt_timeout: float | None = None,
+    cancel_grace: float = 10.0,
 ) -> AcpModel:
     """Create a Pydantic AI model backed by an ACP agent or ACP stdio command.
 
     Exactly one of ``acp_agent`` or ``acp_command`` must be provided. Passing
     ``model_name=None`` leaves ACP model selection to the remote agent's session
     default and does not send a ``session/set_config_option`` request for ``"model"``.
+
+    ``prompt_timeout`` bounds each whole delegated prompt turn in seconds; on
+    expiry the client sends ACP ``session/cancel``, waits up to ``cancel_grace``
+    seconds for the agent to acknowledge, and raises
+    :class:`~pydantic_acp.client.AcpPromptTimeoutError`. A numeric
+    ``ModelSettings.timeout`` (via ``settings`` or per-run ``model_settings``)
+    overrides ``prompt_timeout`` per request.
     """
 
     command = _normalize_command(acp_command)
@@ -63,6 +72,8 @@ def create_acp_model(
         prompt_renderer=prompt_renderer,
         history_mode=history_mode,
         enable_pydantic_acp_meta=enable_pydantic_acp_meta,
+        prompt_timeout=prompt_timeout,
+        cancel_grace=cancel_grace,
     )
     return provider.model(
         model_name,
